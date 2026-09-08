@@ -93,6 +93,61 @@ gọi vòng.
 * Độ chính xác tư thế **chưa đối chiếu được với bản gốc** — mới xác nhận là
   dựng ra hình người hợp lý, chưa so từng pixel với game thật.
 
+## Mô phỏng trận (`sim/`) — bước 1
+
+Trả lời câu hỏi đắt nhất trước khi tốn đồng nào cho art: *bảng 92 tướng này có
+thú vị không, hay một tướng đè hết?*
+
+```bash
+python sim/run.py                        # 5 tướng, 10.000 trận
+python sim/run.py --all --battles 50000  # cả 92 tướng
+python sim/run.py --all --sensitivity    # chạy lại với các công thức khác
+python sim/run.py --duel GanNing LiuBei  # kể từng đòn một trận
+python sim/test_sim.py                   # 23 kiểm tra
+```
+
+### Kết quả
+
+Vòng tròn cả 92 tướng, 46.046 trận: **MaChao 98,6% — ZhuGeLiangYoung 0,4%,
+khoảng cách 98,2 điểm.** Chạy lại với bốn công thức khác nhau: khoảng cách
+97,3–99,2, MaChao đứng đầu ở cả bốn. Kết luận không phụ thuộc công thức.
+
+Gom theo độ hiếm cho ra điều bất ngờ hơn:
+
+| độ hiếm | số tướng | tỉ lệ thắng |
+|---|---|---|
+| thường (0) | 56 | 51,9% |
+| hiếm (1) | 21 | **48,2%** |
+| cực hiếm (2) | 15 | 76,4% |
+
+Tướng **hiếm yếu hơn tướng thường**. Nên khối chỉ số gốc không phải một thang
+sức mạnh mạch lạc — cân bằng của bản gốc phải đến từ các lớp chồng lên trên
+(`BondTogetherConfig` 105 tổ hợp, thăng phẩm chất, trang bị, tinh hồn, quân
+lính), chứ không từ chỉ số tướng.
+
+**Ý nghĩa cho game mới:** nếu làm game đánh tay đôi bằng đúng bộ số này thì nó
+sập. Hoặc dựng đủ các lớp phụ trợ, hoặc chỉnh lại bảng số.
+
+### Công thức là tôi tự đặt, không phải của bản gốc
+
+Không cột nào trong 46 cột của bảng tướng xuất hiện trong 973 file Lua của
+client — chiến đấu tính hoàn toàn ở server, mà server thì không có trong tay.
+Mô hình ở `sim/battle.py` chỉ dùng **số thật**, còn cách ghép chúng là tự đặt.
+Ba chỗ tựa được vào dữ liệu:
+
+* `AttackCapability` / `Viability` là **bậc** 2–8, không phải chỉ số tuyệt đối.
+  Chỉ số tuyệt đối nằm ở khối dùng chung: HpBase 1000, ApBase 30–120, DpBase 30.
+* Mọi cột `*Rates` là **cộng thêm**, không phải nhân: 72/91 quân chủng có
+  `InjuryRates = 0`, mà quân chủng gây 0 sát thương thì vô lý.
+* `QualityFactor` bằng 1 ở cả 92 tướng nên bỏ qua; `TypeFactor` trùng khít
+  `HeroJobType`, là cùng một cột.
+
+### Điểm mù đã biết
+
+Mô hình **không có vị trí và tầm đánh**, nên nghề 3 (26,8%) và nghề 5 (30,9%)
+— tướng đánh xa và hỗ trợ — bị đánh giá thấp một cách có hệ thống. Trận trung
+bình 10,5 đòn; ngắn hơn nữa thì kỹ năng và chiến thuật không còn chỗ.
+
 ## Bản quyền
 
 `assets_ref/` là art lấy từ bản gốc, **có bản quyền**. Nó bị `.gitignore` và

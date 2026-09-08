@@ -1,0 +1,194 @@
+# -*- coding: utf-8 -*-
+"""Vong lap chien dau, khong do hoa.
+
+MUC DICH: tra loi cau hoi dat nhat truoc khi ton mot dong nao cho art —
+*bang tuong nay co thu vi khong, hay mot tuong de het?*
+
+CONG THUC O DAY KHONG PHAI CUA BAN GOC
+--------------------------------------
+Da tim: khong cot nao trong so 46 cot cua bang tuong xuat hien trong 973 file
+Lua cua client. Chien dau tinh hoan toan o server, ma server thi khong co
+trong tay. Nen cong thuc duoi day la MO HINH TU DAT, chi dung SO THAT.
+
+Nhung diem dua duoc vao du lieu:
+
+* `AttackCapability` 2..8 va `Viability` 2..8 la BAC, khong phai chi so tuyet
+  doi. Chi so tuyet doi nam o khoi dung chung: HpBase 1000, ApBase 30..120,
+  DpBase 30.
+
+* Moi cot ten `*Rates` la CONG THEM chu khong phai nhan: 72/91 quan chung co
+  `InjuryRates = 0`, ma quan chung gay 0 sat thuong thi vo ly. Nen doc la
+  `sat thuong x (1 + InjuryRates)`. Cach doc nay cung khop voi ca ho cot cung
+  kieu: FinalDamageRates, MeleeDamageRates, ArrowDamageRates — deu mac dinh 0.
+
+* `AngerRecovery` = 30 cho ca 92 tuong, nen no day sau 4 don. `SkillInjuryRates`
+  thi khac nhau tung tuong (0..10), do moi la cho tao khac biet.
+
+* `QualityFactor` bang 1 o ca 92 tuong nen bo qua. `TypeFactor` trung khit
+  `HeroJobType`, la cung mot cot.
+
+Doi cong thuc bang lop Rules roi chay lai — ket luan CO doi theo cong thuc hay
+khong la thong tin dang gia hon ban thang thua tuyet doi.
+"""
+import math, random, collections
+
+
+class Rules(object):
+    """Cac lua chon mo hinh. Doi o day roi chay lai de xem ket luan co vung."""
+
+    def __init__(self, mitigation='subtract', defence_k=100.0,
+                 use_growth=False, anger_full=100.0, max_seconds=600.0):
+        # 'subtract': dmg = ap - def   (khong can hang so tu bia ra)
+        # 'divide'  : dmg = ap * k/(k+def)
+        self.mitigation = mitigation
+        self.defence_k = defence_k
+        # GrowthFactor la bac tang truong theo cap. Cach no nhan vao chi so thi
+        # khong biet, nen mac dinh TAT — bat len de xem ket luan co doi khong.
+        self.use_growth = use_growth
+        self.anger_full = anger_full
+        self.max_seconds = max_seconds
+
+
+class Fighter(object):
+    """Mot tuong da quy ra chi so, san sang danh."""
+
+    def __init__(self, row, base, rules=None):
+        r = rules or Rules()
+        self.name = row['HeroSprite']
+        self.hero_id = row['HeroID']
+        self.job = row['HeroJobType']
+        self.rarity = row['HeroRarity']
+        self.faction = row['HeroFactions']
+
+        g = float(row['GrowthFactor']) if r.use_growth else 1.0
+
+        self.hp_max = float(base['HpBase']) * float(row['Viability']) * g
+        self.ap_min = float(base['MinApBase']) * float(row['AttackCapability']) * g
+        self.ap_max = float(base['MaxApBase']) * float(row['AttackCapability']) * g
+        self.defence = float(base['DpBase'])
+        self.interval = float(base['AttackInterval'])
+        self.crit_chance = float(base['CriticalStrikeBase']) / 100.0
+        self.crit_mult = float(base['CritDamageDouble'])
+
+        self.hit_rate = 1.0 + float(row['InjuryRates'])
+        self.skill_rate = 1.0 + float(row['SkillInjuryRates'])
+        self.anger_gain = float(row['AngerRecovery'])
+
+        self.reset()
+
+    def reset(self):
+        self.hp = self.hp_max
+        self.anger = 0.0
+
+    @property
+    def alive(self):
+        return self.hp > 0.0
+
+    def strike(self, target, rng, rules):
+        """Mot don. Tra ve (sat thuong, co dung ky nang, co chi mang)."""
+        ap = rng.uniform(self.ap_min, self.ap_max)
+
+        self.anger += self.anger_gain
+        skill = self.anger >= rules.anger_full
+        if skill:
+            self.anger = 0.0
+
+        dmg = ap * (self.skill_rate if skill else self.hit_rate)
+
+        if rules.mitigation == 'divide':
+            k = rules.defence_k
+            dmg *= k / (k + target.defence)
+        else:
+            dmg -= target.defence
+
+        crit = rng.random() < self.crit_chance
+        if crit:
+            dmg *= self.crit_mult
+
+        dmg = max(1.0, dmg)
+        target.hp -= dmg
+        return dmg, skill, crit
+
+
+def duel(a, b, rng, rules=None):
+    """Mot tran tay doi. Tra ve (ket qua, so don, so giay).
+
+    Ket qua: 1 neu a thang, -1 neu b thang, 0 neu hoa.
+
+    Ca hai danh theo dong thoi gian rieng, nen AttackInterval khac nhau la co
+    y nghia (hien ban goc cho moi tuong cung 2.5s). Cung mot moc thoi gian thi
+    ca hai cung ra don — co the chet ca hai, tinh la hoa.
+    """
+    r = rules or Rules()
+    a.reset()
+    b.reset()
+    ta = tb = a.interval
+    t = 0.0
+    hits = 0
+    while t < r.max_seconds:
+        t = min(ta, tb)
+        acts = []
+        if ta <= t + 1e-9:
+            acts.append(a)
+            ta += a.interval
+        if tb <= t + 1e-9:
+            acts.append(b)
+            tb += b.interval
+        for who in acts:
+            who.strike(b if who is a else a, rng, r)
+            hits += 1
+        if not a.alive or not b.alive:
+            return (1 if a.alive else (-1 if b.alive else 0)), hits, t
+    return 0, hits, t        # het gio ma chua ai chet
+
+
+def match(row_a, row_b, base, n, seed=0, rules=None, stats=None):
+    """Danh n tran giua hai tuong. Tra ve (thang, thua, hoa) cua tuong a.
+
+    Truyen `stats` (mot dict) de gom them do dai tran — so don va so giay. Tran
+    dai bao nhieu la thong tin quan trong khong kem ai thang: mot tran ket thuc
+    sau 2 don thi khong con la tran nua, ket qua do chi so quyet dinh het.
+    """
+    r = rules or Rules()
+    a = Fighter(row_a, base, r)
+    b = Fighter(row_b, base, r)
+    rng = random.Random(seed)
+    win = lose = draw = 0
+    for _ in range(n):
+        out, hits, secs = duel(a, b, rng, r)
+        if out > 0:
+            win += 1
+        elif out < 0:
+            lose += 1
+        else:
+            draw += 1
+        if stats is not None:
+            stats['hits'] = stats.get('hits', 0) + hits
+            stats['seconds'] = stats.get('seconds', 0.0) + secs
+            stats['battles'] = stats.get('battles', 0) + 1
+    return win, lose, draw
+
+
+def round_robin(rows, base, n_per_pair, seed=0, rules=None, stats=None):
+    """Danh vong tron. Tra ve (bang ket qua, tong so tran).
+
+    Bang: ten -> {'win','lose','draw','games'}
+    """
+    r = rules or Rules()
+    score = collections.OrderedDict(
+        (x['HeroSprite'], {'win': 0, 'lose': 0, 'draw': 0, 'games': 0})
+        for x in rows)
+    total = 0
+    for i in range(len(rows)):
+        for j in range(i + 1, len(rows)):
+            w, l, d = match(rows[i], rows[j], base, n_per_pair,
+                            seed + i * 1000 + j, r, stats)
+            for name, a_win, a_lose in ((rows[i]['HeroSprite'], w, l),
+                                        (rows[j]['HeroSprite'], l, w)):
+                s = score[name]
+                s['win'] += a_win
+                s['lose'] += a_lose
+                s['draw'] += d
+                s['games'] += n_per_pair
+            total += n_per_pair
+    return score, total

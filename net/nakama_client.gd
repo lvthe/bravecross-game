@@ -188,6 +188,7 @@ func _send(method: int, path: String, body: Variant, auth: String) -> Dictionary
 	_ensure_http()
 	if not is_inside_tree():
 		return {"ok": false, "error": "NakamaClient phai duoc them vao cay node truoc"}
+	_http.timeout = timeout_sec        # doi duoc giua chung, khong chi luc tao
 	var headers := PackedStringArray([
 		"Content-Type: application/json", "Authorization: " + auth])
 	var err := _http.request(url + path, headers, method,

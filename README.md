@@ -283,6 +283,69 @@ Nakama chấp nhận, và nó có thể che mất lỗi thật nếu nó dễ t�
 khoản trên máy chủ của bạn. Đổi nó (`--socket.server_key`) và đổi luôn
 `NakamaClient.DEFAULT_SERVER_KEY`.
 
+## Ghép lại: màn trận nối máy chủ
+
+`net/player_session.gd` đứng giữa. Màn trận không nói chuyện trực tiếp với máy
+chủ — nó hỏi lớp này, và lớp này lo đăng nhập, nạp bản lưu, cộng sổ, đẩy lên.
+
+```bash
+godot --path . battle/battle.tscn
+```
+
+Đội **bên trái là đội của bạn**, lấy từ bản lưu trên máy chủ; đội địch bốc ngẫu
+nhiên. Xong trận là cộng vào sổ rồi đẩy lên. `N` đổi đội của bạn và lưu luôn.
+Dòng cuối trên màn hình cho biết đang là ai và thành tích bao nhiêu.
+
+Đánh vài trận rồi thoát, không cần mở cửa sổ:
+
+```bash
+godot --headless --path . battle/battle.tscn -- --play=3
+```
+
+Chạy hai lần liên tiếp, hai tiến trình khác nhau:
+
+```
+LAN 1   trang thai : RSYixXJSRS · 17 tran: 11 thang / 3 thua / 3 hoa
+        (3 tran)
+        trang thai : RSYixXJSRS · 20 tran: 14 thang / 3 thua / 3 hoa
+LAN 2   trang thai : RSYixXJSRS · 20 tran: 14 thang / 3 thua / 3 hoa
+        (2 tran)
+        trang thai : RSYixXJSRS · 22 tran: 16 thang / 3 thua / 3 hoa
+```
+
+Lần 2 bắt đầu đúng con số tiến trình trước để lại, và đội hình giữ nguyên.
+
+### Mất mạng không được chặn người chơi
+
+Không đăng nhập được thì `start()` vẫn trả về ok, `online` = false, và game
+chạy bình thường — chỉ là không lưu. `flush()` lúc đó **báo lỗi rõ** chứ không
+im lặng coi như xong. Thêm `--offline` để bỏ hẳn phần mạng.
+
+```bash
+godot --headless --path . --script tools/verify_session.gd -- --url=http://127.0.0.1:7350
+```
+
+26/26, gồm cả nhánh ngoại tuyến và nhánh bản lưu hỏng (thiếu trường, sai kiểu,
+không phải từ điển).
+
+### Hai lỗi bắt được khi ghép
+
+**Đếm đôi.** `--play` tự bước trận trong vòng lặp riêng, nhưng `_process` vẫn
+chạy song song và bước thêm một lần mỗi khung — 3 trận thành 6, sổ nhảy 12→18
+thay vì 15. Nay có cờ `scripted` chặn `_process` khi một chế độ kịch bản đang
+tự lái.
+
+**Bộ test không cô lập.** `verify_session.gd` sinh mã thiết bị mới mỗi lần chạy
+nhưng **không dùng** — `login()` đọc mã đã lưu ở `user://device_id`, nên mọi
+lần chạy đều vào cùng một tài khoản và số liệu cộng dồn. `start()` nay nhận
+tham số `device`.
+
+### Chỗ chưa làm
+
+Bản lưu do **client ghi thẳng**, máy chủ không kiểm gì. Một client sửa đổi có
+thể ghi thành tích bất kỳ. Muốn chắc thì phải viết một RPC phía Nakama để nó tự
+tính kết quả trận — việc đó nằm ngoài "đúng hai API" của bước 3.
+
 ## Bản quyền
 
 `assets_ref/` (art) và `data_ref/` (bảng số) đều lấy từ bản gốc, **có bản

@@ -10,6 +10,11 @@
 #
 #   godot --headless --path . battle/battle.tscn -- --sim=200
 #   godot --headless --path . battle/battle.tscn -- --sim=200 --mirror
+#
+# Doi cua NGUOI CHOI (ben trai) lay tu ban luu tren may chu, doi dich boc ngau
+# nhien. Ket qua moi tran duoc cong vao so roi day len. Khong noi duoc toi may
+# chu thi van choi binh thuong, chi la khong luu; them --offline de bo han
+# phan mang.
 extends Node2D
 
 const TEAM_SIZE := 4
@@ -22,10 +27,15 @@ const RIG_SCALE := 0.55
 const ART := "res://assets_ref/"
 
 var combat: Combat
+var session: PlayerSession = null
 var rng := RandomNumberGenerator.new()
 var teams: Array = [[], []]
 var roster: Array = [[], []]
 var finished := false
+## Bat khi mot che do chay bang kich ban (--sim, --play) dang tu dieu khien
+## tran. Khong co co nay thi _process VAN chay song song, buoc tran them mot
+## lan moi khung va cong ket qua hai lan — 3 tran thanh 6.
+var scripted := false
 var elapsed := 0.0
 var label: Label = null
 var picks_seed := 0
@@ -42,14 +52,43 @@ func _ready() -> void:
 
 	var opts := _cli()
 	if opts.has("sim"):
+		# Che do do dac khong dung toi mang.
 		_run_headless(int(opts["sim"]), opts.has("mirror"))
 		return
 
 	picks_seed = int(opts.get("seed", "1"))
 	_new_rosters(picks_seed)
+
+	if not opts.has("offline"):
+		session = PlayerSession.new()
+		add_child(session)
+		label.text = "dang dang nhap..."
+		await session.start(opts.get("url", ""))
+		# Doi cua nguoi choi lay tu ban luu neu co. Chua co thi giu doi vua boc
+		# roi luu lai ngay, de lan sau mo game van dung doi do.
+		var saved: Array = session.data.get("roster", [])
+		if saved.size() == TEAM_SIZE and _all_known(saved):
+			roster[0] = saved.duplicate()
+		else:
+			session.set_roster(roster[0])
+			await session.flush()
+
+	if opts.has("play"):
+		await _play_through(int(opts["play"]))
+		return
+
 	_spawn()
 	if opts.has("shot"):
 		await _shoot(opts["shot"], float(opts.get("at", "6")))
+
+
+## Ban luu la du lieu ben ngoai: co the tro toi tuong khong con trong bo du
+## lieu (doi ban, bo bot tuong). Khong kiem thi _spawn se dung phai null.
+func _all_known(names: Array) -> bool:
+	for n in names:
+		if not combat.heroes.has(String(n)):
+			return false
+	return true
 
 
 func _cli() -> Dictionary:
@@ -181,11 +220,22 @@ func _separate() -> void:
 
 
 func _process(delta: float) -> void:
-	if finished or teams[0].is_empty():
+	if scripted or finished or teams[0].is_empty():
 		return
 	var out := _step(delta)
 	if out >= 0:
 		finished = true
+		_report(out)
+	_refresh(out)
+
+
+## Tran vua xong: cong vao so roi day len may chu.
+func _report(out: int) -> void:
+	if session == null:
+		return
+	session.record_result(out)
+	_refresh(out)
+	await session.flush()
 	_refresh(out)
 
 
@@ -203,6 +253,8 @@ func _refresh(out := -1) -> void:
 		txt += "   —  HOA"
 	else:
 		txt += "\nR danh lai   N doi hinh moi   space tam dung   1/2/3 toc do"
+	if session != null:
+		txt += "\n" + session.status_line()
 	label.text = txt
 
 
@@ -216,6 +268,10 @@ func _unhandled_input(e: InputEvent) -> void:
 			picks_seed += 1
 			_new_rosters(picks_seed)
 			_spawn()
+			if session != null:
+				session.set_roster(roster[0])
+				await session.flush()
+				_refresh()
 		KEY_SPACE:
 			get_tree().paused = not get_tree().paused
 		KEY_1:
@@ -224,6 +280,37 @@ func _unhandled_input(e: InputEvent) -> void:
 			Engine.time_scale = 2.0
 		KEY_3:
 			Engine.time_scale = 4.0
+
+
+## Danh n tran lien tiep, luu sau moi tran, roi bao ket qua va thoat.
+## Dung de kiem tra ca duong day: dang nhap -> danh -> cong so -> day len.
+func _play_through(n: int) -> void:
+	scripted = true
+	print("doi cua ban : %s" % ", ".join(roster[0]))
+	print("trang thai  : %s" % (session.status_line() if session else "khong co phien"))
+	var dt := 1.0 / 30.0
+	for i in n:
+		picks_seed += 1
+		_new_rosters(picks_seed)          # boc doi dich moi
+		if session != null:
+			var mine: Array = session.data.get("roster", [])
+			if mine.size() == TEAM_SIZE and _all_known(mine):
+				roster[0] = mine.duplicate()
+		_spawn(false)
+		var out := -1
+		var guard := 0
+		while out < 0 and guard < 100000:
+			out = _step(dt)
+			guard += 1
+		var names := ["ban thang", "ban thua", "hoa"]
+		print("  tran %d: %-10s  (%s)" % [i + 1, names[out], ", ".join(roster[1])])
+		if session != null:
+			session.record_result(out)
+			var f := await session.flush()
+			if not f.ok:
+				print("     khong luu duoc: %s" % str(f.get("error", "")))
+	print("trang thai  : %s" % (session.status_line() if session else "khong co phien"))
+	get_tree().quit(0)
 
 
 ## Chay tran toi giay `at` roi chup mot khung va thoat.
@@ -239,6 +326,7 @@ func _shoot(path: String, at: float) -> void:
 ## Danh n tran khong ve gi, buoc thoi gian co dinh. Dung de kiem tra tran co
 ## ket thuc khong, va voi doi hinh guong thi co thien vi ben nao khong.
 func _run_headless(n: int, mirror: bool) -> void:
+	scripted = true
 	var dt := 1.0 / 30.0
 	var win := [0, 0, 0]
 	var secs := 0.0

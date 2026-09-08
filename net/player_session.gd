@@ -10,9 +10,12 @@
 #     var ses := PlayerSession.new()
 #     add_child(ses)
 #     await ses.start()
-#     ses.data.roster = ["MaChao", "LiuBei"]
-#     ses.record_result(0)      # doi 0 (nguoi choi) thang
-#     await ses.flush()
+#     await ses.set_roster(["MaChao", "LiuBei", "GanNing", "GuYong"])
+#     var r := await ses.fight()   # may chu danh, may chu cong so
+#
+# BAN LUU DO MAY CHU GIU. Tu ban nay client khong con quyen ghi len kho
+# (permission_write = 0), nen no khong the tu khai thanh tich. Moi thay doi
+# deu qua RPC bx.set_roster / bx.fight.
 class_name PlayerSession
 extends Node
 
@@ -115,23 +118,50 @@ func record_result(winner: int) -> void:
 	dirty = true
 
 
-func set_roster(names: Array) -> void:
+## Doi doi hinh. Online thi may chu ghi (va kiem ten); ngoai tuyen thi chi
+## doi trong bo nho, khong luu duoc.
+func set_roster(names: Array) -> Dictionary:
 	data["roster"] = names.duplicate()
-	dirty = true
+	if not online:
+		dirty = true
+		return {"ok": false, "error": "dang choi ngoai tuyen, khong luu duoc"}
+	var r := await client.call_rpc("bx.set_roster", {"roster": names})
+	if not r.ok:
+		last_error = String(r.get("error", "khong doi duoc doi hinh"))
+		dirty = true
+		return r
+	data = _upgrade(r.data.get("save", {}))
+	dirty = false
+	return {"ok": true}
 
 
-## Day ban luu len may chu. Khong online thi bao ro chu khong im lang bo qua.
+## Danh mot tran. MAY CHU quyet dinh: no boc doi dich, mo phong, cong so va
+## ghi ban luu. Client khong khai gi ca — no khong the ghi ban luu nua
+## (permission_write = 0), nen co sua client cung khong bia duoc thanh tich.
+##
+## Tra ve {ok, result, opponent, lanes} khi online.
+func fight() -> Dictionary:
+	if not online:
+		return {"ok": false, "error": "dang choi ngoai tuyen, khong danh duoc"}
+	var r := await client.call_rpc("bx.fight", {})
+	if not r.ok:
+		last_error = String(r.get("error", "khong goi duoc bx.fight"))
+		return r
+	var d: Dictionary = r.data
+	data = _upgrade(d.get("save", {}))
+	dirty = false
+	return {"ok": true, "result": int(d.get("result", 2)),
+			"opponent": d.get("opponent", []), "lanes": d.get("lanes", []),
+			"laneWins": d.get("laneWins", {})}
+
+
+## Ngoai tuyen: cong ket qua vao bo nho. Online thi khong dung — may chu cong.
 func flush() -> Dictionary:
 	if not online:
 		return {"ok": false, "error": "dang choi ngoai tuyen, khong luu duoc"}
-	data["version"] = SAVE_VERSION
-	data["updatedAt"] = int(Time.get_unix_time_from_system())
-	var r := await client.save(data)
-	if r.ok:
-		dirty = false
-	else:
-		last_error = String(r.get("error", "khong luu duoc"))
-	return r
+	# Client KHONG con quyen ghi ban luu. Moi thay doi phai di qua RPC.
+	return {"ok": false,
+			"error": "ban luu do may chu giu; dung set_roster() hoac fight()"}
 
 
 ## Mot dong ngan de hien len man hinh.

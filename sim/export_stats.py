@@ -1,19 +1,21 @@
 # -*- coding: utf-8 -*-
-"""Xuat bo so chien dau sang JSON cho Godot doc.
+"""Xuat bo so chien dau cho Godot va cho module Nakama.
 
-Man tran trong Godot phai danh bang DUNG bo so ma mo phong Python dung, khong
-duoc chep tay sang GDScript roi troi dat. File nay la mot nguon duy nhat:
+Ba ban cai dat cua cung mot mo hinh, mot nguon so lieu duy nhat:
 
-    sim/battle.py   -> mo hinh goc, chay bang Python
-    data_ref/battle_data.json  -> so lieu, sinh ra tu day
-    battle/combat.gd -> ban cai dat GDScript, doc file tren
+    sim/battle.py               mo hinh goc, Python
+    battle/combat.gd            ban GDScript (client)
+    server/modules/battle.lua   ban Lua (may chu Nakama)
 
-Trong file JSON co san khoi `reference`: ti le thang cua mot so cap tuong do
-CHINH mo phong Python tinh. tools/verify_battle.gd danh lai cac cap do bang
-GDScript roi doi chieu — hai ban cai dat lech nhau la biet ngay.
+    data_ref/battle_data.json     so lieu cho client
+    server/modules/hero_data.lua  so lieu cho may chu
+
+Trong ca hai file so lieu deu co khoi `reference`: ti le thang cua mot so cap
+tuong do CHINH mo phong Python tinh. Hai ban kia danh lai cac cap do roi doi
+chieu — lech nhau la biet ngay.
 
     python export_stats.py
-    python export_stats.py --out ../data_ref/battle_data.json --battles 400
+    python export_stats.py --battles 4000
 """
 import os, sys, json, argparse, collections
 
@@ -23,10 +25,11 @@ from tables import Heroes, TableError, DEFAULT_CONFIG
 from battle import Rules, match
 
 DEFAULT_OUT = os.path.normpath(os.path.join(HERE, '..', 'data_ref', 'battle_data.json'))
+DEFAULT_LUA = os.path.normpath(os.path.join(HERE, '..', 'server', 'modules', 'hero_data.lua'))
 DEFAULT_ART = os.path.normpath(os.path.join(HERE, '..', 'assets_ref'))
 
 # Cac cot mo hinh thuc su dung. Khong xuat ca 46 cot: cai gi khong dung thi
-# khong xuat, de sau nay nhin JSON la biet mo hinh an vao dau.
+# khong xuat, de sau nay nhin file so lieu la biet mo hinh an vao dau.
 FIELDS = ['HeroID', 'HeroSprite', 'HeroJobType', 'HeroRarity', 'HeroFactions',
           'AttackCapability', 'Viability', 'GrowthFactor',
           'InjuryRates', 'SkillInjuryRates', 'AngerRecovery']
@@ -44,11 +47,75 @@ REFERENCE_PAIRS = [
     ('CaoCao', 'DengAi'),
 ]
 
+SAFE = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-. ')
+
+
+def lua_str(v):
+    """Chuoi Lua.
+
+    Moi chuoi di qua day deu la ten tuong, ten cot, hoac ten quy tac — toan ky
+    tu an toan. Chan lai bang assert thay vi viet bo thoat ky tu: neu mot ngay
+    nao do co chuoi la, no phai bao loi chu khong duoc am tham sinh ra Lua hong.
+    """
+    bad = [c for c in v if c not in SAFE]
+    assert not bad, 'chuoi co ky tu can thoat, chua ho tro: %r trong %r' % (bad, v)
+    return '"%s"' % v
+
+
+def lua_value(v, indent=0):
+    """Do mot gia tri Python ra cu phap Lua."""
+    pad = ' ' * indent
+    if isinstance(v, bool):
+        return 'true' if v else 'false'
+    if isinstance(v, (int, float)):
+        return repr(v)
+    if isinstance(v, str):
+        return lua_str(v)
+    if isinstance(v, (list, tuple)):
+        if not v:
+            return '{}'
+        return '{ %s }' % ', '.join(lua_value(x, indent + 2) for x in v)
+    if isinstance(v, dict):
+        if not v:
+            return '{}'
+        lines = []
+        for k, val in v.items():
+            key = k if k.isidentifier() else '[%s]' % lua_str(k)
+            lines.append('%s  %s = %s,' % (pad, key, lua_value(val, indent + 2)))
+        return '{' + os.linesep.join([''] + lines) + os.linesep + pad + '}'
+    return 'nil'
+
+
+def write_lua(path, doc):
+    """Bang so cho module Nakama.
+
+    Module Lua tu chua so lieu chu khong doc file: runtime Lua cua Nakama
+    khong hua hen mot API doc file nao, con `require` mot module tra ve bang
+    thi chac chan chay duoc.
+    """
+    out = collections.OrderedDict([
+        ('base', doc['base']),
+        ('rules', doc['rules']),
+        ('order', [r['HeroSprite'] for r in doc['heroes']]),
+        ('heroes', collections.OrderedDict(
+            (r['HeroSprite'], r) for r in doc['heroes'])),
+        ('reference', doc['reference']),
+    ])
+    d = os.path.dirname(path)
+    if d:
+        os.makedirs(d, exist_ok=True)
+    with open(path, 'w', encoding='utf-8', newline='\n') as fp:
+        fp.write('-- Sinh tu sim/export_stats.py - dung sua tay.\n')
+        fp.write('-- So lieu goc co ban quyen, khong duoc dua vao repo.\n')
+        fp.write('return %s\n' % lua_value(out))
+
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
     ap.add_argument('--config', default=DEFAULT_CONFIG)
     ap.add_argument('--out', default=DEFAULT_OUT)
+    ap.add_argument('--lua-out', default=DEFAULT_LUA,
+                    help='bang so cho module Nakama (Lua)')
     ap.add_argument('--art', default=DEFAULT_ART,
                     help='chi xuat tuong co atlas trong thu muc nay')
     ap.add_argument('--all', action='store_true',
@@ -90,7 +157,7 @@ def main():
         ]))
 
     doc = collections.OrderedDict([
-        ('note', 'Sinh tu sim/export_stats.py — dung sua tay. '
+        ('note', 'Sinh tu sim/export_stats.py - dung sua tay. '
                  'So lieu goc co ban quyen, khong duoc dua vao repo.'),
         ('base', collections.OrderedDict(
             (k, heroes.base[k]) for k in BASE_FIELDS if k in heroes.base)),
@@ -111,7 +178,10 @@ def main():
     with open(a.out, 'w', encoding='utf-8') as fp:
         json.dump(doc, fp, ensure_ascii=False, indent=1)
 
+    write_lua(a.lua_out, doc)
+
     print('ghi %s' % a.out)
+    print('ghi %s' % a.lua_out)
     print('  %d tuong%s' % (len(rows),
           '' if not skipped else ' (bo %d tuong chua co art: %s)'
           % (len(skipped), ', '.join(skipped[:5]))))

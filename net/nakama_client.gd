@@ -40,6 +40,10 @@ const DEVICE_FILE := "user://device_id"
 
 var url := DEFAULT_URL
 var server_key := DEFAULT_SERVER_KEY
+## Cho doi duoc de bo test giao van dung cho rieng, khong dung vao ban luu
+## that (ban luu do may chu giu, client khong ghi duoc nua).
+var collection := COLLECTION
+var key := KEY
 var token := ""
 var user_id := ""
 var username := ""
@@ -148,8 +152,8 @@ func save(data: Dictionary) -> Dictionary:
 	if token == "":
 		return {"ok": false, "error": "chua dang nhap"}
 	var payload := {"objects": [{
-		"collection": COLLECTION,
-		"key": KEY,
+		"collection": collection,
+		"key": key,
 		# Nakama nhan `value` la MOT CHUOI JSON, khong phai object long nhau.
 		"value": JSON.stringify(data),
 		"permission_read": 1,     # chi chu so huu doc duoc
@@ -166,7 +170,7 @@ func load_save() -> Dictionary:
 	if token == "":
 		return {"ok": false, "error": "chua dang nhap"}
 	var payload := {"object_ids": [{
-		"collection": COLLECTION, "key": KEY, "user_id": user_id,
+		"collection": collection, "key": key, "user_id": user_id,
 	}]}
 	var res := await _send(HTTPClient.METHOD_POST, "/v2/storage", payload, _bearer())
 	if not res.ok:
@@ -180,6 +184,25 @@ func load_save() -> Dictionary:
 			"version": String(objects[0].get("version", ""))}
 
 
+## Goi mot RPC phia may chu.
+##
+## Nakama boc than tin nhan hai lop: than cua yeu cau la MOT CHUOI JSON, va
+## tra loi nam trong truong `payload` cung la mot chuoi JSON. Quen boc/mo lop
+## nay la loi de mac nhat khi goi RPC bang REST.
+## Ten `call_rpc` chu khong phai `rpc`: Node da co san phuong thuc `rpc()` cua
+## he thong nhieu nguoi choi trong Godot, dat trung ten thi khong bien dich.
+func call_rpc(id: String, body: Dictionary = {}) -> Dictionary:
+	if token == "":
+		return {"ok": false, "error": "chua dang nhap"}
+	var res := await _send(HTTPClient.METHOD_POST, "/v2/rpc/" + id,
+			JSON.stringify(body), _bearer())
+	if not res.ok:
+		return res
+	var raw := String(res.body.get("payload", ""))
+	var doc = JSON.parse_string(raw) if raw != "" else {}
+	return {"ok": true, "data": doc if typeof(doc) == TYPE_DICTIONARY else {}}
+
+
 func _bearer() -> String:
 	return "Bearer " + token
 
@@ -191,6 +214,8 @@ func _send(method: int, path: String, body: Variant, auth: String) -> Dictionary
 	_http.timeout = timeout_sec        # doi duoc giua chung, khong chi luc tao
 	var headers := PackedStringArray([
 		"Content-Type: application/json", "Authorization: " + auth])
+	# JSON.stringify lo ca hai kieu: Dictionary ra doi tuong JSON, con Chuoi
+	# ra mot chuoi JSON co ngoac kep — dung y Nakama cho than cua RPC.
 	var err := _http.request(url + path, headers, method,
 			"" if body == null else JSON.stringify(body))
 	if err != OK:

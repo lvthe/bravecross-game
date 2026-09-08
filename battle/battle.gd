@@ -11,10 +11,16 @@
 #   godot --headless --path . battle/battle.tscn -- --sim=200
 #   godot --headless --path . battle/battle.tscn -- --sim=200 --mirror
 #
-# Doi cua NGUOI CHOI (ben trai) lay tu ban luu tren may chu, doi dich boc ngau
-# nhien. Ket qua moi tran duoc cong vao so roi day len. Khong noi duoc toi may
-# chu thi van choi binh thuong, chi la khong luu; them --offline de bo han
-# phan mang.
+# Doi cua NGUOI CHOI (ben trai) lay tu ban luu tren may chu.
+#
+#   F   xin mot tran XEP HANG — may chu boc doi dich, mo phong, cong so va ghi
+#       ban luu. Client khong khai gi, va cung khong ghi duoc (ban luu de
+#       permission_write = 0).
+#   R   danh lai tai cho, KHONG tinh diem — chi de xem.
+#   N   doi doi hinh; may chu kiem ten roi ghi.
+#
+# Khong noi duoc toi may chu thi van xem duoc tran tai cho, chi la khong co
+# tran xep hang; them --offline de bo han phan mang.
 extends Node2D
 
 const TEAM_SIZE := 4
@@ -39,6 +45,8 @@ var scripted := false
 var elapsed := 0.0
 var label: Label = null
 var picks_seed := 0
+## Phan xu cua may chu cho tran dang xem. -1 = tran tap, khong tinh diem.
+var server_result := -1
 
 
 func _ready() -> void:
@@ -70,20 +78,43 @@ func _ready() -> void:
 		if saved.size() == TEAM_SIZE and _all_known(saved):
 			roster[0] = saved.duplicate()
 		else:
-			session.set_roster(roster[0])
-			await session.flush()
+			await session.set_roster(roster[0])
 
 	if opts.has("play"):
 		await _play_through(int(opts["play"]))
 		return
 
-	_spawn()
+	if session != null and session.online:
+		await _ranked()
+	else:
+		_spawn()
 	if opts.has("shot"):
 		await _shoot(opts["shot"], float(opts.get("at", "6")))
 
 
 ## Ban luu la du lieu ben ngoai: co the tro toi tuong khong con trong bo du
 ## lieu (doi ban, bo bot tuong). Khong kiem thi _spawn se dung phai null.
+## Mot tran XEP HANG. May chu boc doi dich, mo phong, cong so va ghi ban luu;
+## client chi dung lai va dien lai cho de nhin.
+##
+## Ban dien o day KHONG phai mo hinh cua may chu: no co di chuyen, chon muc
+## tieu, va tinh theo thoi gian thuc, con may chu ghep tung cap theo hang.
+## Ket qua hien len va duoc ghi luon la cua MAY CHU.
+func _ranked() -> void:
+	server_result = -1
+	label.text = "dang xin tran tu may chu..."
+	var f := await session.fight()
+	if not f.ok:
+		label.text = "khong xin duoc tran: %s" % str(f.get("error", ""))
+		_spawn()
+		return
+	var opp: Array = f.get("opponent", [])
+	if opp.size() == TEAM_SIZE and _all_known(opp):
+		roster[1] = opp.duplicate()
+	server_result = int(f.get("result", 2))
+	_spawn()
+
+
 func _all_known(names: Array) -> bool:
 	for n in names:
 		if not combat.heroes.has(String(n)):
@@ -229,13 +260,8 @@ func _process(delta: float) -> void:
 	_refresh(out)
 
 
-## Tran vua xong: cong vao so roi day len may chu.
+## Tran vua xong. Khong con cong so o day — may chu da cong tu luc xin tran.
 func _report(out: int) -> void:
-	if session == null:
-		return
-	session.record_result(out)
-	_refresh(out)
-	await session.flush()
 	_refresh(out)
 
 
@@ -253,6 +279,11 @@ func _refresh(out := -1) -> void:
 		txt += "   —  HOA"
 	else:
 		txt += "\nR danh lai   N doi hinh moi   space tam dung   1/2/3 toc do"
+	if server_result >= 0 and out >= 0:
+		var verdict: String = ["BAN THANG", "BAN THUA", "HOA"][server_result]
+		txt += "   |   may chu xu: %s" % verdict
+		if server_result != out:
+			txt += "  (ban dien ra khac — xem README)"
 	if session != null:
 		txt += "\n" + session.status_line()
 	label.text = txt
@@ -262,16 +293,21 @@ func _unhandled_input(e: InputEvent) -> void:
 	if not (e is InputEventKey and e.pressed and not e.echo):
 		return
 	match e.keycode:
-		KEY_R:
+		KEY_R:                       # danh lai tai cho, khong tinh diem
+			server_result = -1
 			_spawn()
-		KEY_N:
+		KEY_F:                       # xin tran xep hang moi
+			if session != null and session.online:
+				await _ranked()
+			else:
+				_spawn()
+		KEY_N:                       # doi doi hinh (may chu kiem va ghi)
 			picks_seed += 1
 			_new_rosters(picks_seed)
-			_spawn()
 			if session != null:
-				session.set_roster(roster[0])
-				await session.flush()
-				_refresh()
+				await session.set_roster(roster[0])
+			server_result = -1
+			_spawn()
 		KEY_SPACE:
 			get_tree().paused = not get_tree().paused
 		KEY_1:
@@ -288,27 +324,17 @@ func _play_through(n: int) -> void:
 	scripted = true
 	print("doi cua ban : %s" % ", ".join(roster[0]))
 	print("trang thai  : %s" % (session.status_line() if session else "khong co phien"))
-	var dt := 1.0 / 30.0
+	var names := ["ban thang", "ban thua", "hoa"]
 	for i in n:
-		picks_seed += 1
-		_new_rosters(picks_seed)          # boc doi dich moi
-		if session != null:
-			var mine: Array = session.data.get("roster", [])
-			if mine.size() == TEAM_SIZE and _all_known(mine):
-				roster[0] = mine.duplicate()
-		_spawn(false)
-		var out := -1
-		var guard := 0
-		while out < 0 and guard < 100000:
-			out = _step(dt)
-			guard += 1
-		var names := ["ban thang", "ban thua", "hoa"]
-		print("  tran %d: %-10s  (%s)" % [i + 1, names[out], ", ".join(roster[1])])
-		if session != null:
-			session.record_result(out)
-			var f := await session.flush()
-			if not f.ok:
-				print("     khong luu duoc: %s" % str(f.get("error", "")))
+		if session == null or not session.online:
+			print("  tran %d: bo qua — dang ngoai tuyen" % (i + 1))
+			continue
+		var f := await session.fight()
+		if not f.ok:
+			print("  tran %d: khong xin duoc — %s" % [i + 1, str(f.get("error", ""))])
+			continue
+		print("  tran %d: %-10s  (doi dich: %s)"
+				% [i + 1, names[int(f.result)], ", ".join(f.get("opponent", []))])
 	print("trang thai  : %s" % (session.status_line() if session else "khong co phien"))
 	get_tree().quit(0)
 

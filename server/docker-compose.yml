@@ -47,6 +47,11 @@ services:
         --logger.level INFO
         --session.token_expiry_sec 7200
     restart: "no"
+    volumes:
+      # Thu muc nay chinh la server/. Nakama nap module Lua tu
+      # /nakama/data/modules, tuc server/modules/*.lua. Thieu dong nay thi no
+      # bao "Found runtime modules count=0" va moi RPC deu "not found".
+      - ./:/nakama/data
     depends_on:
       cockroachdb:
         condition: service_healthy

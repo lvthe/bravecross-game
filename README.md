@@ -340,11 +340,76 @@ nhưng **không dùng** — `login()` đọc mã đã lưu ở `user://device_id
 lần chạy đều vào cùng một tài khoản và số liệu cộng dồn. `start()` nay nhận
 tham số `device`.
 
+## Máy chủ tự xử trận (`server/modules/battle.lua`)
+
+Trước đây client đánh xong rồi tự ghi thành tích. Nay **máy chủ quyết định**:
+nó bốc đội địch, mô phỏng, cộng sổ, và ghi bản lưu. Client không khai gì.
+
+| RPC | việc |
+|---|---|
+| `bx.set_roster` | đổi đội hình, máy chủ kiểm tên |
+| `bx.fight` | đánh một trận xếp hạng |
+| `bx.selftest` | đối chiếu mô hình Lua với mô hình Python |
+
+Trong màn trận: `F` xin trận xếp hạng, `R` đánh lại tại chỗ không tính điểm,
+`N` đổi đội hình.
+
+### Ba bản cài đặt, một nguồn số liệu
+
+`sim/battle.py` (Python) · `battle/combat.gd` (client) · `server/modules/battle.lua`
+(máy chủ). `sim/export_stats.py` sinh cả `data_ref/battle_data.json` lẫn
+`server/modules/hero_data.lua`, và nhúng sẵn kết quả tham chiếu của bản Python.
+`bx.selftest` đánh lại đúng các cặp đó bằng Lua:
+
+| cặp | Lua | Python | lệch |
+|---|---|---|---|
+| MaChao vs ZhuGeLiangYoung | 100,00% | 100,00% | 0,00 |
+| LvBu vs LvBuGod | 1,83% | 0,85% | 0,97 |
+| GuYong vs JiaXu | 59,27% | 59,62% | 0,34 |
+| CaoCao vs DengAi | 15,20% | 14,82% | 0,38 |
+
+### Lỗ hổng bắt được, và vì sao RPC thôi thì chưa đủ
+
+Đặt `permission_write = 0` trên bản lưu chặn được **ghi đè**, nhưng không chặn
+**tạo mới**. Đã thử thật:
+
+```
+1. client tự tạo bản lưu với wins=999999, battles=999999   ->  HTTP 200
+2. rồi gọi bx.fight                                        ->  1000000 trận,
+                                                               1000000 thắng
+```
+
+Máy chủ đọc đúng con số bịa đó rồi cộng thêm. Bản lưu phải thuộc về máy chủ
+**từ trước khi client kịp chạm vào** — nay có hook chạy sau mỗi lần đăng nhập,
+tạo sẵn bản lưu rỗng do máy chủ sở hữu. Thử lại trên thiết bị mới toanh:
+
+```
+1. client tự tạo bản lưu bịa   ->  "Storage write rejected - permission denied."
+2. bx.fight                    ->  1 trận, 0 thắng
+```
+
+Chính kịch bản tấn công đó nằm trong `tools/verify_rpc.gd` làm test hồi quy.
+
+```bash
+godot --headless --path . --script tools/verify_rpc.gd -- --url=http://127.0.0.1:7350
+```
+
+30/30, gồm cả bước tấn công.
+
+### Bản diễn ở client KHÔNG phải mô hình của máy chủ
+
+Máy chủ ghép từng cặp theo hàng rồi đấu tay đôi. Màn trận ở client có di
+chuyển, chọn mục tiêu, tính theo thời gian thực. Hai mô hình khác nhau, nên
+**bản diễn có thể cho ra kết quả khác với phán xử của máy chủ** — khi đó màn
+hình ghi rõ "bản diễn ra khác". Cái được ghi vào sổ luôn là của máy chủ.
+
+Muốn khớp hẳn thì phải cho máy chủ chạy đúng mô hình có vị trí, và hai bên dùng
+chung một bộ sinh số — chưa làm.
+
 ### Chỗ chưa làm
 
-Bản lưu do **client ghi thẳng**, máy chủ không kiểm gì. Một client sửa đổi có
-thể ghi thành tích bất kỳ. Muốn chắc thì phải viết một RPC phía Nakama để nó tự
-tính kết quả trận — việc đó nằm ngoài "đúng hai API" của bước 3.
+Khoá máy chủ vẫn là `defaultkey`. Trận đấu chưa có người thật đối đầu — đội
+địch do máy chủ bốc từ bảng tướng, không phải đội của người chơi khác.
 
 ## Bản quyền
 

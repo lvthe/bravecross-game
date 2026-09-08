@@ -11,3 +11,6 @@ __pycache__/
 
 # Bang so lay tu ban goc — co ban quyen, sinh lai bang sim/export_stats.py
 data_ref/
+
+# Bang so sinh ra tu ban goc — co ban quyen
+server/modules/hero_data.lua

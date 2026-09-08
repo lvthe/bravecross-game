@@ -39,6 +39,9 @@ func _client(url: String, key := NakamaClient.DEFAULT_SERVER_KEY) -> NakamaClien
 	var c := NakamaClient.new()
 	c.url = url
 	c.server_key = key
+	# Bo test nay kiem GIAO VAN, khong kiem ban luu. Ban luu that (player/save)
+	# nay do may chu giu va client khong ghi duoc — xem tools/verify_rpc.gd.
+	c.collection = "scratch"
 	root.add_child(c)
 	return c
 

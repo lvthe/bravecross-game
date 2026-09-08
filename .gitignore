@@ -8,3 +8,6 @@ assets_ref/
 
 # Python
 __pycache__/
+
+# Bang so lay tu ban goc — co ban quyen, sinh lai bang sim/export_stats.py
+data_ref/

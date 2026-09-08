@@ -148,14 +148,74 @@ Mô hình **không có vị trí và tầm đánh**, nên nghề 3 (26,8%) và n
 — tướng đánh xa và hỗ trợ — bị đánh giá thấp một cách có hệ thống. Trận trung
 bình 10,5 đòn; ngắn hơn nữa thì kỹ năng và chiến thuật không còn chỗ.
 
+## Màn trận (`battle/`) — bước 2
+
+Hai đội xông vào nhau, có thanh máu, dùng luôn art thật thay vì ảnh vuông màu.
+
+```bash
+godot --path . battle/battle.tscn
+```
+
+`R` đánh lại, `N` bốc đội hình mới, `space` tạm dừng, `1`/`2`/`3` đổi tốc độ.
+Thanh xanh là máu đội trái, đỏ là đội phải, vạch vàng mỏng bên dưới là nộ —
+đầy thì đòn sau là kỹ năng.
+
+### Số liệu không chép tay sang GDScript
+
+`sim/export_stats.py` sinh `data_ref/battle_data.json` từ bảng gốc, trong đó
+nhúng sẵn **kết quả tham chiếu** của bản mô phỏng Python. `battle/combat.gd`
+đọc file đó; `tools/verify_battle.gd` đánh lại đúng các cặp ấy bằng GDScript
+rồi đối chiếu:
+
+| cặp | GDScript | Python | lệch |
+|---|---|---|---|
+| MaChao vs ZhuGeLiangYoung | 100,0% | 100,0% | 0,0 |
+| LvBu vs LvBuGod | 0,8% | 0,8% | 0,1 |
+| GuYong vs JiaXu | 59,5% | 59,6% | 0,1 |
+| CaoCao vs DengAi | 14,3% | 14,8% | 0,6 |
+
+Hai bản cài đặt độc lập khớp nhau trong 0,6 điểm. Sửa công thức một bên mà
+quên bên kia là test báo ngay.
+
+```bash
+godot --headless --path . --script tools/verify_battle.gd
+```
+
+### Sân không được thiên vị bên nào
+
+```bash
+godot --headless --path . battle/battle.tscn -- --sim=300 --mirror
+```
+
+Cho hai đội **đội hình giống hệt nhau** rồi đánh 300 trận. Nếu lệch quá ngưỡng
+sai số thì lệnh trả mã lỗi.
+
+Đây là một lỗi thật đã bắt được: bản đầu cập nhật một pha — duyệt đội 0 rồi
+đội 1 — và **đội phải thắng 76%**. Lý do: đội 0 di chuyển trước, nên khi đội 1
+tính khoảng cách thì đối thủ đã tiến lại gần, đội 1 vào tầm trước và ra đòn
+trước. Sửa thành hai pha (mọi đơn vị đọc vị trí từ cùng một bản chụp, rồi trừ
+máu đồng loạt) → 47,7% / 50,0% / 2,3% hoà.
+
+### Vì sao đi theo làn
+
+Ban đầu mỗi đơn vị chạy thẳng tới đối thủ gần nhất, kết quả là cả tám dồn về
+một điểm giữa sân và chồng lên nhau thành một đống, không nhìn ra ai đánh ai.
+Nay mỗi đơn vị chạy theo trục x là chính, đổi làn chậm hơn nhiều, và khi chọn
+mục tiêu thì khoảng cách theo trục y bị phạt nặng — nên trận thành mấy cặp
+đánh nhau theo hàng.
+
 ## Bản quyền
 
-`assets_ref/` là art lấy từ bản gốc, **có bản quyền**. Nó bị `.gitignore` và
-chỉ dùng làm placeholder trong lúc dev. Phải thay hết bằng art tự làm trước
+`assets_ref/` (art) và `data_ref/` (bảng số) đều lấy từ bản gốc, **có bản
+quyền**. Cả hai bị `.gitignore` và chỉ dùng làm placeholder trong lúc dev. Phải thay hết bằng art tự làm trước
 khi phát hành. Tạo lại bằng:
 
 ```bash
 python work/export.py --all --out <thư mục>
 ```
 
-rồi chép các thư mục nhân vật cần dùng vào `assets_ref/`.
+rồi chép các thư mục nhân vật cần dùng vào `assets_ref/`, và sinh lại bảng số:
+
+```bash
+python sim/export_stats.py --battles 4000
+```

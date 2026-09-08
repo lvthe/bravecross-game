@@ -1,0 +1,7 @@
+# Godot
+.godot/
+export_presets.cfg
+
+# Art tham chieu lay tu ban goc — CO BAN QUYEN, khong duoc commit, khong duoc ship.
+# Tao lai bang:  python work/export.py --all --out <thu muc>
+assets_ref/

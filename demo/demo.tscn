@@ -1,0 +1,18 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://demo/demo.gd" id="1"]
+
+[node name="Demo" type="Node2D"]
+script = ExtResource("1")
+
+[node name="Bg" type="ColorRect" parent="."]
+offset_right = 960.0
+offset_bottom = 540.0
+color = Color(0.13, 0.14, 0.17, 1)
+
+[node name="Info" type="Label" parent="."]
+offset_left = 12.0
+offset_top = 8.0
+offset_right = 940.0
+offset_bottom = 90.0
+text = "dang nap..."

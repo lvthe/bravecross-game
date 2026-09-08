@@ -9,6 +9,23 @@ Phần đã xong ở đây là **bộ nạp nhân vật**: đọc thẳng dữ l
 
 ## Chạy thử
 
+Chơi:
+
+```bash
+godot --path . battle/battle.tscn
+```
+
+Chạy hết kiểm tra, một lệnh:
+
+```bash
+python tools/check.py
+```
+
+Bộ nào cần máy chủ mà không nối được thì báo **BỎ QUA** chứ không báo hỏng — để
+còn phân biệt "chưa bật Nakama" với "code hỏng".
+
+## Chạy từng phần
+
 ```bash
 godot --path . --script tools/verify.gd
 ```

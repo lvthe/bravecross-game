@@ -6,6 +6,11 @@
 #   POST /v2/account/authenticate/device?create=true    Basic <server key>
 #   PUT  /v2/storage                                    Bearer <token>   ghi
 #   POST /v2/storage                                    Bearer <token>   doc
+#   GET  /v2/account                                    Bearer <token>   du phong
+#
+# LUU Y quan trong, hoc duoc khi chay voi Nakama that: lenh dang nhap tra ve
+# DUNG BA truong — created, token, refresh_token. KHONG co user_id. Ma nguoi
+# choi nam trong claim `uid` cua token.
 #
 # Cach dung:
 #
@@ -86,12 +91,56 @@ func login(id := "", name_hint := "") -> Dictionary:
 		return res
 	var body: Dictionary = res.body
 	token = String(body.get("token", ""))
-	user_id = String(body.get("user_id", ""))
-	username = String(body.get("username", ""))
 	if token == "":
 		return {"ok": false, "error": "may chu tra ve khong co token", "status": res.status}
+
+	# Nakama KHONG tra ve user_id o than tin nhan — chi co created, token,
+	# refresh_token. Ma nguoi choi nam trong chinh token, o claim `uid`
+	# (username o `usn`). Doc nham cho nay thi user_id rong, va moi lenh doc
+	# kho deu tra ve rong ma khong bao loi gi.
+	var cl := claims(token)
+	user_id = String(cl.get("uid", ""))
+	username = String(cl.get("usn", ""))
+
+	if user_id == "":
+		# Du phong: hoi thang may chu. Cham hon mot vong nhung khong phu thuoc
+		# vao ruot cua token.
+		var acc := await _send(HTTPClient.METHOD_GET, "/v2/account", null, _bearer())
+		if acc.ok:
+			var u: Dictionary = acc.body.get("user", {})
+			user_id = String(u.get("id", ""))
+			if username == "":
+				username = String(u.get("username", ""))
+	if user_id == "":
+		return {"ok": false, "status": res.status,
+				"error": "khong lay duoc user_id tu token lan tu /v2/account"}
+
 	return {"ok": true, "userId": user_id, "username": username,
 			"created": bool(body.get("created", false))}
+
+
+## Doc phan claims cua mot JWT. Khong kiem tra chu ky — day chi la de lay ma
+## nguoi choi ma may chu vua cap, khong phai de tin tuong dieu gi.
+static func claims(jwt: String) -> Dictionary:
+	var parts := jwt.split(".")
+	if parts.size() < 2:
+		return {}
+	var raw := _b64url_to_text(parts[1])
+	if raw == "":
+		return {}
+	var doc = JSON.parse_string(raw)
+	return doc if typeof(doc) == TYPE_DICTIONARY else {}
+
+
+## base64url (JWT dung kieu nay) khac base64 thuong o hai ky tu va o cho khong
+## co dau chen `=`.
+static func _b64url_to_text(s: String) -> String:
+	var t := s.replace("-", "+").replace("_", "/")
+	match t.length() % 4:
+		2: t += "=="
+		3: t += "="
+		1: return ""
+	return Marshalls.base64_to_utf8(t)
 
 
 ## Luu du lieu nguoi choi. `data` la mot Dictionary bat ky.

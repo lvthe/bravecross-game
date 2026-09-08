@@ -227,27 +227,9 @@ cuối, tra từ tài liệu chính thức:
 | đăng nhập | POST | `/v2/account/authenticate/device?create=true` | `Basic <khoá máy chủ>` |
 | ghi | PUT | `/v2/storage` | `Bearer <token>` |
 | đọc | POST | `/v2/storage` | `Bearer <token>` |
+| lấy mã người chơi (dự phòng) | GET | `/v2/account` | `Bearer <token>` |
 
-### Kiểm chứng được ngay, chưa cần Docker
-
-```bash
-python tools/fake_nakama.py --port 7399
-```
-
-```bash
-godot --headless --path . --script tools/verify_net.gd -- --url=http://127.0.0.1:7399
-```
-
-24/24 đạt: đăng nhập, chưa lưu thì nạp ra rỗng (không phải lỗi), lưu rồi nạp
-lại giữ nguyên số nguyên / số thập phân / mảng / `true` / chữ có dấu, ghi đè
-thay cả bản lưu, đăng nhập lại bằng cùng mã thiết bị vẫn là người chơi cũ và
-thấy được dữ liệu đã lưu, khoá máy chủ sai bị trả 401, chưa đăng nhập thì
-không lưu được.
-
-**`tools/fake_nakama.py` không phải Nakama.** Nó chỉ chứng minh client gọi
-đúng dạng — đúng phương thức, đường dẫn, kiểu thân tin nhắn, cách đọc trả lời.
-Nó **không** chứng minh Nakama chấp nhận. Phép kiểm tra thật là chạy lại **cùng
-bộ test đó**, chỉ đổi `--url`:
+### Đã chạy với Nakama thật
 
 ```bash
 cd server && docker compose up -d
@@ -257,25 +239,43 @@ cd server && docker compose up -d
 godot --headless --path . --script tools/verify_net.gd -- --url=http://127.0.0.1:7350
 ```
 
-### Việc còn lại cần bạn quyết: cài Docker
-
-Docker Desktop cần WSL2, mà trên máy này `VirtualMachinePlatform` và
-`Microsoft-Windows-Subsystem-Linux` **đang tắt**. Bật chúng cần quyền admin và
-một lần khởi động lại. Tôi không tự làm — bạn chạy khi thấy tiện:
+Trang quản trị ở `http://127.0.0.1:7351` (admin/password). Không có Docker thì
+chạy máy giả — cùng bộ test, chỉ đổi cổng:
 
 ```bash
-wsl --install
+python tools/fake_nakama.py --port 7399
 ```
 
-Khởi động lại, rồi:
+24/24 đạt: đăng nhập, chưa lưu thì nạp ra rỗng (không phải lỗi), lưu rồi nạp
+lại giữ nguyên số nguyên / số thập phân / mảng / `true` / chữ có dấu, ghi đè
+thay cả bản lưu, đăng nhập lại bằng cùng mã thiết bị vẫn là người chơi cũ và
+thấy được dữ liệu đã lưu, khoá máy chủ sai bị trả 401, chưa đăng nhập thì
+không lưu được.
 
-```bash
-winget install Docker.DockerDesktop
-```
+**24/24 với Nakama thật**, và 24/24 với máy giả. Cùng một bộ test, chỉ đổi
+`--url`.
 
-Sau đó `docker compose up -d` trong `server/` và chạy lại bộ test với
-`--url=http://127.0.0.1:7350`. Trang quản trị ở `http://127.0.0.1:7351`
-(admin/password).
+### Máy giả từng nói dối, và Nakama thật vạch ra
+
+Lần đầu chạy với Nakama thật: **9/24 hỏng**. Máy giả đã sai ở đúng hai chỗ, cả
+hai đều theo kiểu "tự giúp cho" khiến client sai mà vẫn xanh:
+
+1. **Lệnh đăng nhập trả về `user_id`.** Nakama thật *không* — nó trả đúng ba
+   trường `created`, `token`, `refresh_token`. Mã người chơi nằm trong chính
+   token, ở claim `uid` (tên ở `usn`). Client đọc nhầm chỗ nên `user_id` rỗng.
+2. **Khi đọc kho, tự thay `user_id` rỗng bằng người đang đăng nhập.** Nakama
+   thật coi chuỗi rỗng là một chủ sở hữu *khác*, nên mọi lệnh đọc trả về rỗng —
+   **không báo lỗi gì**, chỉ là dữ liệu biến mất.
+
+Hai lỗi đó chồng lên nhau nên máy giả xanh hoàn toàn. Nay máy giả trả đúng ba
+trường như thật, cấp token dạng JWT mang claim `uid`, và không vá `user_id`
+rỗng nữa.
+
+Một cái bẫy thứ ba nằm trong chính bộ test: phép so `r2.userId == c.user_id`
+vẫn *đạt* khi cả hai cùng rỗng. Nay phải khác rỗng mới tính.
+
+Bài học: máy giả chỉ chứng minh client gọi đúng dạng. Nó **không** chứng minh
+Nakama chấp nhận, và nó có thể che mất lỗi thật nếu nó dễ tính hơn bản thật.
 
 ### Trước khi phát hành
 

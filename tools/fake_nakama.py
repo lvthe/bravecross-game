@@ -16,7 +16,7 @@ khong chay duoc voi Nakama that thi test se noi ra.
 
     python tools/fake_nakama.py --port 7399
 """
-import re, json, base64, argparse, threading
+import re, json, time, base64, argparse, threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 SERVER_KEY = 'defaultkey'
@@ -25,6 +25,25 @@ users = {}        # device id -> {'user_id', 'username'}
 tokens = {}       # token     -> user_id
 storage = {}      # (user_id, collection, key) -> {'value', 'version'}
 lock = threading.Lock()
+
+
+def b64url(raw):
+    return base64.urlsafe_b64encode(raw).decode('ascii').rstrip('=')
+
+
+def make_jwt(user_id, username):
+    """Token dang JWT, mang ma nguoi choi o claim `uid` — dung cho Nakama that.
+
+    KHONG ky that. May gia nay khong xac thuc gi; chu ky chi la cho giu dung
+    hinh dang ba phan de client tach chuoi khong bi hong.
+    """
+    now = int(time.time())
+    head = b64url(json.dumps({'alg': 'HS256', 'typ': 'JWT'}).encode('utf-8'))
+    body = b64url(json.dumps({
+        'uid': user_id, 'usn': username,
+        'iat': now, 'exp': now + 7200,
+    }).encode('utf-8'))
+    return '%s.%s.%s' % (head, body, b64url(b'chu-ky-gia'))
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -81,6 +100,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._read()
         self._err(404, 'khong co %s' % path)
 
+    def do_GET(self):
+        if self.path.split('?', 1)[0] == '/v2/account':
+            uid = self._bearer_user()
+            if uid is None:
+                return self._err(401, 'token khong hop le')
+            name = next((u['username'] for u in users.values()
+                         if u['user_id'] == uid), '')
+            return self._json(200, {'user': {'id': uid, 'username': name}})
+        self._err(404, 'khong co %s' % self.path)
+
     def do_PUT(self):
         if self.path.split('?', 1)[0] == '/v2/storage':
             return self._write()
@@ -106,11 +135,14 @@ class Handler(BaseHTTPRequestHandler):
                     'username': q.get('username') or ('nguoi%d' % (len(users) + 1)),
                 }
             u = users[device]
-            tok = 'gia.%s.%d' % (u['user_id'], len(tokens))
+            tok = make_jwt(u['user_id'], u['username'])
             tokens[tok] = u['user_id']
-        self._json(200, {'token': tok, 'refresh_token': tok + '.r',
-                         'user_id': u['user_id'], 'username': u['username'],
-                         'created': created})
+        # Nakama tra ve DUNG BA truong nay. Ban dau may gia con tra them
+        # user_id va username, va client doc tu do — chay voi Nakama that thi
+        # user_id rong, moi lenh doc kho tra ve rong ma khong bao loi gi. Giu
+        # dung ba truong de cai bay do khong tai dien.
+        self._json(200, {'created': created, 'token': tok,
+                         'refresh_token': make_jwt(u['user_id'], u['username'])})
 
     def _write(self):
         uid = self._bearer_user()
@@ -143,7 +175,11 @@ class Handler(BaseHTTPRequestHandler):
         out = []
         with lock:
             for o in body.get('object_ids', []):
-                k = (o.get('user_id') or uid, o.get('collection', ''), o.get('key', ''))
+                # KHONG tu thay user_id rong bang nguoi dang dang nhap. Nakama
+                # that coi chuoi rong la mot chu so huu khac, nen doc voi
+                # user_id rong se ra rong. Truoc day may gia tu do giup cho o
+                # day, va che mat dung cai loi that.
+                k = (o.get('user_id', ''), o.get('collection', ''), o.get('key', ''))
                 if k in storage:
                     out.append({'collection': k[1], 'key': k[2], 'user_id': k[0],
                                 'value': storage[k]['value'],

@@ -105,8 +105,12 @@ func _init() -> void:
 	var c2 := _client(url)
 	var r2 := await c2.login(dev)
 	_check(r2.ok, "dang nhap lai duoc")
-	_check(String(r2.get("userId", "")) == c.user_id,
-			"van la nguoi choi cu, khong tao tai khoan moi")
+	# Phai co dieu kien user_id khac rong: neu ca hai cung rong thi phep so
+	# sanh van dung, va lan chay dau tien voi Nakama that da "dat" theo kieu
+	# do trong khi user_id thuc su rong.
+	_check(c.user_id != "" and String(r2.get("userId", "")) == c.user_id,
+			"van la nguoi choi cu, khong tao tai khoan moi",
+			"%s vs %s" % [r2.get("userId", ""), c.user_id])
 	_check(not bool(r2.get("created", true)), "bao la tai khoan da co san")
 	var back3 := await c2.load_save()
 	_check(int((back3.get("data", {}) as Dictionary).get("level", -1)) == 8,

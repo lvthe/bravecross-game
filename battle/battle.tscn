@@ -6,11 +6,13 @@
 script = ExtResource("1")
 
 [node name="Bg" type="ColorRect" parent="."]
+z_index = -10
 offset_right = 960.0
 offset_bottom = 540.0
 color = Color(0.106, 0.118, 0.145, 1)
 
 [node name="Ground" type="ColorRect" parent="."]
+z_index = -10
 offset_top = 340.0
 offset_right = 960.0
 offset_bottom = 540.0

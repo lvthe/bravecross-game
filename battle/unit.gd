@@ -46,7 +46,9 @@ func setup(f: Combat.Fighter, team_index: int, rules: Dictionary,
 	# Don dau tien roi vao luc hoi chieu xong, giong mo phong Python.
 	cooldown = fighter.interval
 	if visual and art_dir != "":
-		rig = SngRig.build(art_dir)
+		# Man tran bo qua cac lop ve tich (ten lop Photoshop, lop hieu ung
+		# logic): chung nam xa than va o day hien suot chu khong loe roi tat.
+		rig = SngRig.build(art_dir, "", true)
 		if rig != null:
 			rig.scale = Vector2(facing * art_scale, art_scale)
 			add_child(rig)
@@ -154,7 +156,12 @@ func die() -> void:
 	_anim = ""
 	_play("Death")
 	if rig != null:
-		rig.z_index = -1          # xac nam duoi nguoi con song
+		# KHONG dung z_index o day. Cac bo phan trong rig dat z 0..23 theo kieu
+		# TUONG DOI voi rig, nen ha rig xuong -1 lam moi manh thanh -1..22:
+		# manh sau cung tut xuong duoi ca nen (bien mat), so con lai nhay len
+		# tren ca nguoi con song. Ket qua la vu khi bay lo lung giua man hinh.
+		# Lam mo la du de phan biet xac voi nguoi song.
+		rig.modulate = Color(0.65, 0.65, 0.72, 0.5)
 	died.emit(self)
 
 

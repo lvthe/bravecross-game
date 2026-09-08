@@ -39,6 +39,16 @@ const FPS := 24.0
 ## hay hitbox vao, chi la khong co Sprite2D.
 const MARKER_PREFIXES := ["PlugIn", "Collision", "ShootPoint", "Bone", "Effect"]
 
+## Bo phan la ve tich cua file goc: ten lop Photoshop con sot lai, hoac lop
+## hieu ung logic. Chung khong thuoc dang nguoi va nam rat xa than —
+## MaChao/Fight co "Layer006" cach goc 436 px, to hon ca nhan vat.
+##
+## Ban goc chi loe chung vai khung roi tat, bang duong doi anh theo khung ma ta
+## CHUA GIAI DUOC. O day anh dau tien duoc giu suot, nen chung thanh nhung vat
+## the bay lo lung. Man tran bat co nay de bo qua; trinh xem rig de tat de con
+## nhin thay het.
+const CLUTTER_PREFIXES := ["Layer", "LayerName", "Logic_", "图层"]
+
 var data: Dictionary = {}
 var variant: String = ""
 var source_dir: String = ""
@@ -47,11 +57,13 @@ var player: AnimationPlayer = null
 var missing_sprites: PackedStringArray = []
 ## Bo phan tro toi mot rig long nhau (<Ten>_mc_...) chu khong phai anh.
 var nested_rigs: PackedStringArray = []
+var hide_clutter := false
 var _chain: Dictionary = {}
 
 
 ## Dung nhan vat tu thu muc da xuat. Tra ve null neu doc khong duoc.
-static func build(dir_path: String, want_variant: String = "") -> SngRig:
+static func build(dir_path: String, want_variant: String = "",
+		no_clutter := false) -> SngRig:
 	var char_name := dir_path.get_file()
 	var json_path := dir_path.path_join(char_name + ".json")
 	if not FileAccess.file_exists(json_path):
@@ -62,7 +74,7 @@ static func build(dir_path: String, want_variant: String = "") -> SngRig:
 		push_error("SngRig: %s khong phai JSON hop le" % json_path)
 		return null
 
-	var rig := _make(parsed, dir_path, char_name, want_variant, {})
+	var rig := _make(parsed, dir_path, char_name, want_variant, {}, no_clutter)
 	if rig == null:
 		push_error("SngRig: %s khong co bien the nao co dong tac" % char_name)
 	return rig
@@ -71,8 +83,9 @@ static func build(dir_path: String, want_variant: String = "") -> SngRig:
 ## Dung mot bien the. `chain` giu cac bien the dang nam tren duong dung, de
 ## rig long nhau khong goi vong lai chinh no.
 static func _make(src: Dictionary, dir_path: String, node_name: String,
-		want_variant: String, chain: Dictionary) -> SngRig:
+		want_variant: String, chain: Dictionary, no_clutter := false) -> SngRig:
 	var rig := SngRig.new()
+	rig.hide_clutter = no_clutter
 	rig.data = src
 	rig.source_dir = dir_path
 	rig.name = node_name
@@ -191,6 +204,13 @@ func _nested_variant(refs: Array) -> String:
 	return ""
 
 
+func _is_clutter(bone: String) -> bool:
+	for p in CLUTTER_PREFIXES:
+		if bone.begins_with(p):
+			return true
+	return false
+
+
 func _is_marker(bone: String) -> bool:
 	for p in MARKER_PREFIXES:
 		if bone.begins_with(p):
@@ -225,6 +245,8 @@ func _build_bones() -> void:
 	var z := 0
 	for part in _ordered_parts():
 		var bone: String = part.get("name", "")
+		if hide_clutter and _is_clutter(bone):
+			continue
 		var refs: Array = part.get("sprites", [])
 		var node: Node2D = null
 		if not _is_marker(bone):
@@ -239,7 +261,8 @@ func _build_bones() -> void:
 				# dieu khien no y het mot Sprite2D.
 				nested = _nested_variant(refs)
 				if nested != "":
-					var child := _make(data, source_dir, bone, nested, _chain)
+					var child := _make(data, source_dir, bone, nested, _chain,
+							hide_clutter)
 					if child != null:
 						var names := child.animations()
 						if not names.is_empty():

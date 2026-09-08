@@ -28,7 +28,10 @@ const LEFT_X := 120.0
 const RIGHT_X := 840.0
 const MID_Y := 340.0
 const ROW_GAP := 88.0
-const BODY := 44.0          ## khoang cach toi thieu giua hai don vi
+## Khoang cach toi thieu giua hai don vi. Phai xap xi tam danh (reach = 58),
+## khong thi khi may nguoi cung vay mot muc tieu ho lot vao trong tam nhau va
+## chong len thanh mot dong.
+const BODY := 56.0
 const RIG_SCALE := 0.55
 const ART := "res://assets_ref/"
 

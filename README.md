@@ -204,6 +204,85 @@ Nay mỗi đơn vị chạy theo trục x là chính, đổi làn chậm hơn nh
 mục tiêu thì khoảng cách theo trục y bị phạt nặng — nên trận thành mấy cặp
 đánh nhau theo hàng.
 
+## Máy chủ (`server/`, `net/`) — bước 3
+
+Hai API, đúng như README gốc yêu cầu: **đăng nhập** và **lưu dữ liệu người
+chơi**. Không phải viết module server nào — Nakama có sẵn cả hai.
+
+```gdscript
+var net := NakamaClient.new()
+add_child(net)
+var r := await net.login()
+if r.ok:
+    await net.save({"level": 7, "gold": 1200})
+    var s := await net.load_save()
+    print(s.data)
+```
+
+Không dùng SDK Nakama cho Godot, chỉ gọi REST bằng `HTTPRequest` — ba điểm
+cuối, tra từ tài liệu chính thức:
+
+| việc | phương thức | đường dẫn | xác thực |
+|---|---|---|---|
+| đăng nhập | POST | `/v2/account/authenticate/device?create=true` | `Basic <khoá máy chủ>` |
+| ghi | PUT | `/v2/storage` | `Bearer <token>` |
+| đọc | POST | `/v2/storage` | `Bearer <token>` |
+
+### Kiểm chứng được ngay, chưa cần Docker
+
+```bash
+python tools/fake_nakama.py --port 7399
+```
+
+```bash
+godot --headless --path . --script tools/verify_net.gd -- --url=http://127.0.0.1:7399
+```
+
+24/24 đạt: đăng nhập, chưa lưu thì nạp ra rỗng (không phải lỗi), lưu rồi nạp
+lại giữ nguyên số nguyên / số thập phân / mảng / `true` / chữ có dấu, ghi đè
+thay cả bản lưu, đăng nhập lại bằng cùng mã thiết bị vẫn là người chơi cũ và
+thấy được dữ liệu đã lưu, khoá máy chủ sai bị trả 401, chưa đăng nhập thì
+không lưu được.
+
+**`tools/fake_nakama.py` không phải Nakama.** Nó chỉ chứng minh client gọi
+đúng dạng — đúng phương thức, đường dẫn, kiểu thân tin nhắn, cách đọc trả lời.
+Nó **không** chứng minh Nakama chấp nhận. Phép kiểm tra thật là chạy lại **cùng
+bộ test đó**, chỉ đổi `--url`:
+
+```bash
+cd server && docker compose up -d
+```
+
+```bash
+godot --headless --path . --script tools/verify_net.gd -- --url=http://127.0.0.1:7350
+```
+
+### Việc còn lại cần bạn quyết: cài Docker
+
+Docker Desktop cần WSL2, mà trên máy này `VirtualMachinePlatform` và
+`Microsoft-Windows-Subsystem-Linux` **đang tắt**. Bật chúng cần quyền admin và
+một lần khởi động lại. Tôi không tự làm — bạn chạy khi thấy tiện:
+
+```bash
+wsl --install
+```
+
+Khởi động lại, rồi:
+
+```bash
+winget install Docker.DockerDesktop
+```
+
+Sau đó `docker compose up -d` trong `server/` và chạy lại bộ test với
+`--url=http://127.0.0.1:7350`. Trang quản trị ở `http://127.0.0.1:7351`
+(admin/password).
+
+### Trước khi phát hành
+
+`defaultkey` là khoá máy chủ mặc định của Nakama — ai biết cũng tạo được tài
+khoản trên máy chủ của bạn. Đổi nó (`--socket.server_key`) và đổi luôn
+`NakamaClient.DEFAULT_SERVER_KEY`.
+
 ## Bản quyền
 
 `assets_ref/` (art) và `data_ref/` (bảng số) đều lấy từ bản gốc, **có bản

@@ -47,6 +47,13 @@ const MARKER_PREFIXES := ["PlugIn", "Collision", "ShootPoint", "Bone", "Effect"]
 ## CHUA GIAI DUOC. O day anh dau tien duoc giu suot, nen chung thanh nhung vat
 ## the bay lo lung. Man tran bat co nay de bo qua; trinh xem rig de tat de con
 ## nhin thay het.
+##
+## CHI LOC O TANG NGOAI CUNG, khong truyen xuong rig long nhau. Danh sach bo
+## phan cua mot nhan vat dat ten co nghia (Head, Body, ArmLeft), nen ten Layer*
+## o do dung la ve tich. Con rig long nhau la mot ban ve rieng, bo phan cua no
+## dat ten Photoshop la binh thuong: CaoCao_mc_Head co dung 4 bo phan va CA
+## BON deu ten Layer*. Truyen co nay xuong la mat sach dau va than — da dinh
+## dung the, CaoCao tu 23 bo phan con 17 va chi con moi thanh kiem.
 const CLUTTER_PREFIXES := ["Layer", "LayerName", "Logic_", "图层"]
 
 var data: Dictionary = {}
@@ -191,12 +198,20 @@ func _sprite_for(refs: Array) -> Dictionary:
 	return {}
 
 
-## Ten bien the ma bo phan nay tro toi, neu no la mot rig long nhau va bien
-## the do co that trong file (va chua nam tren duong dung).
+## Ten bien the ma bo phan nay tro toi, neu do la mot rig long nhau.
+##
+## Quy tac la CO MOT BIEN THE TRUNG TEN trong file, chu khong phai ten co chua
+## "_mc_". Phan lon rig long nhau ten kieu <Ten>_mc_Head that, nhung khong phai
+## tat ca: ZhangLiao_EquipJian_2, JiaXu_EquipJian_2, ZhuGeLiangYoung_Base_Zhang
+## deu la bien the that ma khong mang dau do — doi dung "_mc_" thi ba tuong ay
+## mat vu khi.
+##
+## Goi sau _sprite_for() nen neu mot ten vua la anh vua la bien the thi anh
+## duoc uu tien.
 func _nested_variant(refs: Array) -> String:
 	for r in refs:
 		var key := String(r)
-		if not key.contains("_mc_") or _chain.has(key):
+		if _chain.has(key):
 			continue
 		for p in data.get("parts", []):
 			if p.get("name", "") == key:
@@ -261,8 +276,9 @@ func _build_bones() -> void:
 				# dieu khien no y het mot Sprite2D.
 				nested = _nested_variant(refs)
 				if nested != "":
-					var child := _make(data, source_dir, bone, nested, _chain,
-							hide_clutter)
+					# KHONG truyen hide_clutter xuong: xem chu thich o
+					# CLUTTER_PREFIXES.
+					var child := _make(data, source_dir, bone, nested, _chain, false)
 					if child != null:
 						var names := child.animations()
 						if not names.is_empty():

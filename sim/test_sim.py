@@ -103,6 +103,55 @@ rng = random.Random(0)
 lo = min(fa.strike(fb, rng, rules)[0] for _ in range(500))
 check(lo >= 1.0, 'don yeu nhat vao muc thu cao nhat van >= 1', lo)
 
+print('\n=== 7b. moi ben danh theo nhip cua chinh minh ===')
+# Loi that: `ta = tb = a.interval` cho CA HAI ben danh theo nhip cua ben A.
+# An suot vi moi tuong deu co AttackInterval = 2.5; ky nang GongSu (danh nhanh
+# hon) tao ra nhip khac nhau lan dau tien va phep doi chieu voi ban Lua bat
+# duoc ngay — lech 12,65 diem.
+fast = dict(a)
+fast['HeroSprite'] = 'NHANH'
+fast['TalentSkill'] = 'GongSu'
+slow = dict(a)
+slow['HeroSprite'] = 'CHAM'
+slow['TalentSkill'] = ''
+f_fast = Fighter(fast, heroes.base, rules)
+f_slow = Fighter(slow, heroes.base, rules)
+check(f_fast.interval < f_slow.interval, 'GongSu lam nhip danh ngan hon',
+      '%.2f vs %.2f' % (f_fast.interval, f_slow.interval))
+w, l, d = match(fast, slow, heroes.base, 200, seed=13)
+check(w > l, 'ben danh nhanh hon thang nhieu hon', '%d-%d-%d' % (w, l, d))
+w2, l2, d2 = match(slow, fast, heroes.base, 200, seed=13)
+check(l2 > w2, 'doi cho van vay — khong phai loi thien vi ben trai',
+      '%d-%d-%d' % (w2, l2, d2))
+
+print('\n=== 7c. ky nang rieng co tac dung ===')
+for skill_name, field, want_more in (('ShengMing', 'hp_max', True),
+                                     ('GongJi', 'ap_max', True),
+                                     ('FangYu', 'defence', True),
+                                     ('NuQi', 'anger_gain', True),
+                                     ('TieBi', 'taken', False),
+                                     ('PoJia', 'pierce', True),
+                                     ('ShiXue', 'lifesteal', True),
+                                     ('GongSu', 'interval', False)):
+    row = dict(a)
+    row['TalentSkill'] = skill_name
+    plain = dict(a)
+    plain['TalentSkill'] = ''
+    got = getattr(Fighter(row, heroes.base, rules), field)
+    ref = getattr(Fighter(plain, heroes.base, rules), field)
+    ok = got > ref if want_more else got < ref
+    check(ok, 'ky nang %-10s doi %s' % (skill_name, field), '%s -> %s' % (ref, got))
+
+# Tat ky nang thi moi tuong tro ve chi so tran.
+off = Rules(use_skills=False)
+boosted = dict(a)
+boosted['TalentSkill'] = 'ShengMing'
+bare = dict(a)
+bare['TalentSkill'] = ''
+check(Fighter(boosted, heroes.base, off).hp_max
+      == Fighter(bare, heroes.base, off).hp_max,
+      'tat ky nang thi khong con khac biet')
+
 print('\n=== 8. moi bien the cong thuc deu chay duoc ===')
 rows = [heroes.get(n) for n in ('MaChao', 'LiuBei', 'ZhuGeLiangYoung')]
 for label, r in (('tru', Rules(mitigation='subtract')),

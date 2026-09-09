@@ -72,13 +72,18 @@ func _init() -> void:
 					continue
 				if rig.bones[bone] is Sprite2D or rig.bones[bone] is SngRig:
 					continue
+				var part_names := {}
+				for p2 in raw["parts"]:
+					part_names[String(p2["name"])] = true
 				var has_real := false
 				var nested := false
 				for r in c["sprites"]:
-					if String(r).contains("_mc_"):
-						nested = true
-					elif raw["spriteFiles"].get(r) != null:
+					if raw["spriteFiles"].get(r) != null:
 						has_real = true
+					elif part_names.has(String(r)):
+						# Rig long nhau: mot bien the trung ten. Khong doi dau
+						# "_mc_" — ZhangLiao_EquipJian_2 cung la rig long.
+						nested = true
 				if (has_real or nested) and not rig._is_marker(bone):
 					lost.append(bone + ("(rig long)" if nested else ""))
 				else:

@@ -58,6 +58,37 @@ function Rng:int(n)                      -- 1..n
 	return (self:next() % n) + 1
 end
 
+-- Ky nang rieng tung tuong. Phai KHOP tung so voi SKILLS trong sim/battle.py
+-- va SKILLS trong battle/combat.gd.
+--
+-- Ban goc co du lieu ai co ky nang nao (KDBGameHeroTalentSkill.xgg) nhung CHI
+-- LUU TEN; hieu ung nam o server cua no, khong co trong tay. Bang duoi la
+-- thiet ke cua ta, dua tren nghia cua cai ten.
+local SKILLS = {
+	NuQi      = { anger = 1.6 },        -- no khi: no day nhanh -> ky nang no som
+	GongSu    = { interval = 0.8 },     -- cong toc: danh nhanh hon
+	ShengMing = { hp = 1.3 },           -- sinh menh: nhieu mau
+	TieBi     = { taken = 0.8 },        -- thiet bich: chiu it sat thuong
+	BaoJi     = { crit_add = 0.15 },    -- bao kich: chi mang nhieu
+	PoJia     = { pierce = 0.5 },       -- pha giap: bo qua nua giap
+	FangYu    = { defence = 2.0 },      -- phong ngu: giap day
+	GongJi    = { ap = 1.2 },           -- cong kich: sat thuong cao
+	ShiXue    = { lifesteal = 0.15 },   -- thi huyet: hut mau
+}
+
+local function eff(row)
+	if data.rules.useSkills == false then
+		return {}
+	end
+	return SKILLS[row.TalentSkill or ""] or {}
+end
+
+local function m(e, k, dflt)
+	local v = e[k]
+	if v == nil then return dflt end
+	return v
+end
+
 -- ------------------------------------------------------------- mo hinh tran
 local function fighter(name, power)
 	local row = data.heroes[name]
@@ -69,20 +100,25 @@ local function fighter(name, power)
 	if data.rules.useGrowth then
 		g = g * row.GrowthFactor
 	end
+	local e = eff(row)
+	local hp = b.HpBase * row.Viability * g * m(e, "hp", 1.0)
 	return {
 		name = name,
-		hp_max = b.HpBase * row.Viability * g,
-		hp = b.HpBase * row.Viability * g,
+		hp_max = hp,
+		hp = hp,
 		anger = 0.0,
-		ap_min = b.MinApBase * row.AttackCapability * g,
-		ap_max = b.MaxApBase * row.AttackCapability * g,
-		defence = b.DpBase,
-		interval = b.AttackInterval,
-		crit_chance = b.CriticalStrikeBase / 100.0,
+		ap_min = b.MinApBase * row.AttackCapability * g * m(e, "ap", 1.0),
+		ap_max = b.MaxApBase * row.AttackCapability * g * m(e, "ap", 1.0),
+		defence = b.DpBase * m(e, "defence", 1.0),
+		interval = b.AttackInterval * m(e, "interval", 1.0),
+		crit_chance = b.CriticalStrikeBase / 100.0 + m(e, "crit_add", 0.0),
 		crit_mult = b.CritDamageDouble,
 		hit_rate = 1.0 + row.InjuryRates,
 		skill_rate = 1.0 + row.SkillInjuryRates,
-		anger_gain = row.AngerRecovery,
+		anger_gain = row.AngerRecovery * m(e, "anger", 1.0),
+		taken = m(e, "taken", 1.0),          -- he so sat thuong PHAI CHIU
+		pierce = m(e, "pierce", 0.0),        -- bo qua bao nhieu phan giap
+		lifesteal = m(e, "lifesteal", 0.0),
 	}
 end
 
@@ -94,12 +130,16 @@ local function strike(a, b, rng)
 		a.anger = 0.0
 	end
 	local dmg = ap * (skill and a.skill_rate or a.hit_rate)
+	-- Pha giap: bo qua mot phan giap doi phuong.
+	local def_eff = b.defence * (1.0 - a.pierce)
 	if data.rules.mitigation == "divide" then
 		local k = data.rules.defenceK
-		dmg = dmg * (k / (k + b.defence))
+		dmg = dmg * (k / (k + def_eff))
 	else
-		dmg = dmg - b.defence
+		dmg = dmg - def_eff
 	end
+	-- Thiet bich: he so nay thuoc ve BEN CHIU, khong phai ben danh.
+	dmg = dmg * b.taken
 	if rng:float() < a.crit_chance then
 		dmg = dmg * a.crit_mult
 	end
@@ -107,6 +147,9 @@ local function strike(a, b, rng)
 		dmg = 1.0
 	end
 	b.hp = b.hp - dmg
+	if a.lifesteal > 0.0 then
+		a.hp = math.min(a.hp_max, a.hp + dmg * a.lifesteal)
+	end
 end
 
 --- Mot tran tay doi. Tra ve 1 neu a thang, -1 neu b thang, 0 neu hoa.

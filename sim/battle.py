@@ -33,11 +33,46 @@ khong la thong tin dang gia hon ban thang thua tuyet doi.
 import math, random, collections
 
 
+# Ky nang rieng tung tuong.
+#
+# Ban goc CO du lieu ai co ky nang nao: KDBGameHeroTalentSkill.xgg gan cho moi
+# tuong mot ten. Nhung no CHI LUU TEN — hieu ung nam o server, khong co trong
+# tay, giong het chuyen cong thuc sat thuong.
+#
+# Nen bang duoi day la THIET KE CUA TA, dua tren nghia cua cai ten (phien am
+# Han-Viet, doan duoc kha chac):
+#
+#     NuQi      no khi      no day nhanh hon -> ky nang no som
+#     GongSu    cong toc    danh nhanh hon
+#     ShengMing sinh menh   nhieu mau hon
+#     TieBi     thiet bich  nhan it sat thuong hon
+#     BaoJi     bao kich    chi mang nhieu hon
+#     PoJia     pha giap    bo qua mot phan giap doi phuong
+#     FangYu    phong ngu   giap day hon
+#     GongJi    cong kich   sat thuong cao hon
+#     ShiXue    thi huyet   hut mau theo sat thuong gay ra
+#
+# Ky nang khong co trong bang thi khong co hieu ung — noi thang la chua lam,
+# hon la doan bua roi de nguoi choi tu hieu nham.
+SKILLS = {
+    'NuQi':      {'anger': 1.6},
+    'GongSu':    {'interval': 0.8},
+    'ShengMing': {'hp': 1.3},
+    'TieBi':     {'taken': 0.8},
+    'BaoJi':     {'crit_add': 0.15},
+    'PoJia':     {'pierce': 0.5},
+    'FangYu':    {'defence': 2.0},
+    'GongJi':    {'ap': 1.2},
+    'ShiXue':    {'lifesteal': 0.15},
+}
+
+
 class Rules(object):
     """Cac lua chon mo hinh. Doi o day roi chay lai de xem ket luan co vung."""
 
     def __init__(self, mitigation='subtract', defence_k=100.0,
-                 use_growth=False, anger_full=100.0, max_seconds=600.0):
+                 use_growth=False, anger_full=100.0, max_seconds=600.0,
+                 use_skills=True):
         # 'subtract': dmg = ap - def   (khong can hang so tu bia ra)
         # 'divide'  : dmg = ap * k/(k+def)
         self.mitigation = mitigation
@@ -47,6 +82,8 @@ class Rules(object):
         self.use_growth = use_growth
         self.anger_full = anger_full
         self.max_seconds = max_seconds
+        # Tat de do xem ky nang doi ket qua bao nhieu.
+        self.use_skills = use_skills
 
 
 class Fighter(object):
@@ -74,6 +111,20 @@ class Fighter(object):
         self.skill_rate = 1.0 + float(row['SkillInjuryRates'])
         self.anger_gain = float(row['AngerRecovery'])
 
+        # --- ky nang rieng
+        self.skill = str(row.get('TalentSkill', ''))
+        e = SKILLS.get(self.skill, {}) if r.use_skills else {}
+        self.hp_max *= e.get('hp', 1.0)
+        self.ap_min *= e.get('ap', 1.0)
+        self.ap_max *= e.get('ap', 1.0)
+        self.defence *= e.get('defence', 1.0)
+        self.interval *= e.get('interval', 1.0)
+        self.anger_gain *= e.get('anger', 1.0)
+        self.crit_chance += e.get('crit_add', 0.0)
+        self.taken = e.get('taken', 1.0)          # he so sat thuong PHAI CHIU
+        self.pierce = e.get('pierce', 0.0)        # bo qua bao nhieu phan giap
+        self.lifesteal = e.get('lifesteal', 0.0)
+
         self.reset()
 
     def reset(self):
@@ -95,11 +146,16 @@ class Fighter(object):
 
         dmg = ap * (self.skill_rate if skill else self.hit_rate)
 
+        # Pha giap: bo qua mot phan giap doi phuong.
+        defence = target.defence * (1.0 - self.pierce)
         if rules.mitigation == 'divide':
             k = rules.defence_k
-            dmg *= k / (k + target.defence)
+            dmg *= k / (k + defence)
         else:
-            dmg -= target.defence
+            dmg -= defence
+
+        # Thiet bich: he so nay thuoc ve BEN CHIU, khong phai ben danh.
+        dmg *= target.taken
 
         crit = rng.random() < self.crit_chance
         if crit:
@@ -107,6 +163,8 @@ class Fighter(object):
 
         dmg = max(1.0, dmg)
         target.hp -= dmg
+        if self.lifesteal:
+            self.hp = min(self.hp_max, self.hp + dmg * self.lifesteal)
         return dmg, skill, crit
 
 
@@ -122,7 +180,11 @@ def duel(a, b, rng, rules=None):
     r = rules or Rules()
     a.reset()
     b.reset()
-    ta = tb = a.interval
+    # Moi ben theo nhip cua CHINH MINH. Truoc day o day la `ta = tb = a.interval`
+    # — ca hai danh theo nhip cua ben A. Loi do an suot vi moi tuong deu co
+    # AttackInterval = 2.5; ky nang GongSu (danh nhanh hon) tao ra nhip khac
+    # nhau lan dau tien va phep doi chieu voi ban Lua bat duoc ngay.
+    ta, tb = a.interval, b.interval
     t = 0.0
     hits = 0
     while t < r.max_seconds:

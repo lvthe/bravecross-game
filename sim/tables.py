@@ -87,6 +87,36 @@ class Heroes(object):
             r[col] for r in self.rows).items(), key=lambda kv: str(kv[0])))
 
 
+class Talents(object):
+    """Ky nang rieng tung tuong.
+
+    KDBGameHeroTalentSkill.xgg: 280 dong (HeroID, HeroQuality) -> ten ky nang.
+    Mot tuong co nhieu dong vi len pham chat thi doi ky nang; o day lay dong
+    PHAM CHAT THAP NHAT, tuc ky nang goc.
+
+    Ban goc CHI LUU TEN. Hieu ung cua tung ky nang nam o server, khong co trong
+    tay — xem sim/battle.py de biet o day dat hieu ung gi.
+    """
+
+    def __init__(self, config_dir=DEFAULT_CONFIG):
+        rows = load_json(config_dir, 'KDBGameHeroTalentSkill.xgg')
+        best = {}
+        for r in rows:
+            hid = int(r['HeroID'])
+            q = int(r.get('HeroQuality', 0))
+            if hid not in best or q < best[hid][0]:
+                best[hid] = (q, str(r['TalentSkill']))
+        self.by_id = {k: v[1] for k, v in best.items()}
+        self.rows = rows
+
+    def get(self, hero_id, default=''):
+        return self.by_id.get(int(hero_id), default)
+
+    def spread(self):
+        return dict(sorted(collections.Counter(self.by_id.values()).items(),
+                           key=lambda kv: -kv[1]))
+
+
 class Armies(object):
     """91 quan chung. Bang nay co chi so TUYET DOI, khong phai bac."""
 

@@ -21,7 +21,7 @@ import os, sys, json, argparse, collections
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from tables import Heroes, TableError, DEFAULT_CONFIG
+from tables import Heroes, Talents, TableError, DEFAULT_CONFIG
 from battle import Rules, match
 
 DEFAULT_OUT = os.path.normpath(os.path.join(HERE, '..', 'data_ref', 'battle_data.json'))
@@ -32,7 +32,7 @@ DEFAULT_ART = os.path.normpath(os.path.join(HERE, '..', 'assets_ref'))
 # khong xuat, de sau nay nhin file so lieu la biet mo hinh an vao dau.
 FIELDS = ['HeroID', 'HeroSprite', 'HeroJobType', 'HeroRarity', 'HeroFactions',
           'AttackCapability', 'Viability', 'GrowthFactor',
-          'InjuryRates', 'SkillInjuryRates', 'AngerRecovery']
+          'InjuryRates', 'SkillInjuryRates', 'AngerRecovery', 'TalentSkill']
 
 BASE_FIELDS = ['HpBase', 'MinApBase', 'MaxApBase', 'DpBase', 'AttackInterval',
                'CriticalStrikeBase', 'CritDamageDouble', 'MovingSpeed']
@@ -127,6 +127,7 @@ def main():
 
     try:
         heroes = Heroes(a.config)
+        talents = Talents(a.config)
     except TableError as e:
         sys.exit(str(e))
 
@@ -140,14 +141,20 @@ def main():
         if not a.all and art and r['HeroSprite'] not in art:
             skipped.append(r['HeroSprite'])
             continue
-        rows.append(collections.OrderedDict((k, r[k]) for k in FIELDS))
+        row = collections.OrderedDict()
+        for k in FIELDS:
+            # TalentSkill khong nam trong bang tuong ma o bang ky nang rieng.
+            row[k] = talents.get(r['HeroID']) if k == 'TalentSkill' else r[k]
+        rows.append(row)
 
     rules = Rules()
+    by_name = {r['HeroSprite']: r for r in rows}
     ref = []
     for x, y in REFERENCE_PAIRS:
-        try:
-            ra, rb = heroes.get(x), heroes.get(y)
-        except TableError:
+        # Dung ban ghi DA CO TalentSkill, khong phai ban ghi tho — neu khong
+        # thi ti le tham chieu tinh ra khong co ky nang, con hai ban kia thi co.
+        ra, rb = by_name.get(x), by_name.get(y)
+        if ra is None or rb is None:
             continue
         w, l, d = match(ra, rb, heroes.base, a.battles, seed=1234, rules=rules)
         ref.append(collections.OrderedDict([
@@ -167,6 +174,7 @@ def main():
             ('useGrowth', rules.use_growth),
             ('angerFull', rules.anger_full),
             ('maxSeconds', rules.max_seconds),
+            ('useSkills', rules.use_skills),
         ])),
         ('heroes', rows),
         ('reference', ref),

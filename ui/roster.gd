@@ -32,7 +32,7 @@ func _build() -> void:
 		c.queue_free()
 	for name in Game.hero_names():
 		var b := Button.new()
-		b.custom_minimum_size = Vector2(258, 46)
+		b.custom_minimum_size = Vector2(394, 46)
 		b.toggle_mode = true
 		b.button_pressed = _picked.has(name)
 		b.text = _label(name)
@@ -42,12 +42,30 @@ func _build() -> void:
 	_refresh()
 
 
-## Nhan tuong: ten kem hai bac quan trong nhat, de con biet duong ma chon.
+## Ky nang rieng, dich sang tieng Viet cho de chon. Ban goc chi luu TEN ky
+## nang (phien am Han-Viet); hieu ung la thiet ke cua ta — xem sim/battle.py.
+const SKILL_VI := {
+	"NuQi": "no khi: ky nang no som",
+	"GongSu": "cong toc: danh nhanh",
+	"ShengMing": "sinh menh: nhieu mau",
+	"TieBi": "thiet bich: chiu it don",
+	"BaoJi": "bao kich: chi mang cao",
+	"PoJia": "pha giap: xuyen giap",
+	"FangYu": "phong ngu: giap day",
+	"GongJi": "cong kich: don manh",
+	"ShiXue": "thi huyet: hut mau",
+}
+
+
+## Nhan tuong: ten, hai bac quan trong nhat, va ky nang rieng.
 func _label(hero_name: String) -> String:
 	var row: Dictionary = Game.combat.heroes.get(hero_name, {})
-	return "%-20s cong %d  thu %d" % [
+	var sk := String(row.get("TalentSkill", ""))
+	# Ky nang chua dat hieu ung thi ghi ten tran, khong bia nghia cho no.
+	var note: String = SKILL_VI.get(sk, sk if sk != "" else "-")
+	return "%-18s %d/%d  %s" % [
 			hero_name, int(row.get("AttackCapability", 0)),
-			int(row.get("Viability", 0))]
+			int(row.get("Viability", 0)), note]
 
 
 ## Nut bam roi va nut chua bam chi khac nhau chut mau, nhin khong ra dang chon
@@ -70,6 +88,7 @@ func _on_toggle(pressed: bool, hero_name: String, b: Button) -> void:
 
 
 func _refresh() -> void:
+	# Cot so la bac cong/thu.
 	_picked_label.text = "Da chon %d/%d:   %s" % [
 			_picked.size(), TEAM_SIZE, ", ".join(_picked)]
 	_save.disabled = _picked.size() != TEAM_SIZE

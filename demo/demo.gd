@@ -19,6 +19,7 @@ var CHARS: PackedStringArray = []
 var rig: SngRig = null
 var char_i := 0
 var zoom := 3.0
+var _clutter := false
 var anim_i := 0
 var var_i := 0
 var label: Label = null
@@ -32,6 +33,8 @@ func _ready() -> void:
 		label.text = "assets_ref/ trong — chep nhan vat tu game-export vao"
 		return
 	var opts := _cli()
+	if opts.has("clutter"):
+		_clutter = opts["clutter"] != "0"
 	if opts.has("zoom"):
 		zoom = float(opts["zoom"])
 	if opts.has("char"):
@@ -85,7 +88,8 @@ func _load_char() -> void:
 	if rig:
 		rig.queue_free()
 		remove_child(rig)
-	rig = SngRig.build(ROOT + CHARS[char_i])
+	# --clutter=1 de xem dung nhu man tran (bo cac lop hieu ung), 0 de xem het.
+	rig = SngRig.build(ROOT + CHARS[char_i], "", _clutter)
 	if rig == null:
 		return
 	# Nhan vat goc dung o goc toa do cua no; day xuong giua man cho de nhin.

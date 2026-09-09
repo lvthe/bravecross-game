@@ -65,4 +65,4 @@ offset_bottom = 562.0
 
 [node name="Grid" type="GridContainer" parent="Scroll"]
 custom_minimum_size = Vector2(796, 0)
-columns = 3
+columns = 2

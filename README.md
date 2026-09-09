@@ -407,6 +407,45 @@ Bản gốc còn ghép thêm ~45 mảnh trang trí lên nền, mô tả trong ch
 đó. **Chưa dựng lại được**: texture của atlas `Scene_<cảnh>.plist` không có
 trong APK lẫn OBB — nó được tải về lúc chạy từ máy chủ vá.
 
+## Kỹ năng riêng từng tướng
+
+Bản gốc **có** dữ liệu ai mang kỹ năng nào: `KDBGameHeroTalentSkill.xgg`, 280
+dòng `(HeroID, HeroQuality) → tên kỹ năng`, 97 tên khác nhau. Lấy dòng phẩm
+chất thấp nhất mỗi tướng = kỹ năng gốc.
+
+Nhưng nó **chỉ lưu tên**. Hiệu ứng nằm ở server, không có trong tay — y hệt
+chuyện công thức sát thương. Nên bảng dưới là **thiết kế của tôi**, dựa trên
+nghĩa của cái tên:
+
+| tên | nghĩa | hiệu ứng |
+|---|---|---|
+| `NuQi` | nộ khí | nộ đầy nhanh ×1,6 → kỹ năng nổ sớm |
+| `GongSu` | công tốc | nhịp đánh ×0,8 |
+| `ShengMing` | sinh mệnh | máu ×1,3 |
+| `TieBi` | thiết bích | chịu sát thương ×0,8 |
+| `BaoJi` | bạo kích | chí mạng +15% |
+| `PoJia` | phá giáp | bỏ qua 50% giáp |
+| `FangYu` | phòng ngự | giáp ×2 |
+| `GongJi` | công kích | sát thương ×1,2 |
+| `ShiXue` | thị huyết | hút 15% sát thương thành máu |
+
+Kỹ năng không có trong bảng thì **không có hiệu ứng**, và màn đội hình ghi tên
+trần (`ShenJi`) chứ không bịa nghĩa cho nó.
+
+Cài ở cả ba bản — Python, GDScript, Lua — và phải khớp từng số.
+
+### Kỹ năng làm lộ một lỗi ẩn lâu nay
+
+`GongSu` là thứ đầu tiên khiến hai bên có **nhịp đánh khác nhau**. Ngay lập tức
+phép đối chiếu Lua↔Python báo lệch **12,65 điểm**.
+
+Chỉ số quy đổi của hai bản giống hệt nhau, nên lỗi nằm ở vòng lặp. Và đúng
+vậy: `sim/battle.py` để `ta = tb = a.interval` — **cả hai bên đánh theo nhịp
+của bên A**. GDScript và Lua đều đúng; chỉ bản Python sai.
+
+Lỗi này ẩn suốt vì mọi tướng đều có `AttackInterval = 2.5`. Không có kỹ năng
+thì không bao giờ lộ. `sim/test_sim.py` nay có test chặn nó.
+
 ## Máy chủ tự xử trận (`server/modules/battle.lua`)
 
 Trước đây client đánh xong rồi tự ghi thành tích. Nay **máy chủ quyết định**:

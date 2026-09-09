@@ -24,6 +24,17 @@ python tools/check.py
 Bộ nào cần máy chủ mà không nối được thì báo **BỎ QUA** chứ không báo hỏng — để
 còn phân biệt "chưa bật Nakama" với "code hỏng".
 
+Riêng luật máy chủ (chương, chống nhảy cóc, kiểm đội hình) chạy được **không
+cần Docker**: `tools/test_server_lua.py` nạp chính `server/modules/battle.lua`
+bằng `lupa` với một bản `nakama` giả, rồi gọi thẳng các RPC.
+
+```bash
+python tools/test_server_lua.py
+```
+
+Nó **không thay thế** `verify_rpc.gd`: bản giả không có phân quyền của Nakama,
+nên phần "client không ghi được bản lưu" vẫn phải chạy với máy chủ thật.
+
 ## Chạy từng phần
 
 ```bash

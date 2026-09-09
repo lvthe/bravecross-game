@@ -97,20 +97,24 @@ def main():
         rows.append((name, text))
         failed += 1 if bad else 0
 
-    try:
-        out = subprocess.run([sys.executable, os.path.join(ROOT, 'sim', 'test_sim.py')],
-                             capture_output=True, text=True, encoding='utf-8',
-                             errors='replace', timeout=300).stdout or ''
-        m = SCORE.search(out)
-        if m:
-            rows.append(('mo phong Python', '%s dat, %s hong' % m.groups()))
-            failed += 1 if int(m.group(2)) else 0
-        else:
-            rows.append(('mo phong Python', 'KHONG DOC DUOC KET QUA'))
+    # Hai bo chay bang Python, khong can Godot lan may chu.
+    for name, rel in (('mo phong Python', os.path.join('sim', 'test_sim.py')),
+                      ('luat may chu (Lua)', os.path.join('tools', 'test_server_lua.py'))):
+        print('  ... %s' % name, flush=True)
+        try:
+            out = subprocess.run([sys.executable, os.path.join(ROOT, rel)],
+                                 capture_output=True, text=True, encoding='utf-8',
+                                 errors='replace', timeout=600).stdout or ''
+            m = SCORE.search(out)
+            if m:
+                rows.append((name, '%s dat, %s hong' % m.groups()))
+                failed += 1 if int(m.group(2)) else 0
+            else:
+                rows.append((name, 'KHONG DOC DUOC KET QUA'))
+                failed += 1
+        except Exception as e:
+            rows.append((name, 'LOI: %s' % e))
             failed += 1
-    except Exception as e:
-        rows.append(('mo phong Python', 'LOI: %s' % e))
-        failed += 1
 
     width = max(len(r[0]) for r in rows)
     print()

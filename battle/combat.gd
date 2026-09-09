@@ -61,6 +61,16 @@ class Fighter extends RefCounted:
 	var skill_rate: float
 	var anger_gain: float
 	var skill: String
+	## Tam danh. Quan chung lay tu MaxAttackDistance: 30 can chien, 300-500 ban
+	## xa, 700-800 cong thanh. Tuong khong co so nay nen dung mac dinh can chien.
+	var reach: float
+	var min_reach: float
+	var move_speed: float
+	## Hang dung: 1 truoc, 2 giua, 3 sau. Ten `battle_row` chu khong phai `row`
+	## vi tham so dau cua _init() da ten `row` (ban ghi cua tuong).
+	var battle_row: int
+	## So linh trong mot top. Tuong luon la 1.
+	var units: int
 	var taken: float          ## he so sat thuong PHAI CHIU (thuoc ben chiu)
 	var pierce: float         ## bo qua bao nhieu phan giap doi phuong
 	var lifesteal: float
@@ -97,6 +107,11 @@ class Fighter extends RefCounted:
 		taken = float(e.get("taken", 1.0))
 		pierce = float(e.get("pierce", 0.0))
 		lifesteal = float(e.get("lifesteal", 0.0))
+		reach = 0.0
+		min_reach = 0.0
+		move_speed = float(base.get("MovingSpeed", 30))
+		battle_row = 1
+		units = 1
 		reset()
 
 	func reset() -> void:
@@ -138,6 +153,8 @@ class Fighter extends RefCounted:
 var base: Dictionary = {}
 var rules: Dictionary = {}
 var heroes: Dictionary = {}          ## HeroSprite -> ban ghi
+var armies: Dictionary = {}          ## SpriteName -> ban ghi quan chung
+var army_order: PackedStringArray = []
 var reference: Array = []
 var order: PackedStringArray = []    ## giu dung thu tu trong file
 
@@ -159,6 +176,11 @@ func load_data(path: String = DATA_PATH) -> String:
 	for r in parsed.get("heroes", []):
 		heroes[r["HeroSprite"]] = r
 		order.append(r["HeroSprite"])
+	armies.clear()
+	army_order = PackedStringArray()
+	for r in parsed.get("armies", []):
+		armies[r["SpriteName"]] = r
+		army_order.append(r["SpriteName"])
 	if heroes.is_empty():
 		return "%s khong co tuong nao" % path
 	return ""
@@ -173,6 +195,50 @@ func make(hero_name: String, level: int = 1) -> Fighter:
 ## Cap toi da, lay tu bo du lieu (GameHeroMaxLevelConfig o pham chat 1).
 func max_level() -> int:
 	return int(rules.get("maxLevel", 40))
+
+
+## Mot TOP LINH. Khac tuong o cho bang quan chung co chi so tuyet doi san,
+## khong phai bac nhan voi khoi chung — nen dung thang, khong quy doi gi.
+## `level` keo chi so len bang cot tang cap cua chinh bang goc. O cap 1 quan
+## linh yeu hon tuong ca chuc lan (cong 5-100 so voi 180-720) nen tran keo dai
+## ca ba phut ma khong ai chet; tu cap 6-8 tro len thi hai ben cung thang.
+func make_army(sprite: String, level: int = 1) -> Fighter:
+	if not armies.has(sprite):
+		return null
+	var a: Dictionary = armies[sprite]
+	var n := float(maxi(1, level) - 1)
+	# Muon xai lai Fighter nen dung mot ban ghi gia co dang cua tuong, roi ghi
+	# de bang chi so that cua quan chung.
+	var f := Fighter.new({
+		"HeroSprite": sprite, "Viability": 1, "AttackCapability": 1,
+		"GrowthFactor": 1, "AddGrowthFactor": 0,
+		"InjuryRates": float(a.get("InjuryRates", 0)),
+		"SkillInjuryRates": 0, "AngerRecovery": 0, "TalentSkill": "",
+	}, {
+		"HpBase": float(a["HpBase"]) + float(a.get("HpGrowthValue", 0)) * n,
+		"MinApBase": float(a["MinApBase"]) + float(a.get("MinApGrowthValue", 0)) * n,
+		"MaxApBase": float(a["MaxApBase"]) + float(a.get("MaxApGrowthValue", 0)) * n,
+		"DpBase": float(a["DpBase"]) + float(a.get("DpGrowthValue", 0)) * n,
+		"AttackInterval": float(a["AttackInterval"]),
+		"CriticalStrikeBase": float(a.get("CriticalStrike", 0)),
+		"CritDamageDouble": float(a.get("CritDamageDouble", 1.5)),
+		"MovingSpeed": float(a.get("MovingSpeed", 30)),
+	}, rules)
+	f.reach = float(a.get("MaxAttackDistance", 30))
+	f.min_reach = float(a.get("MinAttackDistance", 0))
+	f.move_speed = float(a.get("MovingSpeed", 30))
+	f.battle_row = int(a.get("Location", 1))
+	f.units = maxi(1, int(a.get("MaxUnit", 1)))
+	return f
+
+
+## Quan chung cua mot hang (1 truoc, 2 giua, 3 sau).
+func armies_in_row(r: int) -> PackedStringArray:
+	var out := PackedStringArray()
+	for n in army_order:
+		if int(armies[n].get("Location", 1)) == r:
+			out.append(n)
+	return out
 
 
 ## Mot tran tay doi, khong do hoa. Tra ve {result, hits, seconds}

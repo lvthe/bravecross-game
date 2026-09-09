@@ -22,8 +22,13 @@ const BAR_Y := -88.0           ## rig lay goc o chan, nhan vat cao khoang 90
 var fighter: Combat.Fighter
 var team := 0
 var rig: SngRig = null
+## Toc do va tam danh lay tu chi so cua don vi (setup() ghi de). Gia tri o day
+## chi la du phong.
 var speed := 90.0
 var reach := 58.0
+## Tam toi thieu: vai quan chung khong danh duoc muc tieu qua gan (Artillery,
+## Catapult). 0 = khong co han che.
+var min_reach := 0.0
 var target: BattleUnit = null
 var state: State = State.ADVANCE
 var cooldown := 0.0
@@ -43,6 +48,13 @@ func setup(f: Combat.Fighter, team_index: int, rules: Dictionary,
 	_rules = rules
 	_rng = rng
 	facing = 1.0 if team == 0 else -1.0
+	# Tam danh 30 cua quan can chien nho hon khoang cach than (BODY = 56) nen
+	# ho khong bao gio cham duoc nhau — nang san len vua qua than nguoi.
+	reach = maxf(f.reach, 62.0) if f.reach > 0.0 else 58.0
+	min_reach = f.min_reach
+	# Toc do goc (20-80) qua cham cho man 960px; nhan len de tran khong le the,
+	# nhung van giu chenh lech giua ky binh (80) va voi (20).
+	speed = maxf(28.0, f.move_speed * 1.5)
 	# Don dau tien roi vao luc hoi chieu xong, giong mo phong Python.
 	cooldown = fighter.interval
 	if visual and art_dir != "":
@@ -96,6 +108,14 @@ func advance(delta: float, enemies: Array, snap: Dictionary) -> BattleUnit:
 	var there: Vector2 = snap.get(target, target.position)
 	var to := there - here
 	var dist := to.length()
+
+	# Qua gan thi lui ra: Artillery/Catapult co MinAttackDistance nen khong
+	# danh duoc muc tieu ap sat.
+	if min_reach > 0.0 and dist < min_reach:
+		state = State.ADVANCE
+		position = here - to / maxf(dist, 0.001) * speed * delta * 0.6
+		_play("Walk")
+		return null
 
 	if dist > reach:
 		state = State.ADVANCE

@@ -70,11 +70,21 @@ SKILLS = {
 class Rules(object):
     """Cac lua chon mo hinh. Doi o day roi chay lai de xem ket luan co vung."""
 
-    def __init__(self, mitigation='subtract', defence_k=100.0,
+    def __init__(self, mitigation='divide', defence_k=100.0,
                  use_growth=False, anger_full=100.0, max_seconds=600.0,
                  use_skills=True):
         # 'subtract': dmg = ap - def   (khong can hang so tu bia ra)
         # 'divide'  : dmg = ap * k/(k+def)
+        #
+        # Mac dinh la 'divide', va can cu nam trong chinh bang goc: quan chung
+        # co DpBase 110-200 trong khi MaxApBase cua chung chi 5-100. Doc kieu
+        # tru thi ngay o CAP 1 mot top DefenderN (giap 110) da mien nhiem voi
+        # moi don vi trong game — ban goc khong the chay nhu the, nen cong thuc
+        # cua no phai la kieu ti le.
+        #
+        # Do duoc bang sim/field.py: kieu tru thi cang len cap cang be tac
+        # (18% hoa o cap 1, 53% o cap 12, tran dai 380 giay); kieu chia cho
+        # 47-54% can bang, gan nhu khong hoa, tran 53-118 giay.
         self.mitigation = mitigation
         self.defence_k = defence_k
         # GrowthFactor la bac tang truong theo cap. Cach no nhan vao chi so thi
@@ -105,7 +115,7 @@ def level_growth(row, level):
 class Fighter(object):
     """Mot tuong da quy ra chi so, san sang danh."""
 
-    def __init__(self, row, base, rules=None, level=1):
+    def __init__(self, row, base, rules=None, level=1, buffs=None):
         r = rules or Rules()
         self.level = max(1, int(level))
         self.name = row['HeroSprite']
@@ -142,6 +152,27 @@ class Fighter(object):
         self.taken = e.get('taken', 1.0)          # he so sat thuong PHAI CHIU
         self.pierce = e.get('pierce', 0.0)        # bo qua bao nhieu phan giap
         self.lifesteal = e.get('lifesteal', 0.0)
+        self.reflect = 0.0                        # doi lai bao nhieu sat thuong
+
+        # --- the tran (KDBGameFormationConfig cua ban goc)
+        #
+        # Day la mot trong so it he thong con NGUYEN SO LIEU: moi cap cua moi
+        # the tran ghi ro tang gi, bao nhieu, cho CHO DUNG nao (PlacementType
+        # 1/2/3 = hang truoc/giua/sau). Nen bang buff duoi day khong phai do ta
+        # dat ra — no la cua ban goc, chi doi ten cot.
+        #
+        # `dmg_pct` nhan thang vao cong thay vi vao sat thuong cuoi: cong thuc
+        # giam thuong kieu chia la tuyen tinh theo cong, nen hai cach ra dung
+        # cung mot so, ma cach nay khong phai sua ham strike().
+        b = buffs or {}
+        self.hp_max = (self.hp_max + b.get('hp', 0.0)) * (1.0 + b.get('hp_pct', 0.0))
+        gain = 1.0 + b.get('dmg_pct', 0.0)
+        self.ap_min = (self.ap_min + b.get('ap', 0.0)) * gain
+        self.ap_max = (self.ap_max + b.get('ap', 0.0)) * gain
+        self.defence = (self.defence + b.get('dp', 0.0)) * (1.0 + b.get('dp_pct', 0.0))
+        self.taken *= 1.0 - b.get('taken_pct', 0.0)
+        self.lifesteal += b.get('lifesteal', 0.0)
+        self.reflect += b.get('reflect', 0.0)
 
         self.reset()
 
@@ -183,6 +214,11 @@ class Fighter(object):
         target.hp -= dmg
         if self.lifesteal:
             self.hp = min(self.hp_max, self.hp + dmg * self.lifesteal)
+        # Phan don: the tran `AllHeroReboundDamagePercent`. Doi lai theo sat
+        # thuong DA CHIU, va khong doi tiep lan nua — khong thi hai ben cung co
+        # phan don la thanh vong lap.
+        if target.reflect:
+            self.hp -= dmg * target.reflect
         return dmg, skill, crit
 
 

@@ -241,6 +241,46 @@ def main():
               '%-18s vs %-18s  Lua %6.2f%%  Python %6.2f%%  (lech %.2f, cho phep %.2f)'
               % (e['a'], e['b'], lua, py, abs(lua - py), tol))
 
+    print('\n=== 8. tran DAN TRAN: Lua khop Python tung tran ===')
+    # Khac muc 7 o cho day so TUNG TRAN chu khong so ti le tren 4000 tran.
+    # Hai ban dung chung mot bo LCG nen cung seed phai ra dung cung ket qua,
+    # cung so giay, cung so nguoi con song — lech mot don vi la mot ben tinh
+    # sai. Day la phan bat duoc loi that ma phep so ti le bo qua.
+    sys.path.insert(0, os.path.join(ROOT, 'sim'))
+    import json as _json
+    from battle import Rules
+    import field as F
+
+    doc = _json.load(io.open(os.path.join(ROOT, 'data_ref', 'battle_data.json'),
+                             encoding='utf-8'))
+    hero_by_name = {r['HeroSprite']: r for r in doc['heroes']}
+    army_rows = doc['armies']
+    base = doc['base']
+    rules = Rules(mitigation=doc['rules']['mitigation'],
+                  defence_k=doc['rules']['defenceK'],
+                  anger_full=doc['rules']['angerFull'],
+                  max_seconds=doc['rules']['maxSeconds'],
+                  use_skills=doc['rules']['useSkills'])
+
+    ft = rpcs['bx.fieldtest'](ctx, None)
+    mine = [ft['mine'][i] for i in range(1, 5)]
+    theirs = [ft['theirs'][i] for i in range(1, 5)]
+    got = ft['battles']
+    for i in range(1, len(got) + 1):
+        e = got[i]
+        seed = int(e['seed'])
+        res, secs, a, b = F.lua_battle(hero_by_name, army_rows, base, rules,
+                                       mine, theirs, seed, seed)
+        same = (int(e['result']) == res and int(e['aliveA']) == a
+                and int(e['aliveB']) == b
+                and abs(float(e['seconds']) - secs) < 0.05)
+        check(same,
+              'seed %d: ket qua %d, con song %d-%d, %.1f giay'
+              % (seed, res, a, b, secs),
+              'Lua %s/%s-%s/%.2fs  vs  Python %s/%s-%s/%.2fs'
+              % (e['result'], e['aliveA'], e['aliveB'], e['seconds'],
+                 res, a, b, secs))
+
     print('\n===== dat %d, hong %d =====' % (n_pass, n_fail))
     return 0 if n_fail == 0 else 1
 

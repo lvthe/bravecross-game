@@ -129,6 +129,105 @@ class Armies(object):
         return len(self.rows)
 
 
+class Formations(object):
+    """The tran: KDBGameFormationConfig.xgg.
+
+    Day la mot trong so it he thong cua ban goc con NGUYEN CA SO LIEU. Ky nang
+    rieng cua tuong thi bang goc chi luu cai TEN (hieu ung nam o server, khong
+    co trong tay) — con o day moi cap cua moi the tran ghi ro tang cai gi, tang
+    bao nhieu, cho HANG NAO.
+
+    12 the tran, moi cai mot so cap:
+
+        jichu, wuxing, zhenwuqijie, ershibaxingxiu   cap 0..20
+        bagua, tiangang, beidou                      cap 0..30
+        heyi, yanyue, fangyuan, zhuixing, yulin      cap 0..50
+
+    `PlacementType` 1/2/3 chinh la `Location` 1/2/3 cua bang quan chung — hang
+    truoc, hang giua, hang sau. Nghia la the tran buff THEO HANG, khop dung voi
+    cach dan quan da dung o sim/field.py.
+
+    Bon kieu tri so, doc tu chinh so lieu:
+
+        Promote             cong thang         (HP +200 moi cap o jichu)
+        PromotePercent      he so kieu 1.003   (tang 0,3%)
+        PromotePercentZero  phan tu 0: 0.003   (tang 0,3%)
+        PromoteRates        diem phan tram: 5  (tang 5%)
+    """
+
+    # Ten buff cua ban goc -> ten trong mo hinh nay, kem cach doc tri so.
+    #
+    # Nhung loai KHONG doi duoc thi khong doi, chu khong doan bua:
+    #   AllHeroReducingControl        mo hinh nay khong co hieu ung khong che
+    #   *Melee/Arrow/Magic*           mo hinh nay khong chia loai sat thuong
+    # Chung van duoc xuat ra de sau nay lam tiep, chi la khong dung toi.
+    MAP = {
+        'AllHeroHpPromote':                      ('hp', 'add'),
+        'AllHeroHpPromotePercent':               ('hp_pct', 'pct'),
+        'AllHeroApPromote':                      ('ap', 'add'),
+        'AllHeroDpPromote':                      ('dp', 'add'),
+        'AllHeroDpPromotePercent':               ('dp_pct', 'pct'),
+        'AllHeroFinalDamagePercent':             ('dmg_pct', 'pct'),
+        'AllHeroFinalReducingDamageRatesPercent': ('taken_pct', 'pct'),
+        'AllHeroAttackDrainsRatePercent':        ('lifesteal', 'pct'),
+        'AllHeroReboundDamagePercent':           ('reflect', 'pct'),
+    }
+
+    def __init__(self, config_dir=DEFAULT_CONFIG):
+        rows = load_json(config_dir, 'KDBGameFormationConfig.xgg')
+        self.rows = rows
+        self.names = []
+        self.by_name = collections.OrderedDict()
+        for r in rows:
+            n = r['Name']
+            if n not in self.by_name:
+                self.by_name[n] = {}
+                self.names.append(n)
+            self.by_name[n][int(r['Level'])] = r
+
+    def max_level(self, name):
+        return max(self.by_name[name])
+
+    def gold(self, name, level):
+        r = self.by_name[name].get(int(level))
+        return int(r['CostGold']) if r else 0
+
+    def buffs(self, name, level):
+        """Buff cua mot the tran o mot cap, gom theo hang.
+
+        Tra ve {1: {...}, 2: {...}, 3: {...}} voi khoa la ten trong mo hinh.
+        Cac muc cong don duoc cong lai; cac muc phan tram cung vay (chung deu
+        nho, va ban goc liet ke nhieu dong cung loai cho cung mot hang).
+        """
+        out = {1: {}, 2: {}, 3: {}}
+        r = self.by_name.get(name, {}).get(int(level))
+        if r is None:
+            return out
+        for sk in json.loads(r['SkillList']):
+            m = self.MAP.get(sk.get('Type'))
+            if m is None:
+                continue
+            key, kind = m
+            place = int(sk.get('PlacementType', 1))
+            if place not in out:
+                continue
+            if kind == 'add':
+                v = float(sk.get('Promote', 0.0))
+            else:
+                # Ba ten truong khac nhau cho cung mot y: phan tang them.
+                # PromotePercent ghi kieu 1.003 nen phai tru 1; hai cai kia da
+                # la phan tu 0. PromoteRates tinh bang diem phan tram.
+                if 'PromotePercent' in sk:
+                    v = float(sk['PromotePercent']) - 1.0
+                elif 'PromotePercentZero' in sk:
+                    v = float(sk['PromotePercentZero'])
+                else:
+                    v = float(sk.get('PromoteRates', 0.0)) / 100.0
+            if v:
+                out[place][key] = out[place].get(key, 0.0) + v
+        return out
+
+
 if __name__ == '__main__':
     import sys
     sys.stdout.reconfigure(encoding='utf-8')

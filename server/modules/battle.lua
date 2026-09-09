@@ -41,22 +41,33 @@ local POWER_STEP = 0.18
 
 -- ---------------------------------------------------------------- bo sinh so
 -- Lua 5.1 cua Nakama co math.random, nhung no dung chung trang thai toan cuc
--- va khong hua hen giong nhau giua cac ban. Dung mot bo LCG tu viet de mot
--- seed cho ra dung mot chuoi, lan nao cung the.
+-- va khong hua hen giong nhau giua cac ban. Dung mot bo tu viet de mot seed
+-- cho ra dung mot chuoi, lan nao cung the.
+--
+-- Park-Miller chu khong phai LCG kieu 1103515245: runtime Lua cua Nakama
+-- (gopher-lua) giu MOI so duoi dang float64, ma float64 chi bieu dien chinh
+-- xac so nguyen toi 2^53. Voi he so 1103515245 thi s * a cham 2.4e18, mat bit
+-- thap, va cung mot seed se cho hai chuoi khac nhau giua Lua, Python va
+-- GDScript. He so 16807 giu tich duoi 3.6e13 nen ca ba ngon ngu tinh ra dung
+-- cung mot so — do la dieu kien de doi chieu TUNG TRAN (xem bx.fieldtest).
 local Rng = {}
 Rng.__index = Rng
 
 function Rng.new(seed)
-	return setmetatable({ s = (seed or 0) % 2147483647 }, Rng)
+	local s = math.floor(seed or 0) % 2147483647
+	if s <= 0 then
+		s = s + 2147483646
+	end
+	return setmetatable({ s = s }, Rng)
 end
 
 function Rng:next()
-	self.s = (self.s * 1103515245 + 12345) % 2147483648
+	self.s = (self.s * 16807) % 2147483647
 	return self.s
 end
 
 function Rng:float()
-	return self:next() / 2147483648.0
+	return self:next() / 2147483647.0
 end
 
 function Rng:range(lo, hi)
@@ -231,6 +242,315 @@ local function team_fight(mine, theirs, rng, power, levels)
 		out = 1
 	end
 	return out, lanes, a_win, b_win
+end
+
+-- ------------------------------------------------------------ tran dan tran
+-- Trong tai phai xu DUNG CAI TRAN MA NGUOI CHOI NHIN THAY. Truoc day o day
+-- chi co team_fight(): ghep tung cap tuong danh tay doi, khong quan linh,
+-- khong vi tri — trong khi man tran ben client da la hai doi quan dan theo ba
+-- hang. Hai ben xu hai tro choi khac nhau thi con so tren man hinh khong con
+-- nghia gi.
+--
+-- Cac hang so duoi day phai KHOP battle/battle.gd, battle/unit.gd va
+-- sim/field.py. Doi mot ben ma quen hai ben kia la ba ban cai dat lech nhau.
+local FIELD_STEP = 0.033
+local LEFT_X, RIGHT_X = 190.0, 770.0
+local MID_Y = 340.0
+local ROW_BACK = 96.0
+local ROW_GAP = 74.0
+local SQUAD_SPREAD = 48.0
+local BODY = 56.0
+local LANE_PULL = 0.35
+local LANE_WEIGHT = 4.0
+--- Cap cua quan linh. Chi so cap 1 trong bang goc qua yeu so voi tuong; tu cap
+--- 6 tro len hai ben moi cung mot thang. Chuong sau thi quan cung manh len.
+local ARMY_BASE_LEVEL = 6
+
+--- Mot top linh, chi so da keo theo cap. Phai khop Combat.make_army trong
+--- battle/combat.gd va make_army trong sim/field.py.
+local function army_fighter(name, level)
+	local a = data.armies[name]
+	if a == nil then
+		return nil
+	end
+	local n = math.max(1, math.floor(level or 1)) - 1
+	local hp = a.HpBase + (a.HpGrowthValue or 0) * n
+	return {
+		name = name,
+		hp_max = hp,
+		hp = hp,
+		anger = 0.0,
+		ap_min = a.MinApBase + (a.MinApGrowthValue or 0) * n,
+		ap_max = a.MaxApBase + (a.MaxApGrowthValue or 0) * n,
+		defence = a.DpBase + (a.DpGrowthValue or 0) * n,
+		interval = a.AttackInterval,
+		crit_chance = (a.CriticalStrike or 0) / 100.0,
+		crit_mult = a.CritDamageDouble or 1.5,
+		hit_rate = 1.0 + (a.InjuryRates or 0),
+		-- Quan linh khong co ky nang: anger_gain = 0 nen thanh no khong bao gio
+		-- day, skill_rate khong bao gio duoc dung toi.
+		skill_rate = 1.0,
+		anger_gain = 0.0,
+		taken = 1.0,
+		pierce = 0.0,
+		lifesteal = 0.0,
+		reach = a.MaxAttackDistance or 30,
+		min_reach = a.MinAttackDistance or 0,
+		move_speed = a.MovingSpeed or 30,
+		battle_row = a.Location or 1,
+		units = math.max(1, math.floor(a.MaxUnit or 1)),
+	}
+end
+
+--- Quan chung cua mot hang (1 truoc, 2 giua, 3 sau).
+local function armies_in_row(r)
+	local out = {}
+	for _, n in ipairs(data.armyOrder or {}) do
+		local a = data.armies[n]
+		if a ~= nil and (a.Location or 1) == r then
+			out[#out + 1] = n
+		end
+	end
+	return out
+end
+
+--- Mot quan chung cho moi hang, boc theo seed.
+local function pick_armies(seed_value)
+	local r = Rng.new(seed_value)
+	local out = {}
+	for row = 1, 3 do
+		local pool = armies_in_row(row)
+		if #pool > 0 then
+			out[#out + 1] = pool[r:int(#pool)]
+		end
+	end
+	return out
+end
+
+local function place(t, row, slot, of)
+	local back = (row - 1) * ROW_BACK
+	local x = (t == 0) and (LEFT_X - back) or (RIGHT_X + back)
+	local y = MID_Y + (slot - (of - 1) * 0.5) * SQUAD_SPREAD
+	return x, y
+end
+
+local function unit_new(f, team, x, y)
+	-- Tam danh 30 cua quan can chien nho hon khoang cach than (BODY = 56) nen
+	-- ho khong bao gio cham duoc nhau — nang san len vua qua than nguoi.
+	local reach = f.reach or 0.0
+	if reach > 0.0 then
+		reach = math.max(reach, 62.0)
+	else
+		reach = 58.0
+	end
+	return {
+		f = f, team = team, x = x, y = y,
+		reach = reach,
+		min_reach = f.min_reach or 0.0,
+		-- Toc do goc (20-80) qua cham cho man 960px; nhan len nhung van giu
+		-- chenh lech giua ky binh (80) va voi (20).
+		speed = math.max(28.0, (f.move_speed or 30.0) * 1.5),
+		-- Don dau tien roi vao luc hoi chieu xong, giong mo phong tay doi.
+		cooldown = f.interval,
+		target = nil,
+	}
+end
+
+--- Gan nhat, nhung lech LAN bi phat nang nen doi thu cung hang duoc uu tien.
+local function nearest(u, enemies, snap)
+	local best, best_d = nil, math.huge
+	local h = snap[u]
+	for _, e in ipairs(enemies) do
+		if e.f.hp > 0 then
+			local s = snap[e]
+			local dx, dy = s[1] - h[1], s[2] - h[2]
+			local ly = dy * LANE_WEIGHT
+			local cost = dx * dx + ly * ly
+			if cost < best_d then
+				best_d, best = cost, e
+			end
+		end
+	end
+	return best
+end
+
+--- Pha 1: chon muc tieu, tien len. Tra ve muc tieu neu don vi nay ra don.
+local function advance(u, delta, enemies, snap)
+	if u.f.hp <= 0 then
+		return nil
+	end
+	if u.target == nil or u.target.f.hp <= 0 then
+		u.target = nearest(u, enemies, snap)
+	end
+	if u.target == nil then
+		return nil
+	end
+	local h, tp = snap[u], snap[u.target]
+	local dx, dy = tp[1] - h[1], tp[2] - h[2]
+	local dist = math.sqrt(dx * dx + dy * dy)
+
+	-- Qua gan thi lui ra: Artillery/Catapult co MinAttackDistance nen khong
+	-- danh duoc muc tieu ap sat.
+	if u.min_reach > 0.0 and dist < u.min_reach then
+		local k = u.speed * delta * 0.6 / math.max(dist, 0.001)
+		u.x, u.y = h[1] - dx * k, h[2] - dy * k
+		return nil
+	end
+
+	if dist > u.reach then
+		-- Di theo LAN: chay thang theo truc x, doi lan thi cham hon nhieu. Cho
+		-- di thang toi muc tieu thi ca tam don vi don ve mot diem giua san roi
+		-- chong len nhau thanh mot dong.
+		local step_y = u.speed * LANE_PULL * delta
+		if dx > 0 then
+			u.x = h[1] + u.speed * delta
+		elseif dx < 0 then
+			u.x = h[1] - u.speed * delta
+		else
+			u.x = h[1]
+		end
+		u.y = h[2] + math.max(-step_y, math.min(step_y, dy))
+		return nil
+	end
+
+	u.cooldown = u.cooldown - delta
+	if u.cooldown <= 0.0 then
+		u.cooldown = u.cooldown + u.f.interval
+		return u.target
+	end
+	return nil
+end
+
+--- Day cac don vi ra khoi nhau. Cong don luc day roi ap MOT LAN.
+---
+--- Day tung cap ngay lap tuc thi cap xet sau nhin thay vi tri da doi — ma doi
+--- 0 luon duoc duyet truoc. Dung loai bat doi xung da tung lam ben phai thang
+--- 76% o pha ra don.
+local function separate(every)
+	local live = {}
+	for _, u in ipairs(every) do
+		if u.f.hp > 0 then
+			live[#live + 1] = u
+		end
+	end
+	local sx, sy = {}, {}
+	for i = 1, #live do
+		local a = live[i]
+		for j = i + 1, #live do
+			local b = live[j]
+			local dx, dy = b.x - a.x, b.y - a.y
+			local dist = math.sqrt(dx * dx + dy * dy)
+			if dist < BODY and dist >= 0.001 then
+				local k = (BODY - dist) * 0.5 / dist
+				local px, py = dx * k, dy * k
+				sx[a] = (sx[a] or 0.0) - px
+				sy[a] = (sy[a] or 0.0) - py
+				sx[b] = (sx[b] or 0.0) + px
+				sy[b] = (sy[b] or 0.0) + py
+			end
+		end
+	end
+	for _, u in ipairs(live) do
+		if sx[u] ~= nil then
+			u.x = u.x + sx[u]
+			u.y = u.y + sy[u]
+		end
+	end
+end
+
+--- Mot tran dan tran. Tra ve (ket qua, so giay, con song trai, con song phai).
+--- 0/1 la doi thang, 2 la hoa.
+---
+--- Mot buoc chia HAI PHA: pha 1 moi don vi doc vi tri tu MOT BAN CHUP, pha 2
+--- gom moi don ra cung luc. Lam mot pha thi ben duyet sau vao tam truoc va
+--- thang ap dao.
+local function field_fight(teams, rng)
+	local every = {}
+	for t = 0, 1 do
+		for _, u in ipairs(teams[t]) do
+			every[#every + 1] = u
+		end
+	end
+	local elapsed = 0.0
+	local limit = data.rules.maxSeconds
+	while true do
+		elapsed = elapsed + FIELD_STEP
+		local snap = {}
+		for _, u in ipairs(every) do
+			snap[u] = { u.x, u.y }
+		end
+		local strikes = {}
+		for t = 0, 1 do
+			for _, u in ipairs(teams[t]) do
+				if u.f.hp > 0 then
+					local v = advance(u, FIELD_STEP, teams[1 - t], snap)
+					if v ~= nil then
+						strikes[#strikes + 1] = { u, v }
+					end
+				end
+			end
+		end
+		separate(every)
+		for _, s in ipairs(strikes) do
+			strike(s[1].f, s[2].f, rng)
+		end
+
+		local a, b = 0, 0
+		for _, u in ipairs(teams[0]) do
+			if u.f.hp > 0 then a = a + 1 end
+		end
+		for _, u in ipairs(teams[1]) do
+			if u.f.hp > 0 then b = b + 1 end
+		end
+		if a > 0 and b > 0 then
+			if elapsed >= limit then
+				return 2, elapsed, a, b
+			end
+		elseif a > 0 then
+			return 0, elapsed, a, b
+		elseif b > 0 then
+			return 1, elapsed, a, b
+		else
+			return 2, elapsed, a, b
+		end
+	end
+end
+
+--- Dung ca hai doi roi xu tran. Thay cho team_fight().
+---
+--- `levels` la bang ten tuong -> cap cua NGUOI CHOI. Doi dich luon cap 1; do
+--- manh cua chung the hien qua `power` theo chuong.
+local function army_battle(mine, theirs, rng, power, levels, chapter, seed_value)
+	levels = levels or {}
+	chapter = chapter or 0
+	local army_lv = ARMY_BASE_LEVEL + math.max(0, chapter)
+	local teams = { [0] = {}, [1] = {} }
+	local roster = { [0] = mine, [1] = theirs }
+	for t = 0, 1 do
+		for _, name in ipairs(pick_armies(seed_value * 31 + t * 7 + chapter)) do
+			local proto = army_fighter(name, army_lv)
+			if proto ~= nil then
+				for k = 0, proto.units - 1 do
+					local x, y = place(t, proto.battle_row, k, proto.units)
+					teams[t][#teams[t] + 1] = unit_new(army_fighter(name, army_lv), t, x, y)
+				end
+			end
+		end
+		local names = roster[t]
+		for i, name in ipairs(names) do
+			local f = fighter(name, t == 0 and 1.0 or power, t == 0 and (levels[name] or 1) or 1)
+			if f ~= nil then
+				f.reach = 0.0
+				f.min_reach = 0.0
+				f.move_speed = data.base.MovingSpeed
+				local y = MID_Y + ((i - 1) - (#names - 1) * 0.5) * ROW_GAP
+				local x = (t == 0) and (LEFT_X + 52.0) or (RIGHT_X - 52.0)
+				teams[t][#teams[t] + 1] = unit_new(f, t, x, y)
+			end
+		end
+	end
+	local out, secs, alive_a, alive_b = field_fight(teams, rng)
+	return out, secs, alive_a, alive_b
 end
 
 -- --------------------------------------------------------------- ban luu
@@ -458,7 +778,12 @@ local function rpc_fight(context, payload)
 	local theirs = chapter_enemies(chapter)
 	local power = chapter_power(chapter)
 
-	local out, lanes, a_win, b_win = team_fight(s.roster, theirs, rng, power, s.levels)
+	-- Seed dan quan tach khoi seed danh nhau: doi hinh quan linh cua mot chuong
+	-- phai co dinh de nguoi choi hoc duoc, con dien bien tran thi moi lan mot
+	-- khac. Trong tai xu DUNG tran dan tran ma client hien — truoc day o day
+	-- la team_fight(), ghep cap tuong danh tay doi, khac han cai tren man hinh.
+	local out, secs, alive_a, alive_b =
+			army_battle(s.roster, theirs, rng, power, s.levels, chapter, chapter)
 
 	s.battles = s.battles + 1
 	local unlocked = false
@@ -494,8 +819,8 @@ local function rpc_fight(context, payload)
 		unlockedNext = unlocked,
 		goldGained = reward,
 		opponent = theirs,
-		lanes = lanes,
-		laneWins = { mine = a_win, theirs = b_win },
+		seconds = secs,
+		survivors = { mine = alive_a, theirs = alive_b },
 		save = s,
 	})
 end
@@ -581,8 +906,27 @@ local function rpc_level_up(context, payload)
 			cost = price, save = s })
 end
 
+--- Doi chieu tran DAN TRAN voi ban Python (sim/field.py).
+---
+--- Khac bx.selftest o cho no so tung tran chu khong so ti le: hai ben dung
+--- chung mot bo LCG nen cung seed phai ra dung cung ket qua, cung so giay,
+--- cung so nguoi con song. Lech mot don vi la biet ngay mot ben tinh sai.
+local function rpc_fieldtest(context, payload)
+	local mine = { "MaChao", "LiuBei", "GanNing", "GuYong" }
+	local theirs = { "CaoCao", "DengAi", "JiaXu", "HuaXiong" }
+	local out = {}
+	for seed = 1, 5 do
+		local rng = Rng.new(seed)
+		local res, secs, a, b = army_battle(mine, theirs, rng, 1.0, {}, seed, seed)
+		out[#out + 1] = { seed = seed, result = res, seconds = secs,
+				aliveA = a, aliveB = b }
+	end
+	return nk.json_encode({ ok = true, mine = mine, theirs = theirs, battles = out })
+end
+
 nk.register_rpc(rpc_level_up, "bx.level_up")
 nk.register_rpc(rpc_set_roster, "bx.set_roster")
 nk.register_rpc(rpc_chapters, "bx.chapters")
 nk.register_rpc(rpc_fight, "bx.fight")
 nk.register_rpc(rpc_selftest, "bx.selftest")
+nk.register_rpc(rpc_fieldtest, "bx.fieldtest")

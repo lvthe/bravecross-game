@@ -19,10 +19,22 @@
 extends Node2D
 
 const TEAM_SIZE := 4
-const LEFT_X := 120.0
-const RIGHT_X := 840.0
+## Vach dan quan cua hai ben. Hang truoc dung o day, hang giua va hang sau lui
+## ve phia sau — dung nhu Location 1/2/3 cua bang quan chung.
+const LEFT_X := 190.0
+const RIGHT_X := 770.0
+## Hang 2 lui 78px, hang 3 lui 156px. Voi 580px giua hai vach, quan tam 750
+## (ArcherN) ban duoc ngay tu cho dung, tam 400 phai tien nua duong, tam 30
+## phai xong vao tan noi.
+const ROW_BACK := 96.0
 const MID_Y := 340.0
-const ROW_GAP := 88.0
+const ROW_GAP := 74.0
+## So linh moi top duoc nhan len cho dong hon mot chut; bang goc de 2-4.
+const SQUAD_SPREAD := 48.0
+## Cap cua quan linh. Chi so cap 1 trong bang goc qua yeu so voi tuong nen tran
+## khong ket thuc; tu cap 6 tro len hai ben moi cung thang. Chuong sau thi quan
+## cung manh len.
+const ARMY_BASE_LEVEL := 6
 ## Khoang cach toi thieu giua hai don vi. Phai xap xi tam danh (reach = 58),
 ## khong thi khi may nguoi cung vay mot muc tieu ho lot vao trong tam nhau va
 ## chong len thanh mot dong.
@@ -45,6 +57,10 @@ var label: Label = null
 var picks_seed := 0
 ## Phan xu cua may chu cho tran dang xem. -1 = tran tap, khong tinh diem.
 var server_result := -1
+## Bat khi hai ben dung CHUNG doi hinh (che do --mirror). Quan linh cung phai
+## soi guong theo, khong thi phep kiem thien vi khong con la soi guong nua —
+## da dinh: bao lech 9.8 diem trong khi hai ben von da khac quan.
+var mirrored := false
 
 
 func _ready() -> void:
@@ -142,6 +158,7 @@ func _cli() -> Dictionary:
 ## Boc doi hinh. `mirror` cho hai ben cung danh sach — dung de kiem tra xem
 ## san co thien vi ben nao khong.
 func _new_rosters(seed_value: int, mirror := false) -> void:
+	mirrored = mirror
 	var pool := Array(combat.order)
 	var r := RandomNumberGenerator.new()
 	r.seed = seed_value
@@ -164,28 +181,78 @@ func _clear() -> void:
 	teams = [[], []]
 
 
+## Mot quan chung cho moi hang, boc theo seed.
+##
+## Dung Park-Miller y het `Rng` trong server/modules/battle.lua chu KHONG dung
+## RandomNumberGenerator: cung mot seed phai boc ra cung mot doi quan o ca hai
+## ben, khong thi man hinh hien mot doi quan con trong tai xu mot doi quan khac.
+func _pick_armies(seed_value: int) -> Array:
+	var s: int = seed_value % 2147483647
+	if s <= 0:
+		s += 2147483646
+	var out: Array = []
+	for row in [1, 2, 3]:
+		var pool := combat.armies_in_row(row)
+		if pool.size() > 0:
+			s = (s * 16807) % 2147483647
+			out.append(pool[s % pool.size()])
+	return out
+
+
+func _place(t: int, row: int, slot: int, of: int) -> Vector2:
+	var back := (row - 1) * ROW_BACK
+	var x := (LEFT_X - back) if t == 0 else (RIGHT_X + back)
+	var y := MID_Y + (float(slot) - (of - 1) * 0.5) * SQUAD_SPREAD
+	return Vector2(x, y)
+
+
+func _add_unit(f, t: int, pos: Vector2, art_name: String, with_art: bool) -> void:
+	if f == null:
+		return
+	var u := BattleUnit.new()
+	u.visual = with_art
+	u.position = pos
+	add_child(u)
+	u.setup(f, t, combat.rules, rng, (ART + art_name) if with_art else "", RIG_SCALE)
+	teams[t].append(u)
+
+
 func _spawn(with_art := true) -> void:
 	_clear()
 	finished = false
 	elapsed = 0.0
 	rng.seed = 20260908 + picks_seed
+
 	for t in 2:
+		# --- quan linh: moi hang mot top, moi top MaxUnit nguoi
+		var side := 0 if mirrored else t
+		# Seed lay tu CHUONG chu khong tu picks_seed, de khop army_battle() ben
+		# may chu: quan linh cua mot chuong phai co dinh — nguoi choi hoc duoc
+		# tran dau roi doi doi hinh cho hop, va cai hien tren man phai dung la
+		# doi quan ma trong tai vua xu.
+		var picks := _pick_armies(Game.chapter * 31 + side * 7 + Game.chapter)
+		var army_lv: int = ARMY_BASE_LEVEL + maxi(0, Game.chapter)
+		for name in picks:
+			var proto = combat.make_army(name, army_lv)
+			if proto == null:
+				continue
+			for k in proto.units:
+				_add_unit(combat.make_army(name, army_lv), t,
+						_place(t, proto.battle_row, k, proto.units), name, with_art)
+
+		# --- tuong: dung cung hang dau, tach ra hai ben cho de nhin
 		for i in roster[t].size():
 			var hero_name: String = roster[t][i]
-			var u := BattleUnit.new()
-			u.visual = with_art
-			u.position = Vector2(
-					LEFT_X if t == 0 else RIGHT_X,
-					MID_Y + (float(i) - (roster[t].size() - 1) * 0.5) * ROW_GAP)
-			add_child(u)
 			# Doi cua nguoi choi dung cap that; doi dich luon cap 1 (do manh
 			# cua chung the hien qua he so cua chuong).
 			var lv := 1
 			if t == 0 and session != null:
 				lv = session.level_of(hero_name)
-			u.setup(combat.make(hero_name, lv), t, combat.rules, rng,
-					(ART + hero_name) if with_art else "", RIG_SCALE)
-			teams[t].append(u)
+			var y: float = MID_Y + (float(i) - (roster[t].size() - 1) * 0.5) * ROW_GAP
+			# Tuong dung nhinh len truoc top linh hang dau, khong dung de len nhau.
+			var x: float = (LEFT_X + 52.0) if t == 0 else (RIGHT_X - 52.0)
+			_add_unit(combat.make(hero_name, lv), t, Vector2(x, y),
+					hero_name, with_art)
 	_refresh()
 
 
@@ -239,12 +306,19 @@ func _step(delta: float) -> int:
 
 ## Day cac don vi ra khoi nhau. Khong co buoc nay thi ca hai doi don vao mot
 ## diem va chong len nhau thanh mot dong, nhin khong ra ai danh ai.
+## Cong don luc day roi ap MOT LAN, khong day tuan tu.
+##
+## Ban dau o day day tung cap ngay lap tuc, nen cap duoc xet sau nhin thay vi
+## tri da doi — ma doi 0 luon duoc duyet truoc. Do la dung loai bat doi xung
+## da tung lam ben phai thang 76% o pha ra don. Voi 4 don vi thi khong thay,
+## voi hai doi quan hai chuc nguoi thi thay.
 func _separate() -> void:
 	var all := []
 	for t in 2:
 		for u in teams[t]:
 			if u.alive():
 				all.append(u)
+	var shove := {}
 	for i in all.size():
 		for j in range(i + 1, all.size()):
 			var a: BattleUnit = all[i]
@@ -254,8 +328,10 @@ func _separate() -> void:
 			if dist >= BODY or dist < 0.001:
 				continue
 			var push := d / dist * (BODY - dist) * 0.5
-			a.position -= push
-			b.position += push
+			shove[a] = shove.get(a, Vector2.ZERO) - push
+			shove[b] = shove.get(b, Vector2.ZERO) + push
+	for u in shove:
+		u.position += shove[u]
 
 
 func _process(delta: float) -> void:

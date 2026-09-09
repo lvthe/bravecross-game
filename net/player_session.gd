@@ -150,7 +150,7 @@ func set_roster(names: Array) -> Dictionary:
 ## ghi ban luu. Client khong khai gi ca — no khong the ghi ban luu nua
 ## (permission_write = 0), nen co sua client cung khong bia duoc thanh tich.
 ##
-## Tra ve {ok, result, opponent, lanes} khi online.
+## Tra ve {ok, result, opponent, seconds, survivors} khi online.
 func fight(chapter := 0) -> Dictionary:
 	if not online:
 		return {"ok": false, "error": "dang choi ngoai tuyen, khong danh duoc"}
@@ -166,8 +166,9 @@ func fight(chapter := 0) -> Dictionary:
 			"chapter": int(d.get("chapter", 0)),
 			"unlockedNext": bool(d.get("unlockedNext", false)),
 			"power": float(d.get("power", 1.0)),
-			"opponent": d.get("opponent", []), "lanes": d.get("lanes", []),
-			"laneWins": d.get("laneWins", {})}
+			"opponent": d.get("opponent", []),
+			"seconds": d.get("seconds", 0.0),
+			"survivors": d.get("survivors", {})}
 
 
 ## Nang mot tuong len mot cap. May chu tru vang va ghi ban luu.

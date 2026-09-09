@@ -135,7 +135,13 @@ func _init() -> void:
 	print("\n=== 3c. qua chuong moi duoc mo chuong sau ===")
 	# Kiem LUAT chu khong kiem ket qua: thang thi cleared tang dung 1, khong
 	# thang thi giu nguyen. Kieu nay khong phu thuoc vao viec doi hinh manh yeu.
-	var before_c := int(ses.data.get("cleared", 0))
+	# Truong cua may chu khong duoc roi mat khi client doc ban luu. Da dinh
+	# dung the: `cleared` co ben Lua nhung PlayerSession._upgrade() khong liet
+	# ke nen no bien mat lang le, va man chon chuong doc ra luon bang 0.
+	_check(ses.data.has("cleared"), "ban luu ben client con giu truong cleared",
+			str(ses.data.keys()))
+
+	var before_c := int(ses.data.get("cleared", -1))
 	var fc := await ses.fight(before_c + 1)
 	_check(fc.ok, "danh duoc chuong ke tiep", str(fc.get("error", "")))
 	var after_c := int(ses.data.get("cleared", -1))

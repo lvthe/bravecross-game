@@ -20,7 +20,8 @@ class_name PlayerSession
 extends Node
 
 ## Doi so nay khi cau truc ban luu thay doi, de con biet duong nang cap.
-const SAVE_VERSION := 1
+## Phai khop SAVE_VERSION ben server/modules/battle.lua.
+const SAVE_VERSION := 2
 
 var client: NakamaClient = null
 var data: Dictionary = {}
@@ -46,6 +47,7 @@ static func blank() -> Dictionary:
 		"version": SAVE_VERSION,
 		"roster": [],
 		"wins": 0, "losses": 0, "draws": 0, "battles": 0,
+		"cleared": 0,                 # chuong cao nhat da qua
 		"lastResult": "",
 		"updatedAt": 0,
 	}
@@ -88,7 +90,9 @@ func _upgrade(raw: Variant) -> Dictionary:
 	if typeof(raw) != TYPE_DICTIONARY:
 		return out
 	var d: Dictionary = raw
-	for k in ["wins", "losses", "draws", "battles"]:
+	# Thieu mot ten o day la truong do bien mat lang le: may chu van giu, nhung
+	# client doc ra khong thay. Da dinh dung the voi "cleared".
+	for k in ["wins", "losses", "draws", "battles", "cleared"]:
 		out[k] = int(d.get(k, 0))
 	out["lastResult"] = String(d.get("lastResult", ""))
 	out["updatedAt"] = int(d.get("updatedAt", 0))

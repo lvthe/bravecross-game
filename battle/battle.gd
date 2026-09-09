@@ -1,26 +1,21 @@
-# Man tran: hai doi chay vao nhau, danh nhau, co thanh mau.
+# Man tran. Vao tu man chon chuong (ui/menu.tscn); `Game.chapter` cho biet
+# dang danh chuong nao, 0 la danh tap.
 #
-#   R           danh lai voi cung doi hinh
-#   N           boc doi hinh moi
-#   space       tam dung
-#   1 / 2 / 3   toc do 1x / 2x / 4x
+#   Esc   ve man chon chuong
+#   F     danh lai chuong nay (may chu xu, co tinh diem)
+#   R     xem lai tai cho, KHONG tinh diem
+#   space tam dung        1 / 2 / 3  toc do 1x / 2x / 4x
 #
-# Chay khong mo cua so, danh N tran roi bao ket qua — dung de kiem tra vong
-# lap co ket thuc va co thien vi ben nao khong:
+# Doi cua NGUOI CHOI (ben trai) lay tu ban luu tren may chu; doi dich cua mot
+# chuong la co dinh, may chu quyet. Client khong khai ket qua, va cung khong
+# ghi duoc ban luu (permission_write = 0).
 #
-#   godot --headless --path . battle/battle.tscn -- --sim=200
+# Khong noi duoc toi may chu thi van xem duoc tran tai cho, chi la khong tinh
+# diem; them --offline de bo han phan mang.
+#
+# Che do do dac, khong mo cua so:
 #   godot --headless --path . battle/battle.tscn -- --sim=200 --mirror
-#
-# Doi cua NGUOI CHOI (ben trai) lay tu ban luu tren may chu.
-#
-#   F   xin mot tran XEP HANG — may chu boc doi dich, mo phong, cong so va ghi
-#       ban luu. Client khong khai gi, va cung khong ghi duoc (ban luu de
-#       permission_write = 0).
-#   R   danh lai tai cho, KHONG tinh diem — chi de xem.
-#   N   doi doi hinh; may chu kiem ten roi ghi.
-#
-# Khong noi duoc toi may chu thi van xem duoc tran tai cho, chi la khong co
-# tran xep hang; them --offline de bo han phan mang.
+#   godot --headless --path . battle/battle.tscn -- --play=3
 extends Node2D
 
 const TEAM_SIZE := 4
@@ -71,46 +66,46 @@ func _ready() -> void:
 	_new_rosters(picks_seed)
 
 	if not opts.has("offline"):
-		session = PlayerSession.new()
-		add_child(session)
 		label.text = "dang dang nhap..."
-		await session.start(opts.get("url", ""))
+		# Phien choi nam o autoload `Game` chu khong o day: doi man se huy moi
+		# node cua man cu, ma dang nhap lai moi lan vao tran thi vua cham vua
+		# thua. Man tran chi muon dung nho.
+		session = await Game.ensure_session()
 		# Doi cua nguoi choi lay tu ban luu neu co. Chua co thi giu doi vua boc
 		# roi luu lai ngay, de lan sau mo game van dung doi do.
 		var saved: Array = session.data.get("roster", [])
 		if saved.size() == TEAM_SIZE and _all_known(saved):
 			roster[0] = saved.duplicate()
-		else:
+		elif session.online:
 			await session.set_roster(roster[0])
 
 	if opts.has("play"):
 		await _play_through(int(opts["play"]))
 		return
 
-	if session != null and session.online:
-		await _ranked()
+	# chapter = 0 la danh tap: van dien, nhung khong xin may chu, khong tinh diem.
+	if session != null and session.online and Game.chapter > 0:
+		await _ranked(Game.chapter)
 	else:
 		_spawn()
-	if opts.has("shot"):
-		await _shoot(opts["shot"], float(opts.get("at", "6")))
 
 
-## Ban luu la du lieu ben ngoai: co the tro toi tuong khong con trong bo du
-## lieu (doi ban, bo bot tuong). Khong kiem thi _spawn se dung phai null.
+
 ## Mot tran XEP HANG. May chu boc doi dich, mo phong, cong so va ghi ban luu;
 ## client chi dung lai va dien lai cho de nhin.
 ##
 ## Ban dien o day KHONG phai mo hinh cua may chu: no co di chuyen, chon muc
 ## tieu, va tinh theo thoi gian thuc, con may chu ghep tung cap theo hang.
 ## Ket qua hien len va duoc ghi luon la cua MAY CHU.
-func _ranked() -> void:
+func _ranked(chapter: int) -> void:
 	server_result = -1
-	label.text = "dang xin tran tu may chu..."
-	var f := await session.fight()
+	label.text = "dang xin chuong %d tu may chu..." % chapter
+	var f := await session.fight(chapter)
 	if not f.ok:
 		label.text = "khong xin duoc tran: %s" % str(f.get("error", ""))
 		_spawn()
 		return
+	Game.last_fight = f
 	var opp: Array = f.get("opponent", [])
 	if opp.size() == TEAM_SIZE and _all_known(opp):
 		roster[1] = opp.duplicate()
@@ -118,6 +113,9 @@ func _ranked() -> void:
 	_spawn()
 
 
+## Ban luu va du lieu may chu deu la du lieu ben ngoai: co the tro toi tuong
+## khong con trong bo du lieu (doi ban, bo bot tuong). Khong kiem thi _spawn
+## se dung phai null.
 func _all_known(names: Array) -> bool:
 	for n in names:
 		if not combat.heroes.has(String(n)):
@@ -271,7 +269,8 @@ func _report(out: int) -> void:
 func _refresh(out := -1) -> void:
 	if label == null:
 		return
-	var txt := "%s  %d/%d   vs   %d/%d  %s\n%.1fs" % [
+	var head := ("Chuong %d" % Game.chapter) if Game.chapter > 0 else "Danh tap"
+	var txt := "%s   |   %s  %d/%d   vs   %d/%d  %s\n%.1fs" % [head,
 			", ".join(roster[0]), _alive(0), teams[0].size(),
 			_alive(1), teams[1].size(), ", ".join(roster[1]), elapsed]
 	if out == 0:
@@ -281,7 +280,7 @@ func _refresh(out := -1) -> void:
 	elif out == 2:
 		txt += "   —  HOA"
 	else:
-		txt += "\nR danh lai   N doi hinh moi   space tam dung   1/2/3 toc do"
+		txt += "\nEsc ve menu   F danh lai chuong   R xem lai   space tam dung   1/2/3 toc do"
 	if server_result >= 0 and out >= 0:
 		var verdict: String = ["BAN THANG", "BAN THUA", "HOA"][server_result]
 		txt += "   |   may chu xu: %s" % verdict
@@ -299,11 +298,13 @@ func _unhandled_input(e: InputEvent) -> void:
 		KEY_R:                       # danh lai tai cho, khong tinh diem
 			server_result = -1
 			_spawn()
-		KEY_F:                       # xin tran xep hang moi
-			if session != null and session.online:
-				await _ranked()
+		KEY_F:                       # danh lai chuong nay (tinh diem)
+			if session != null and session.online and Game.chapter > 0:
+				await _ranked(Game.chapter)
 			else:
 				_spawn()
+		KEY_ESCAPE:                  # ve man chon chuong
+			Game.goto(Game.MENU)
 		KEY_N:                       # doi doi hinh (may chu kiem va ghi)
 			picks_seed += 1
 			_new_rosters(picks_seed)
@@ -340,16 +341,6 @@ func _play_through(n: int) -> void:
 				% [i + 1, names[int(f.result)], ", ".join(f.get("opponent", []))])
 	print("trang thai  : %s" % (session.status_line() if session else "khong co phien"))
 	get_tree().quit(0)
-
-
-## Chay tran toi giay `at` roi chup mot khung va thoat.
-func _shoot(path: String, at: float) -> void:
-	while elapsed < at and not finished:
-		await get_tree().process_frame
-	await RenderingServer.frame_post_draw
-	var err := get_viewport().get_texture().get_image().save_png(path)
-	print("chup %s -> %s" % [path, "ok" if err == OK else "loi %d" % err])
-	get_tree().quit()
 
 
 ## Danh n tran khong ve gi, buoc thoi gian co dinh. Dung de kiem tra tran co

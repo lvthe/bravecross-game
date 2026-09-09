@@ -1,0 +1,53 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://ui/roster.gd" id="1"]
+
+[node name="Roster" type="Control"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1")
+
+[node name="Bg" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.106, 0.118, 0.145, 1)
+
+[node name="Title" type="Label" parent="."]
+offset_left = 20.0
+offset_top = 14.0
+offset_right = 940.0
+offset_bottom = 38.0
+text = "Doi hinh - chon dung 4 tuong"
+
+[node name="Picked" type="Label" parent="."]
+offset_left = 20.0
+offset_top = 40.0
+offset_right = 940.0
+offset_bottom = 62.0
+text = "..."
+
+[node name="Buttons" type="HBoxContainer" parent="."]
+offset_left = 20.0
+offset_top = 68.0
+offset_right = 940.0
+offset_bottom = 100.0
+
+[node name="Save" type="Button" parent="Buttons"]
+custom_minimum_size = Vector2(140, 32)
+text = "Luu"
+
+[node name="Back" type="Button" parent="Buttons"]
+custom_minimum_size = Vector2(140, 32)
+text = "Quay lai"
+
+[node name="Scroll" type="ScrollContainer" parent="."]
+offset_left = 20.0
+offset_top = 108.0
+offset_right = 940.0
+offset_bottom = 528.0
+
+[node name="Grid" type="GridContainer" parent="Scroll"]
+custom_minimum_size = Vector2(900, 0)
+columns = 4

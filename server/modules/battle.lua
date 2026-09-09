@@ -10,8 +10,9 @@
 --   * ket qua do may chu mo phong.
 --
 -- Hai RPC:
+--   bx.chapters     {}                 danh sach chuong + tien do
 --   bx.set_roster   {roster = {...}}   doi doi hinh, co kiem ten
---   bx.fight        {}                 danh mot tran, tra ve ket qua
+--   bx.fight        {chapter = n}      danh mot chuong, tra ve ket qua
 --
 -- Mo hinh chien dau la ban Lua cua sim/battle.py. Doi chieu bang RPC thu ba:
 --   bx.selftest     {}                 danh lai cac cap tham chieu roi so
@@ -22,7 +23,12 @@ local data = require("hero_data")
 local COLLECTION = "player"
 local KEY = "save"
 local TEAM_SIZE = 4
-local SAVE_VERSION = 1
+local SAVE_VERSION = 2
+local CHAPTERS = 12
+--- Doi dich manh dan theo chuong. 1.18 moi chuong nghia la chuong 12 manh
+--- gap ~6 lan chuong 1 — du de bat nguoi choi phai doi doi hinh, chua toi muc
+--- phai cay cap (chua co he thong cap).
+local POWER_STEP = 0.18
 
 -- ---------------------------------------------------------------- bo sinh so
 -- Lua 5.1 cua Nakama co math.random, nhung no dung chung trang thai toan cuc
@@ -53,15 +59,15 @@ function Rng:int(n)                      -- 1..n
 end
 
 -- ------------------------------------------------------------- mo hinh tran
-local function fighter(name)
+local function fighter(name, power)
 	local row = data.heroes[name]
 	if row == nil then
 		return nil
 	end
 	local b = data.base
-	local g = 1.0
+	local g = (power or 1.0)
 	if data.rules.useGrowth then
-		g = row.GrowthFactor
+		g = g * row.GrowthFactor
 	end
 	return {
 		name = name,
@@ -134,11 +140,11 @@ end
 --- Tran doi hinh: ghep tung cap theo hang, ai thang nhieu cap hon thi thang.
 --- Don gian hon man tran ben client (khong co di chuyen, khong co vi tri) —
 --- day la trong tai, khong phai ban dien.
-local function team_fight(mine, theirs, rng)
+local function team_fight(mine, theirs, rng, power)
 	local a_win, b_win = 0, 0
 	local lanes = {}
 	for i = 1, math.min(#mine, #theirs) do
-		local x, y = fighter(mine[i]), fighter(theirs[i])
+		local x, y = fighter(mine[i], 1.0), fighter(theirs[i], power)
 		if x and y then
 			local r = duel(x, y, rng)
 			if r > 0 then
@@ -164,6 +170,7 @@ local function blank_save()
 		version = SAVE_VERSION,
 		roster = {},
 		wins = 0, losses = 0, draws = 0, battles = 0,
+		cleared = 0,              -- chuong cao nhat da qua
 		lastResult = "",
 		updatedAt = 0,
 	}
@@ -181,7 +188,7 @@ local function read_save(user_id)
 		return blank_save()
 	end
 	local s = blank_save()
-	for _, k in ipairs({ "wins", "losses", "draws", "battles", "updatedAt" }) do
+	for _, k in ipairs({ "wins", "losses", "draws", "battles", "cleared", "updatedAt" }) do
 		s[k] = tonumber(v[k]) or 0
 	end
 	s.lastResult = tostring(v.lastResult or "")
@@ -224,6 +231,17 @@ local function default_roster(rng)
 	return out
 end
 
+--- Doi dich cua mot chuong. Seed lay tu SO CHUONG chu khong tu dong ho, nen
+--- chuong nao cung luon gap dung doi do — nguoi choi hoc duoc tran dau va doi
+--- doi hinh cho hop, dung nghia mot man choi chu khong phai boc ngau nhien.
+local function chapter_enemies(n)
+	return default_roster(Rng.new(n * 2654435761))
+end
+
+local function chapter_power(n)
+	return 1.0 + POWER_STEP * (n - 1)
+end
+
 -- ------------------------------------------------------------------- RPC
 local function rpc_set_roster(context, payload)
 	if context.user_id == nil then
@@ -250,11 +268,46 @@ local function rpc_set_roster(context, payload)
 	return nk.json_encode({ ok = true, save = s })
 end
 
-local function rpc_fight(context, payload)
+--- Danh sach chuong kem tien do. Client ve man chon chuong tu day.
+local function rpc_chapters(context, payload)
 	if context.user_id == nil then
 		error("phai dang nhap")
 	end
 	local s = read_save(context.user_id)
+	local out = {}
+	for n = 1, CHAPTERS do
+		out[n] = {
+			n = n,
+			enemies = chapter_enemies(n),
+			power = chapter_power(n),
+			cleared = (n <= s.cleared),
+			-- Chi mo chuong ke tiep. Khong cho nhay coc.
+			unlocked = (n <= s.cleared + 1),
+		}
+	end
+	return nk.json_encode({ ok = true, cleared = s.cleared,
+			total = CHAPTERS, chapters = out, save = s })
+end
+
+local function rpc_fight(context, payload)
+	if context.user_id == nil then
+		error("phai dang nhap")
+	end
+	local ok, body = pcall(nk.json_decode, payload or "{}")
+	if not ok or type(body) ~= "table" then
+		body = {}
+	end
+	local s = read_save(context.user_id)
+
+	local chapter = tonumber(body.chapter) or (s.cleared + 1)
+	chapter = math.floor(chapter)
+	if chapter < 1 or chapter > CHAPTERS then
+		error("khong co chuong " .. chapter)
+	end
+	-- Chan nhay coc: chi danh duoc chuong da qua, hoac chuong ke tiep.
+	if chapter > s.cleared + 1 then
+		error("chua mo chuong " .. chapter .. "; moi qua toi chuong " .. s.cleared)
+	end
 
 	-- Seed do MAY CHU dat. Client khong dua vao duoc, nen khong the do tim
 	-- mot seed cho ra tran thang roi chi gui seed do.
@@ -264,14 +317,20 @@ local function rpc_fight(context, payload)
 	if #s.roster ~= TEAM_SIZE then
 		s.roster = default_roster(rng)
 	end
-	local theirs = default_roster(rng)
+	local theirs = chapter_enemies(chapter)
+	local power = chapter_power(chapter)
 
-	local out, lanes, a_win, b_win = team_fight(s.roster, theirs, rng)
+	local out, lanes, a_win, b_win = team_fight(s.roster, theirs, rng, power)
 
 	s.battles = s.battles + 1
+	local unlocked = false
 	if out == 0 then
 		s.wins = s.wins + 1
 		s.lastResult = "thang"
+		if chapter == s.cleared + 1 then
+			s.cleared = chapter
+			unlocked = true
+		end
 	elseif out == 1 then
 		s.losses = s.losses + 1
 		s.lastResult = "thua"
@@ -284,7 +343,10 @@ local function rpc_fight(context, payload)
 	return nk.json_encode({
 		ok = true,
 		seed = seed,
+		chapter = chapter,
+		power = power,
 		result = out,
+		unlockedNext = unlocked,
 		opponent = theirs,
 		lanes = lanes,
 		laneWins = { mine = a_win, theirs = b_win },
@@ -344,5 +406,6 @@ end
 nk.register_req_after(after_authenticate, "AuthenticateDevice")
 
 nk.register_rpc(rpc_set_roster, "bx.set_roster")
+nk.register_rpc(rpc_chapters, "bx.chapters")
 nk.register_rpc(rpc_fight, "bx.fight")
 nk.register_rpc(rpc_selftest, "bx.selftest")

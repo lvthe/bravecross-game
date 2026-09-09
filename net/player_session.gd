@@ -140,10 +140,11 @@ func set_roster(names: Array) -> Dictionary:
 ## (permission_write = 0), nen co sua client cung khong bia duoc thanh tich.
 ##
 ## Tra ve {ok, result, opponent, lanes} khi online.
-func fight() -> Dictionary:
+func fight(chapter := 0) -> Dictionary:
 	if not online:
 		return {"ok": false, "error": "dang choi ngoai tuyen, khong danh duoc"}
-	var r := await client.call_rpc("bx.fight", {})
+	var body := {} if chapter <= 0 else {"chapter": chapter}
+	var r := await client.call_rpc("bx.fight", body)
 	if not r.ok:
 		last_error = String(r.get("error", "khong goi duoc bx.fight"))
 		return r
@@ -151,6 +152,9 @@ func fight() -> Dictionary:
 	data = _upgrade(d.get("save", {}))
 	dirty = false
 	return {"ok": true, "result": int(d.get("result", 2)),
+			"chapter": int(d.get("chapter", 0)),
+			"unlockedNext": bool(d.get("unlockedNext", false)),
+			"power": float(d.get("power", 1.0)),
 			"opponent": d.get("opponent", []), "lanes": d.get("lanes", []),
 			"laneWins": d.get("laneWins", {})}
 

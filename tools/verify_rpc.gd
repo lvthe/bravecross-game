@@ -100,6 +100,54 @@ func _init() -> void:
 	_check(w + l + d == int(ses.data.get("battles", 0)),
 			"thang + thua + hoa = so tran", "%d+%d+%d vs %d" % [w, l, d, ses.data.get("battles", 0)])
 
+	print("\n=== 3b. chuong: khong nhay coc duoc ===")
+	var ch := await ses.client.call_rpc("bx.chapters", {})
+	_check(ch.ok, "goi duoc bx.chapters", str(ch.get("error", "")))
+	var list: Array = ch.data.get("chapters", []) if ch.ok else []
+	_check(list.size() == 12, "co 12 chuong", str(list.size()))
+	var cleared := int(ch.data.get("cleared", -1)) if ch.ok else -1
+	_check(cleared >= 0, "co so chuong da qua", str(cleared))
+	if list.size() == 12:
+		var unlocked := 0
+		for c in list:
+			if bool(c.get("unlocked", false)):
+				unlocked += 1
+		_check(unlocked == cleared + 1,
+				"chi mo toi chuong ke tiep", "mo %d, da qua %d" % [unlocked, cleared])
+		_check(float(list[11].get("power", 0.0)) > float(list[0].get("power", 0.0)),
+				"chuong sau manh hon chuong dau",
+				"%.2f -> %.2f" % [list[0].get("power"), list[11].get("power")])
+		# Doi dich cua mot chuong phai co dinh: nguoi choi hoc duoc tran dau roi
+		# doi doi hinh cho hop. Boc ngau nhien moi lan thi khong con la man choi.
+		var ch2 := await ses.client.call_rpc("bx.chapters", {})
+		_check(ch2.ok and str((ch2.data.get("chapters", []) as Array)[4].get("enemies"))
+						== str(list[4].get("enemies")),
+				"doi dich cua mot chuong khong doi giua hai lan hoi")
+
+	# Nhay coc phai bi tu choi tu MAY CHU, khong phai chi an nut o client.
+	var skip := await ses.client.call_rpc("bx.fight", {"chapter": cleared + 3})
+	_check(not skip.ok, "tu choi chuong chua mo")
+	_check(String(skip.get("error", "")).contains("chua mo"), "bao dung ly do",
+			String(skip.get("error", "")))
+	var nope_ch := await ses.client.call_rpc("bx.fight", {"chapter": 999})
+	_check(not nope_ch.ok, "tu choi chuong khong ton tai")
+
+	print("\n=== 3c. qua chuong moi duoc mo chuong sau ===")
+	# Kiem LUAT chu khong kiem ket qua: thang thi cleared tang dung 1, khong
+	# thang thi giu nguyen. Kieu nay khong phu thuoc vao viec doi hinh manh yeu.
+	var before_c := int(ses.data.get("cleared", 0))
+	var fc := await ses.fight(before_c + 1)
+	_check(fc.ok, "danh duoc chuong ke tiep", str(fc.get("error", "")))
+	var after_c := int(ses.data.get("cleared", -1))
+	if int(fc.get("result", 2)) == 0:
+		_check(after_c == before_c + 1, "thang thi mo them dung 1 chuong",
+				"%d -> %d" % [before_c, after_c])
+		_check(bool(fc.get("unlockedNext", false)), "bao la vua mo chuong moi")
+	else:
+		_check(after_c == before_c, "khong thang thi khong mo them chuong",
+				"%d -> %d" % [before_c, after_c])
+		_check(not bool(fc.get("unlockedNext", true)), "khong bao mo chuong moi")
+
 	print("\n=== 4. CLIENT KHONG DUOC GHI BAN LUU ===")
 	# Day moi la phan cuong che. Khong co no thi moi thu tren chi la hinh thuc.
 	var cheat := await ses.client.save({"wins": 999999, "battles": 999999})

@@ -7,8 +7,14 @@ config_version=5
 [application]
 
 config/name="BraveCross — game moi"
-run/main_scene="res://demo/demo.tscn"
+run/main_scene="res://ui/menu.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
+
+[autoload]
+
+; Trang thai dung chung giua cac man. Doi man huy het node cua man cu, nen
+; phien choi va tien do phai nam ngoai.
+Game="*res://game/game.gd"
 
 [display]
 

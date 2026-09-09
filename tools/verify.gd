@@ -36,6 +36,10 @@ func _init() -> void:
 		return
 
 	for char_name in names:
+		# assets_ref/ khong chi chua nhan vat: `scenes/` la anh nen canh. Mot
+		# thu muc khong co <Ten>.json thi khong phai nhan vat, bo qua.
+		if not FileAccess.file_exists(ROOT + char_name + "/" + char_name + ".json"):
+			continue
 		print("\n=== ", char_name, " ===")
 		var raw = JSON.parse_string(
 				FileAccess.get_file_as_string(ROOT + char_name + "/" + char_name + ".json"))

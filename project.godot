@@ -18,8 +18,10 @@ Game="*res://game/game.gd"
 
 [display]
 
+; Ban goc thiet ke o 960x640 — ten file bo cuc cua no la
+; BattleField_<canh>_960_640.xgg, va nen canh la 1024x768.
 window/size/viewport_width=960
-window/size/viewport_height=540
+window/size/viewport_height=640
 window/stretch/mode="canvas_items"
 
 [rendering]

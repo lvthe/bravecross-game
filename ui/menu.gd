@@ -11,6 +11,7 @@ extends Control
 
 
 func _ready() -> void:
+	$Backdrop.texture = Game.load_backdrop(Game.MENU_SCENE)
 	$Buttons/Roster.pressed.connect(_on_roster)
 	$Buttons/Practice.pressed.connect(_on_practice)
 	_title.text = "BraveCross"

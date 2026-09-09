@@ -368,6 +368,16 @@ nhưng **không dùng** — `login()` đọc mã đã lưu ở `user://device_id
 lần chạy đều vào cùng một tài khoản và số liệu cộng dồn. `start()` nay nhận
 tham số `device`.
 
+## Nền cảnh
+
+Mỗi chương một nền, lấy từ bản gốc (`work/scenes.py` xuất ra 24 ảnh trên 9
+cảnh). Khung hình để **960×640** — đúng cỡ thiết kế của bản gốc, biết được từ
+tên file bố cục của nó: `BattleField_<cảnh>_960_640.xgg`.
+
+Bản gốc còn ghép thêm ~45 mảnh trang trí lên nền, mô tả trong chính file bố cục
+đó. **Chưa dựng lại được**: texture của atlas `Scene_<cảnh>.plist` không có
+trong APK lẫn OBB — nó được tải về lúc chạy từ máy chủ vá.
+
 ## Máy chủ tự xử trận (`server/modules/battle.lua`)
 
 Trước đây client đánh xong rồi tự ghi thành tích. Nay **máy chủ quyết định**:
@@ -449,7 +459,13 @@ khi phát hành. Tạo lại bằng:
 python work/export.py --all --out <thư mục>
 ```
 
-rồi chép các thư mục nhân vật cần dùng vào `assets_ref/`, và sinh lại bảng số:
+rồi chép các thư mục nhân vật cần dùng vào `assets_ref/`. Nền cảnh:
+
+```bash
+python work/scenes.py --all --out <bravecross-game>/assets_ref/scenes
+```
+
+Và sinh lại bảng số:
 
 ```bash
 python sim/export_stats.py --battles 4000

@@ -22,6 +22,35 @@ var last_fight: Dictionary = {}
 var _chapters: Array = []
 var _url := ""
 
+## Nen canh cua ban goc, xuat bang work/scenes.py. Moi chuong mot canh; het
+## thi quay vong. Ban goc co bo cuc ghep tu 45 manh nho (BattleField_*.xgg)
+## nhung TEXTURE cua nhung manh do khong co trong APK lan OBB — chung duoc tai
+## ve luc chay. Bu lai cac lop nen day man thi con du, va dung duoc ngay.
+const SCENES := [
+	"plain/plain_a01", "plain/plain_a02", "plain/plain_a03", "plain/plain_a04",
+	"siege/siege01", "siege/siege02", "zizhulin/zizhulin_background_a",
+	"lava/lava_02_01a", "lava/lava_05_01a", "devil/devil_02_01a",
+	"CBZZ/CBZZ-04-01", "tongtianta/tongtianta_background",
+]
+const SCENE_DIR := "res://assets_ref/scenes/"
+const MENU_SCENE := "main3/mainscene3_background_a"
+
+
+## Anh nen cho mot chuong. chapter <= 0 (danh tap) thi lay canh dau.
+func backdrop(chapter: int) -> Texture2D:
+	var i: int = 0 if chapter <= 0 else (chapter - 1) % SCENES.size()
+	return load_backdrop(SCENES[i])
+
+
+func load_backdrop(rel: String) -> Texture2D:
+	var path := SCENE_DIR + rel + ".png"
+	if ResourceLoader.exists(path):
+		var t := ResourceLoader.load(path)
+		if t is Texture2D:
+			return t
+	# Chua xuat nen thi thoi, khong phai loi — man van choi duoc.
+	return null
+
 
 func _ready() -> void:
 	combat = Combat.new()

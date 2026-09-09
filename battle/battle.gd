@@ -49,6 +49,7 @@ var server_result := -1
 
 func _ready() -> void:
 	label = $Info
+	$Backdrop.texture = Game.backdrop(Game.chapter)
 	combat = Combat.new()
 	var err := combat.load_data()
 	if err != "":
@@ -84,6 +85,7 @@ func _ready() -> void:
 		return
 
 	# chapter = 0 la danh tap: van dien, nhung khong xin may chu, khong tinh diem.
+	$Backdrop.texture = Game.backdrop(Game.chapter)
 	if session != null and session.online and Game.chapter > 0:
 		await _ranked(Game.chapter)
 	else:

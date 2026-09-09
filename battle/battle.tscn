@@ -8,15 +8,15 @@ script = ExtResource("1")
 [node name="Bg" type="ColorRect" parent="."]
 z_index = -10
 offset_right = 960.0
-offset_bottom = 540.0
+offset_bottom = 640.0
 color = Color(0.106, 0.118, 0.145, 1)
 
-[node name="Ground" type="ColorRect" parent="."]
-z_index = -10
-offset_top = 340.0
+[node name="Backdrop" type="TextureRect" parent="."]
+z_index = -9
 offset_right = 960.0
-offset_bottom = 540.0
-color = Color(0.145, 0.161, 0.192, 1)
+offset_bottom = 640.0
+expand_mode = 1
+stretch_mode = 6
 
 [node name="Info" type="Label" parent="."]
 offset_left = 12.0

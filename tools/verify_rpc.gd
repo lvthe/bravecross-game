@@ -154,6 +154,49 @@ func _init() -> void:
 				"%d -> %d" % [before_c, after_c])
 		_check(not bool(fc.get("unlockedNext", true)), "khong bao mo chuong moi")
 
+	print("\n=== 3d. the tran ===")
+	# The tran la he thong cua ban goc con nguyen ca so lieu (moi cap ghi ro tang
+	# gi, bao nhieu, cho CHO DUNG nao). Phan kiem o day la LUAT — mo roi moi dung
+	# duoc, du vang moi nang duoc, cho dung phai la 1/2/3 — chu khong kiem con so
+	# buff, vi con so la cua ban goc chu khong phai cua ta.
+	var fm := await ses.formations()
+	_check(fm.ok, "goi duoc bx.formations", str(fm.get("error", "")))
+	var flist: Array = fm.data.get("formations", []) if fm.ok else []
+	_check(flist.size() == 12, "co 12 the tran", str(flist.size()))
+	var jichu := {}
+	var locked := 0
+	for row in flist:
+		if String(row.get("name", "")) == "jichu":
+			jichu = row
+		if not bool(row.get("owned", false)):
+			locked += 1
+	_check(not jichu.is_empty() and bool(jichu.get("owned", false)),
+			"jichu co san tu dau")
+	_check(locked == 11, "cac the tran con lai chua mo", str(locked))
+	
+	# Chua mo thi MAY CHU phai tu choi, khong phai chi an nut o client.
+	var pick_locked := await ses.client.call_rpc("bx.set_formation",
+			{"formation": "yanyue"})
+	_check(not pick_locked.ok, "tu choi chon the tran chua mo")
+	var pick_bad := await ses.client.call_rpc("bx.set_formation",
+			{"formation": "KhongCoTran"})
+	_check(not pick_bad.ok, "tu choi ten the tran khong co")
+	
+	# Cho dung: 1/2/3 thi nhan, ngoai khoang thi tu choi.
+	var pl := await ses.set_placement([3, 2, 1, 1])
+	_check(pl.ok, "doi duoc cho dung", str(pl.get("error", "")))
+	_check(ses.placement_of(0) == 3 and ses.placement_of(2) == 1,
+			"cho dung vao dung ban luu",
+			"%d,%d" % [ses.placement_of(0), ses.placement_of(2)])
+	var pl_bad := await ses.client.call_rpc("bx.set_placement",
+			{"placement": [0, 1, 1, 1]})
+	_check(not pl_bad.ok, "tu choi cho dung ngoai 1..3")
+	
+	# Va tran van danh duoc sau khi doi cho dung.
+	var f_after := await ses.fight()
+	_check(f_after.ok, "van danh duoc tran sau khi doi cho dung",
+			str(f_after.get("error", "")))
+	
 	print("\n=== 4. CLIENT KHONG DUOC GHI BAN LUU ===")
 	# Day moi la phan cuong che. Khong co no thi moi thu tren chi la hinh thuc.
 	# Doc lai ngay truoc khi thu: cac muc tren vua danh them tran, nen con so

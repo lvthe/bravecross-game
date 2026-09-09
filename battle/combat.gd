@@ -74,10 +74,12 @@ class Fighter extends RefCounted:
 	var taken: float          ## he so sat thuong PHAI CHIU (thuoc ben chiu)
 	var pierce: float         ## bo qua bao nhieu phan giap doi phuong
 	var lifesteal: float
+	## Doi lai bao nhieu sat thuong (the tran AllHeroReboundDamagePercent).
+	var reflect: float
 	var level: int
 
 	func _init(row: Dictionary, base: Dictionary, rules: Dictionary,
-			lv: int = 1) -> void:
+			lv: int = 1, buffs: Dictionary = {}) -> void:
 		level = maxi(1, lv)
 		name = row.get("HeroSprite", "?")
 		job = int(row.get("HeroJobType", 0))
@@ -107,11 +109,32 @@ class Fighter extends RefCounted:
 		taken = float(e.get("taken", 1.0))
 		pierce = float(e.get("pierce", 0.0))
 		lifesteal = float(e.get("lifesteal", 0.0))
+		reflect = 0.0
 		reach = 0.0
 		min_reach = 0.0
 		move_speed = float(base.get("MovingSpeed", 30))
 		battle_row = 1
 		units = 1
+
+		# --- the tran (KDBGameFormationConfig cua ban goc)
+		#
+		# Moi cap cua moi the tran ghi ro tang gi, bao nhieu, cho CHO DUNG nao
+		# (PlacementType 1/2/3 = hang truoc/giua/sau). Bang buff khong phai do
+		# ta dat ra — no la cua ban goc, chi doi ten cot.
+		#
+		# `dmg_pct` nhan thang vao cong thay vi vao sat thuong cuoi: cong thuc
+		# giam thuong kieu chia tuyen tinh theo cong nen hai cach ra cung so.
+		if not buffs.is_empty():
+			hp_max = (hp_max + float(buffs.get("hp", 0.0))) \
+					* (1.0 + float(buffs.get("hp_pct", 0.0)))
+			var gain := 1.0 + float(buffs.get("dmg_pct", 0.0))
+			ap_min = (ap_min + float(buffs.get("ap", 0.0))) * gain
+			ap_max = (ap_max + float(buffs.get("ap", 0.0))) * gain
+			defence = (defence + float(buffs.get("dp", 0.0))) \
+					* (1.0 + float(buffs.get("dp_pct", 0.0)))
+			taken *= 1.0 - float(buffs.get("taken_pct", 0.0))
+			lifesteal += float(buffs.get("lifesteal", 0.0))
+			reflect += float(buffs.get("reflect", 0.0))
 		reset()
 
 	func reset() -> void:
@@ -147,6 +170,10 @@ class Fighter extends RefCounted:
 		target.hp -= dmg
 		if lifesteal > 0.0:
 			hp = minf(hp_max, hp + dmg * lifesteal)
+		# Phan don: doi lai theo sat thuong DA CHIU, va khong doi tiep lan nua —
+		# khong thi hai ben cung co phan don la thanh vong lap.
+		if target.reflect > 0.0:
+			hp -= dmg * target.reflect
 		return {"damage": dmg, "skill": fired, "crit": crit}
 
 
@@ -155,6 +182,8 @@ var rules: Dictionary = {}
 var heroes: Dictionary = {}          ## HeroSprite -> ban ghi
 var armies: Dictionary = {}          ## SpriteName -> ban ghi quan chung
 var army_order: PackedStringArray = []
+var formations: Dictionary = {}          ## ten the tran -> ban ghi
+var formation_order: PackedStringArray = []
 var reference: Array = []
 var order: PackedStringArray = []    ## giu dung thu tu trong file
 
@@ -181,15 +210,18 @@ func load_data(path: String = DATA_PATH) -> String:
 	for r in parsed.get("armies", []):
 		armies[r["SpriteName"]] = r
 		army_order.append(r["SpriteName"])
+	formations = parsed.get("formations", {})
+	formation_order = PackedStringArray(parsed.get("formationOrder", []))
 	if heroes.is_empty():
 		return "%s khong co tuong nao" % path
 	return ""
 
 
-func make(hero_name: String, level: int = 1) -> Fighter:
+func make(hero_name: String, level: int = 1,
+		buffs: Dictionary = {}) -> Fighter:
 	if not heroes.has(hero_name):
 		return null
-	return Fighter.new(heroes[hero_name], base, rules, level)
+	return Fighter.new(heroes[hero_name], base, rules, level, buffs)
 
 
 ## Cap toi da, lay tu bo du lieu (GameHeroMaxLevelConfig o pham chat 1).
@@ -230,6 +262,22 @@ func make_army(sprite: String, level: int = 1) -> Fighter:
 	f.battle_row = int(a.get("Location", 1))
 	f.units = maxi(1, int(a.get("MaxUnit", 1)))
 	return f
+
+
+## Buff cua the tran `name` o cap `level` cho cho dung `place` (1/2/3).
+##
+## Khong co the tran do, hoac cap ngoai bang, thi khong buff gi — im lang tra
+## bang rong chu khong doan.
+func formation_buffs(fname: String, level: int, place: int) -> Dictionary:
+	var f: Dictionary = formations.get(fname, {})
+	if f.is_empty():
+		return {}
+	var levels: Array = f.get("levels", [])
+	if levels.is_empty():
+		return {}
+	var lv: int = clampi(level, 0, levels.size() - 1)
+	var by_place: Dictionary = (levels[lv] as Dictionary).get("buffs", {})
+	return by_place.get(str(place), {})
 
 
 ## Quan chung cua mot hang (1 truoc, 2 giua, 3 sau).

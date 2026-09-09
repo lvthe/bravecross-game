@@ -97,12 +97,23 @@ def main():
         rows.append((name, text))
         failed += 1 if bad else 0
 
-    # Hai bo chay bang Python, khong can Godot lan may chu.
-    for name, rel in (('mo phong Python', os.path.join('sim', 'test_sim.py')),
-                      ('luat may chu (Lua)', os.path.join('tools', 'test_server_lua.py'))):
+    # Ba bo chay bang Python. Hai bo dau khong can gi; bo thu ba can may chu
+    # THAT — no do dung cai ma ban gia cua lupa khong do duoc: runtime cua
+    # Nakama giu moi so duoi dang float64, con lupa thi co so nguyen 64 bit.
+    py_steps = [('mo phong Python', os.path.join('sim', 'test_sim.py'), False),
+                ('luat may chu (Lua)', os.path.join('tools', 'test_server_lua.py'), False),
+                ('tran dan tran (may chu that)',
+                 os.path.join('tools', 'verify_field_live.py'), True)]
+    for name, rel, needs_server in py_steps:
+        if needs_server and not online:
+            rows.append((name, 'bo qua (khong co may chu)'))
+            continue
         print('  ... %s' % name, flush=True)
         try:
-            out = subprocess.run([sys.executable, os.path.join(ROOT, rel)],
+            argv = [sys.executable, os.path.join(ROOT, rel)]
+            if needs_server:
+                argv += ['--url', a.url]
+            out = subprocess.run(argv,
                                  capture_output=True, text=True, encoding='utf-8',
                                  errors='replace', timeout=600).stdout or ''
             m = SCORE.search(out)

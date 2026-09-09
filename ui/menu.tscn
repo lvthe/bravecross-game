@@ -47,6 +47,10 @@ theme_override_constants/separation = 12
 custom_minimum_size = Vector2(170, 50)
 text = "Doi hinh"
 
+[node name="Formation" type="Button" parent="Buttons"]
+custom_minimum_size = Vector2(170, 50)
+text = "The tran"
+
 [node name="Practice" type="Button" parent="Buttons"]
 custom_minimum_size = Vector2(170, 50)
 text = "Danh tap"

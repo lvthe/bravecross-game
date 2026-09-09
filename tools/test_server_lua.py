@@ -241,6 +241,104 @@ def main():
               '%-18s vs %-18s  Lua %6.2f%%  Python %6.2f%%  (lech %.2f, cho phep %.2f)'
               % (e['a'], e['b'], lua, py, abs(lua - py), tol))
 
+    print('\n=== 7b. the tran ===')
+    # The tran la he thong cua ban goc con nguyen ca so lieu: moi cap ghi ro
+    # tang gi, bao nhieu, cho CHO DUNG nao. Phan kiem o day la LUAT — mo roi
+    # moi dung duoc, du vang moi nang duoc, cho dung phai la 1/2/3 — chu khong
+    # kiem con so buff (con so la cua ban goc, khong phai cua ta).
+    fm = rpcs['bx.formations'](ctx, None)
+    flist = fm['formations']
+    n_form = len(flist)
+    check(n_form == 12, 'co 12 the tran', n_form)
+    by = {}
+    for i in range(1, n_form + 1):
+        by[flist[i]['name']] = flist[i]
+    check('jichu' in by, 'co the tran vao cua jichu')
+    check(bool(by['jichu']['owned']), 'jichu co san tu dau')
+    check(bool(by['jichu']['active']), 'jichu la the tran dang dung')
+    check(int(by['jichu']['unlockGold']) == 0, 'jichu mien phi mo',
+          by['jichu']['unlockGold'])
+    locked = [n for n in by if not by[n]['owned']]
+    check(len(locked) == n_form - 1, 'nhung the tran khac deu chua mo',
+          len(locked))
+
+    # Cai manh phai dat hon cai vao cua — do la ca su can bang cua he nay.
+    check(int(by['yanyue']['unlockGold']) > int(by['jichu']['unlockGold']),
+          'the tran manh thi dat hon', '%s vs %s'
+          % (by['yanyue']['unlockGold'], by['jichu']['unlockGold']))
+
+    # Chua mo thi khong chon duoc, va khong co vang thi khong mo duoc.
+    for fn, why in (('yanyue', 'the tran chua mo'), ('KhongCoTran', 'ten khong co')):
+        ok = True
+        try:
+            rpcs['bx.set_formation'](ctx, L.table(formation=fn))
+            ok = False
+        except lupa.LuaError:
+            pass
+        check(ok, 'tu choi chon %s' % why)
+
+    broke = L.table(user_id='u-ngheo-tran')
+    rpcs['bx.chapters'](broke, None)
+    ok = True
+    try:
+        rpcs['bx.upgrade_formation'](broke, L.table(formation='yanyue'))
+        ok = False
+    except lupa.LuaError:
+        pass
+    check(ok, 'thieu vang thi khong mo duoc the tran')
+
+    # Nang jichu: cap 1 phai tru dung vang va buff phai manh len that.
+    # Kiem gia the tran thi phai co du vang that: danh lai chuong 1 vai lan.
+    # (Gia jichu cap 1 la 100, con qua mot chuong duoc 60 — nen day cung la
+    # phep thu rang duong go bang danh lai co thuc su di toi dau.)
+    for _ in range(20):
+        if int(rpcs['bx.chapters'](ctx, None)['save']['gold']) >= 100:
+            break
+        rpcs['bx.fight'](ctx, L.table(chapter=1))
+    save_now = rpcs['bx.chapters'](ctx, None)['save']
+    gold_now = int(save_now['gold'])
+    check(gold_now >= 100, 'danh lai du lau thi mua duoc the tran', gold_now)
+    b0 = rpcs['bx.formations'](ctx, None)
+    hp0 = 0
+    for i in range(1, n_form + 1):
+        if b0['formations'][i]['name'] == 'jichu':
+            hp0 = float(b0['formations'][i]['buffs']['hp'] or 0)
+    if gold_now > 0:
+        r_up = rpcs['bx.upgrade_formation'](ctx, L.table(formation='jichu'))
+        check(int(r_up['level']) == 1, 'jichu len cap 1', r_up['level'])
+        check(int(r_up['save']['gold']) == gold_now - int(r_up['cost']),
+              'tru dung so vang', '%d - %d' % (gold_now, int(r_up['cost'])))
+        b1 = rpcs['bx.formations'](ctx, None)
+        hp1 = 0
+        for i in range(1, n_form + 1):
+            if b1['formations'][i]['name'] == 'jichu':
+                hp1 = float(b1['formations'][i]['buffs']['hp'] or 0)
+        check(hp1 > hp0, 'len cap thi buff manh len that',
+              '%s -> %s' % (hp0, hp1))
+    else:
+        print('  (chua co vang de nang the tran — bo qua)')
+
+    # Cho dung: 1/2/3 thi nhan, ngoai khoang thi tu choi.
+    r_pl = rpcs['bx.set_placement'](ctx, L.table(placement=L.table(3, 2, 1, 1)))
+    check([r_pl['placement'][i] for i in range(1, 5)] == [3, 2, 1, 1],
+          'nhan cho dung hop le')
+    saved = rpcs['bx.chapters'](ctx, None)['save']
+    check([saved['placement'][i] for i in range(1, 5)] == [3, 2, 1, 1],
+          'cho dung song sot trong ban luu')
+    for bad, why in (((0, 1, 1, 1), 'cho dung 0'), ((1, 1, 1, 9), 'cho dung 9')):
+        ok = True
+        try:
+            rpcs['bx.set_placement'](ctx, L.table(placement=L.table(*bad)))
+            ok = False
+        except lupa.LuaError:
+            pass
+        check(ok, 'tu choi %s' % why)
+
+    # Va tran van danh duoc sau khi doi the tran lan cho dung.
+    r_f = rpcs['bx.fight'](ctx, L.table(chapter=1))
+    check(int(r_f['result']) in (0, 1, 2), 'van danh duoc tran sau khi doi',
+          r_f['result'])
+
     print('\n=== 8. tran DAN TRAN: Lua khop Python tung tran ===')
     # Khac muc 7 o cho day so TUNG TRAN chu khong so ti le tren 4000 tran.
     # Hai ban dung chung mot bo LCG nen cung seed phai ra dung cung ket qua,

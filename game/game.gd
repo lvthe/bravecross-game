@@ -9,6 +9,7 @@ extends Node
 
 const MENU := "res://ui/menu.tscn"
 const ROSTER := "res://ui/roster.tscn"
+const FORMATION := "res://ui/formation.tscn"
 const BATTLE := "res://battle/battle.tscn"
 
 var session: PlayerSession = null

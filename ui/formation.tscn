@@ -1,0 +1,86 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://ui/formation.gd" id="1"]
+
+[node name="Formation" type="Control"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1")
+
+[node name="Bg" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.106, 0.118, 0.145, 1)
+
+[node name="Backdrop" type="TextureRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+expand_mode = 1
+stretch_mode = 6
+modulate = Color(0.62, 0.62, 0.66, 1)
+
+[node name="Title" type="Label" parent="."]
+offset_left = 20.0
+offset_top = 14.0
+offset_right = 940.0
+offset_bottom = 38.0
+text = "The tran - chon the tran va cho dung cua tung tuong"
+
+[node name="Status" type="Label" parent="."]
+offset_left = 20.0
+offset_top = 40.0
+offset_right = 940.0
+offset_bottom = 62.0
+text = "..."
+
+[node name="Buttons" type="HBoxContainer" parent="."]
+offset_left = 22.0
+offset_top = 60.0
+offset_right = 940.0
+offset_bottom = 110.0
+theme_override_constants/separation = 12
+
+[node name="Back" type="Button" parent="Buttons"]
+custom_minimum_size = Vector2(170, 50)
+text = "Quay lai"
+
+[node name="PlacePanel" type="Panel" parent="."]
+offset_left = 14.0
+offset_top = 116.0
+offset_right = 946.0
+offset_bottom = 268.0
+
+[node name="PlaceTitle" type="Label" parent="."]
+offset_left = 34.0
+offset_top = 126.0
+offset_right = 926.0
+offset_bottom = 148.0
+text = "Cho dung: 1 hang truoc, 2 hang giua, 3 hang sau"
+
+[node name="Places" type="VBoxContainer" parent="."]
+offset_left = 34.0
+offset_top = 152.0
+offset_right = 926.0
+offset_bottom = 262.0
+theme_override_constants/separation = 4
+
+[node name="ListPanel" type="Panel" parent="."]
+offset_left = 14.0
+offset_top = 276.0
+offset_right = 946.0
+offset_bottom = 630.0
+
+[node name="Scroll" type="ScrollContainer" parent="."]
+offset_left = 34.0
+offset_top = 288.0
+offset_right = 926.0
+offset_bottom = 618.0
+
+[node name="Grid" type="GridContainer" parent="Scroll"]
+custom_minimum_size = Vector2(880, 0)
+columns = 1
+theme_override_constants/h_separation = 10
+theme_override_constants/v_separation = 4

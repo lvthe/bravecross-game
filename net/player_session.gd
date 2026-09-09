@@ -21,7 +21,7 @@ extends Node
 
 ## Doi so nay khi cau truc ban luu thay doi, de con biet duong nang cap.
 ## Phai khop SAVE_VERSION ben server/modules/battle.lua.
-const SAVE_VERSION := 3
+const SAVE_VERSION := 4
 
 var client: NakamaClient = null
 var data: Dictionary = {}
@@ -50,6 +50,13 @@ static func blank() -> Dictionary:
 		"cleared": 0,                 # chuong cao nhat da qua
 		"gold": 0,
 		"levels": {},                 # ten tuong -> cap
+		# The tran (KDBGameFormationConfig cua ban goc). `placement` la cho dung
+		# cua tung tuong: 1 truoc, 2 giua, 3 sau. Cho dung quyet ca vi tri tren
+		# san lan buff nao cua the tran ap vao.
+		"formation": "jichu",
+		"formationLevel": 0,
+		"formations": {"jichu": 0},   # ten the tran -> cap da nang
+		"placement": [1, 1, 2, 3],
 		"lastResult": "",
 		"updatedAt": 0,
 	}
@@ -110,6 +117,24 @@ func _upgrade(raw: Variant) -> Dictionary:
 			# tu choi chinh kieu String.
 			roster.append(str(x))
 	out["roster"] = roster
+	# The tran. Cung ly do nhu "cleared" o tren: thieu mot ten o day la truong
+	# do bien mat lang le — may chu van giu ma client doc ra khong thay.
+	out["formation"] = String(d.get("formation", "jichu"))
+	out["formationLevel"] = int(d.get("formationLevel", 0))
+	var owned := {}
+	if typeof(d.get("formations")) == TYPE_DICTIONARY:
+		for name in d["formations"]:
+			owned[str(name)] = maxi(0, int(d["formations"][name]))
+	if owned.is_empty():
+		owned = {"jichu": 0}
+	out["formations"] = owned
+	var spots: Array = []
+	if typeof(d.get("placement")) == TYPE_ARRAY:
+		for x in d["placement"]:
+			spots.append(clampi(int(x), 1, 3))
+	while spots.size() < 4:
+		spots.append(1)
+	out["placement"] = spots
 	return out
 
 
@@ -187,6 +212,63 @@ func level_up(hero_name: String) -> Dictionary:
 func level_of(hero_name: String) -> int:
 	var lv: Dictionary = data.get("levels", {})
 	return maxi(1, int(lv.get(hero_name, 1)))
+
+
+## The tran dang dung, va cap cua no.
+func formation() -> String:
+	return String(data.get("formation", "jichu"))
+
+
+func formation_level() -> int:
+	return maxi(0, int(data.get("formationLevel", 0)))
+
+
+## Cho dung cua tuong thu `i` trong doi hinh: 1 truoc, 2 giua, 3 sau.
+func placement_of(i: int) -> int:
+	var spots: Array = data.get("placement", [])
+	if i < 0 or i >= spots.size():
+		return 1
+	return clampi(int(spots[i]), 1, 3)
+
+
+## Danh sach the tran: cai nao da mo, cap may, nang tiep het bao nhieu.
+func formations() -> Dictionary:
+	if not online:
+		return {"ok": false, "error": "chua noi duoc may chu"}
+	var r := await client.call_rpc("bx.formations", {})
+	if r.ok:
+		data = _upgrade(r.data.get("save", {}))
+	return r
+
+
+## Chon the tran dang dung. May chu kiem da mo hay chua.
+func set_formation(name: String) -> Dictionary:
+	if not online:
+		return {"ok": false, "error": "chua noi duoc may chu"}
+	var r := await client.call_rpc("bx.set_formation", {"formation": name})
+	if r.ok:
+		data = _upgrade(r.data.get("save", {}))
+	return r
+
+
+## Mo hoac nang the tran. May chu tru vang, client khong tu tinh.
+func upgrade_formation(name: String) -> Dictionary:
+	if not online:
+		return {"ok": false, "error": "chua noi duoc may chu"}
+	var r := await client.call_rpc("bx.upgrade_formation", {"formation": name})
+	if r.ok:
+		data = _upgrade(r.data.get("save", {}))
+	return r
+
+
+## Doi cho dung cua bon tuong.
+func set_placement(spots: Array) -> Dictionary:
+	if not online:
+		return {"ok": false, "error": "chua noi duoc may chu"}
+	var r := await client.call_rpc("bx.set_placement", {"placement": spots})
+	if r.ok:
+		data = _upgrade(r.data.get("save", {}))
+	return r
 
 
 func gold() -> int:

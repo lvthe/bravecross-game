@@ -554,6 +554,143 @@ chung một bộ sinh số — chưa làm.
 Khoá máy chủ vẫn là `defaultkey`. Trận đấu chưa có người thật đối đầu — đội
 địch do máy chủ bốc từ bảng tướng, không phải đội của người chơi khác.
 
+## Trận dàn trận: quân lính, hàng, và trọng tài xử đúng cái đang chiếu
+
+Trước đây máy chủ ghép từng cặp tướng đánh tay đôi, trong khi màn trận bên client đã là hai đội quân dàn
+theo ba hàng. **Hai bên xử hai trò chơi khác nhau** — con số trên màn hình không còn nghĩa gì. Nay cả ba bản
+cài đặt chạy cùng một mô hình có toạ độ, tầm đánh, tốc độ và hàng trước/giữa/sau.
+
+Số liệu lấy từ `KDBGameArmyConfig.xgg`:
+
+| cột | ý nghĩa |
+| --- | --- |
+| `MaxUnit` | 2–4 — mỗi quân chủng là một **tốp** lính, không phải một người |
+| `Location` | 1 hàng trước, 2 hàng giữa, 3 hàng sau |
+| `MaxAttackDistance` | 30 cận chiến, 300–500 bắn xa, 700–800 công thành |
+| `MinAttackDistance` | 30/80 ở vài loại — không đánh được mục tiêu quá gần |
+
+### Công thức giảm thương: chia, không phải trừ
+
+Bảng gốc tự nó bác bỏ cách đọc kiểu trừ: quân chủng có `DpBase` 110–200 trong khi `MaxApBase` của chúng chỉ
+5–100. Đọc kiểu trừ thì **ngay ở cấp 1** một tốp `DefenderN` (giáp 110) đã miễn nhiễm với mọi đơn vị trong
+game — bản gốc không thể chạy như thế. Nên công thức của nó phải là kiểu tỉ lệ:
+
+```
+sát thương = công × k / (k + giáp)        k = 100
+```
+
+Đo bằng `sim/field.py`:
+
+| công thức | quân cấp 1 → 12 | hoà | trận trung bình |
+| --- | --- | --- | --- |
+| trừ | 1 → 12 | 18% → 53% | 190 → 380 giây |
+| chia | 1 → 18 | 0–2% | 53 → 118 giây |
+
+Đổi công thức không động gì tới cân bằng giữa các tướng (tỉ lệ thắng vẫn trải 3%–94% y như cũ), vì mọi tướng
+đều dùng chung `DpBase` = 30 — với chúng thì giáp gần như một hằng số.
+
+Đo lại trên client, 300 trận đội hình gương:
+
+| | trái | phải | hoà | trận trung bình |
+| --- | --- | --- | --- | --- |
+| trước | 36,3% | 42,8% | 21,0% | 192,5 giây |
+| sau | 50,7% | 49,3% | **0,0%** | **91,9 giây** |
+
+### Quân lính có cấp
+
+Ở cấp 1 quân lính yếu hơn tướng cả chục lần (công 5–100 so với 180–720). Bảng gốc có sẵn cột tăng mỗi cấp
+(`HpGrowthValue`, `MinApGrowthValue`, …); dùng chung để kéo quân lính về cùng thang với tướng. Cấp gốc là 6,
+chương sau thì quân cứng thêm.
+
+## Thế trận (`KDBGameFormationConfig.xgg`)
+
+Đây là một trong số ít hệ thống của bản gốc **còn nguyên cả số liệu**. Kỹ năng riêng của tướng thì bảng gốc
+chỉ lưu cái *tên* (hiệu ứng nằm ở server của nó, không có trong tay) — còn ở đây mỗi cấp của mỗi thế trận ghi
+rõ tăng cái gì, tăng bao nhiêu, cho **chỗ đứng** nào.
+
+12 thế trận, mỗi cái một số cấp: `jichu` (cơ bản), `wuxing`, `zhenwuqijie`, `ershibaxingxiu` tới cấp 20;
+`bagua`, `tiangang`, `beidou` tới cấp 30; `heyi`, `yanyue`, `fangyuan`, `zhuixing`, `yulin` tới cấp 50.
+
+`PlacementType` 1/2/3 **chính là** `Location` 1/2/3 của bảng quân chủng — hàng trước/giữa/sau. Nghĩa là thế
+trận buff **theo hàng**, khớp đúng với cách dàn quân. Và tên buff đều bắt đầu bằng `AllHero`, nên chúng áp cho
+**tướng**, theo chỗ người chơi đặt tướng đó.
+
+Bốn kiểu trị số, đọc từ chính số liệu:
+
+| trường | nghĩa |
+| --- | --- |
+| `Promote` | cộng thẳng (HP +200 mỗi cấp ở `jichu`) |
+| `PromotePercent` | hệ số kiểu 1.003 → tăng 0,3% |
+| `PromotePercentZero` | phần từ 0: 0.003 → tăng 0,3% |
+| `PromoteRates` | điểm phần trăm: 5 → tăng 5% |
+
+Chín loại buff đổi được sang mô hình này: máu (cộng và %), công, giáp (cộng và %), sát thương %, giảm
+thương %, hút máu, phản đòn. Ba loại **chưa** dùng tới, và không đoán bừa: `AllHeroReducingControl` (mô hình
+này không có hiệu ứng khống chế) và nhóm `Melee`/`Arrow`/`Magic` (chưa chia loại sát thương). Chúng vẫn được
+xuất ra để sau này làm tiếp.
+
+### Thế trận đổi được kết quả thật
+
+Hai bên **cùng một đội hình tướng**, chỉ khác thế trận và chỗ đứng, 120 trận mỗi ô:
+
+| đội trái có gì | thắng | thua |
+| --- | --- | --- |
+| không thế trận | 54% | 45% |
+| `jichu` cấp 1 | 59% | 40% |
+| `jichu` cấp 10 | 88% | 11% |
+| `jichu` cấp 20 | 91% | 8% |
+| `jichu` cấp 10, cả bốn hàng trước | 88% | 11% |
+| `jichu` cấp 10, cả bốn hàng sau | 83% | 16% |
+
+(54% chứ không phải 50% vì hai bên vẫn bốc quân lính khác nhau — đó là mốc gốc chung cho cả bảng.)
+
+Nâng thế trận là một đường mạnh lên rõ rệt. Chỗ đứng thì nhạt hơn với `jichu` vì nó buff gần đều cả ba hàng;
+các thế trận chỉ buff một hàng (`yanyue` dồn hết vào hàng trước) làm lựa chọn này sắc hơn nhiều.
+
+### Chỗ đứng là một lựa chọn thật
+
+Chỗ đứng quyết cả hai thứ: đứng ở đâu trên sân (hàng sau thì lâu bị đánh hơn) và ăn buff nào của thế trận.
+Đổi ở màn **Thế trận**, máy chủ giữ trong bản lưu.
+
+### Giá thì đổi, buff thì không
+
+Giá thế trận của bản gốc tính bằng trăm nghìn tới hàng triệu vàng, còn nền kinh tế ở đây mỗi chương cho 60
+vàng. Nên giá chia cho 1000 — giữ nguyên **tỉ lệ** giữa các thế trận, để cái mạnh vẫn đắt: `jichu` 100 vàng
+một cấp, `yanyue` 7500 vàng mới mở. Giá đó tự nó là cửa khoá, không cần khoá riêng.
+
+Trị số buff thì giữ **nguyên số của bản gốc**: chúng đều là phần trăm hoặc cộng vào chỉ số gốc, mà chỉ số gốc
+ở đây cũng là chỉ số gốc của bản gốc (`HpBase` 1000), nên dùng thẳng được.
+
+## Bộ sinh số phải giống nhau ở cả ba nơi
+
+Bộ LCG cũ nhân với 1103515245 làm tích chạm 2,4e18 — **quá 2^53**. Runtime Lua của Nakama (gopher-lua) giữ
+mọi số dưới dạng float64, chỉ biểu diễn chính xác số nguyên tới 2^53, nên cùng một seed sẽ cho hai chuỗi khác
+nhau giữa Lua, Python và GDScript. Đổi sang Park-Miller (hệ số 16807) giữ tích dưới 3,6e13 nên cả ba tính ra
+đúng cùng một số.
+
+Nhờ vậy thêm được phép đối chiếu chặt hơn hẳn: `bx.fieldtest` so **từng trận** — kết quả, số người còn sống,
+số giây — chứ không chỉ so tỉ lệ thắng trên nhiều trận như `bx.selftest`.
+
+Và bài kiểm đó phải chạy với **Nakama thật**:
+
+```bash
+python tools/verify_field_live.py
+```
+
+`tools/test_server_lua.py` chạy module qua `lupa`, mà lupa nhúng một bản Lua có **số nguyên 64 bit** — nó sẽ
+không bao giờ phát hiện ra sai khác kiểu này. Đây đúng là loại lỗi mà máy giả từng che mất một lần rồi.
+
+## `sim/field.py` — bản chuẩn và cũng là cái thước
+
+Trận dàn trận có ba bản cài đặt: `sim/field.py` (Python), `battle/` (client) và `server/modules/battle.lua`
+(máy chủ). Bản Python là bản chuẩn, và nó chạy 400 trận trong vài giây thay vì mười phút qua Godot — nên mọi
+con số cân, cấp quân lính, công thức giảm thương đều đo ở đây trước.
+
+```bash
+python sim/field.py --sim 400 --mirror
+python sim/field.py --sweep          # quét công thức giảm thương × cấp quân lính
+```
+
 ## Bản quyền
 
 `assets_ref/` (art) và `data_ref/` (bảng số) đều lấy từ bản gốc, **có bản
@@ -575,6 +712,7 @@ Art giao diện:
 ```bash
 python work/scenes.py --raw <...>/assets/png/background --out <bravecross-game>/assets_ref/ui
 ```
+
 
 Và sinh lại bảng số:
 

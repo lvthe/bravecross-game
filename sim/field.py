@@ -364,15 +364,15 @@ def lua_battle(hero_by_name, army_rows, base, rules, mine, theirs,
             lv = (levels.get(name, 1) if t == 0 else 1)
             # Cho dung quyet ca hai thu: dung o dau tren san, va an buff nao
             # cua the tran. Chi doi cua NGUOI CHOI co the tran.
-            place = place_of[i] if i < len(place_of) else 1
-            bf = (formation_buffs(buffs_doc, formation, formation_level, place)
+            spot = place_of[i] if i < len(place_of) else 1
+            bf = (formation_buffs(buffs_doc, formation, formation_level, spot)
                   if t == 0 and formation else {})
             f = Fighter(hero_by_name[name], base, rules, level=lv, buffs=bf)
             f.reach = 0.0
             f.min_reach = 0.0
             f.move_speed = float(base['MovingSpeed'])
             # Tuong dung nhinh len truoc top linh cung hang.
-            back = (place - 1) * ROW_BACK
+            back = (spot - 1) * ROW_BACK
             y = MID_Y + (float(i) - (len(names) - 1) * 0.5) * ROW_GAP
             x = (LEFT_X + 52.0 - back) if t == 0 else (RIGHT_X - 52.0 + back)
             teams[t].append(Unit(f, t, x, y))

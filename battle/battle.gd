@@ -240,7 +240,7 @@ func _spawn(with_art := true) -> void:
 				_add_unit(combat.make_army(name, army_lv), t,
 						_place(t, proto.battle_row, k, proto.units), name, with_art)
 
-		# --- tuong: dung cung hang dau, tach ra hai ben cho de nhin
+		# --- tuong: moi nguoi dung o CHO DUNG cua minh (1 truoc, 2 giua, 3 sau)
 		for i in roster[t].size():
 			var hero_name: String = roster[t][i]
 			# Doi cua nguoi choi dung cap that; doi dich luon cap 1 (do manh
@@ -248,10 +248,19 @@ func _spawn(with_art := true) -> void:
 			var lv := 1
 			if t == 0 and session != null:
 				lv = session.level_of(hero_name)
+			# Cho dung quyet ca hai thu: dung o dau tren san, va an buff nao cua
+			# the tran. Chi doi cua NGUOI CHOI co the tran.
+			var spot := 1
+			var buffs: Dictionary = {}
+			if t == 0 and session != null:
+				spot = session.placement_of(i)
+				buffs = combat.formation_buffs(
+						session.formation(), session.formation_level(), spot)
 			var y: float = MID_Y + (float(i) - (roster[t].size() - 1) * 0.5) * ROW_GAP
-			# Tuong dung nhinh len truoc top linh hang dau, khong dung de len nhau.
-			var x: float = (LEFT_X + 52.0) if t == 0 else (RIGHT_X - 52.0)
-			_add_unit(combat.make(hero_name, lv), t, Vector2(x, y),
+			# Tuong dung nhinh len truoc top linh cung hang, khong de len nhau.
+			var back := (spot - 1) * ROW_BACK
+			var x: float = (LEFT_X + 52.0 - back) if t == 0 else (RIGHT_X - 52.0 + back)
+			_add_unit(combat.make(hero_name, lv, buffs), t, Vector2(x, y),
 					hero_name, with_art)
 	_refresh()
 

@@ -218,7 +218,13 @@ class Formations(object):
                 # PromotePercent ghi kieu 1.003 nen phai tru 1; hai cai kia da
                 # la phan tu 0. PromoteRates tinh bang diem phan tram.
                 if 'PromotePercent' in sk:
-                    v = float(sk['PromotePercent']) - 1.0
+                    # Truong nay ghi kieu 1.003 (tang 0,3%) nen phai tru 1.
+                    # Nhung so 0 o day KHONG phai he so 0 — no la "chua co buff"
+                    # (cap 0 cua jichu ghi 0 o moi dong phan tram). Tru 1 cho no
+                    # thanh -1.0, tuc la nhan giap voi 0: tuong hang truoc mat
+                    # sach giap ngay khi vao game.
+                    raw = float(sk['PromotePercent'])
+                    v = 0.0 if raw == 0.0 else raw - 1.0
                 elif 'PromotePercentZero' in sk:
                     v = float(sk['PromotePercentZero'])
                 else:

@@ -23,7 +23,7 @@ local data = require("hero_data")
 local COLLECTION = "player"
 local KEY = "save"
 local TEAM_SIZE = 4
-local SAVE_VERSION = 3
+local SAVE_VERSION = 4
 --- Vang thuong khi qua MOT CHUONG MOI.
 local GOLD_PER_CHAPTER = 60
 --- Thang mot chuong DA QUA thi duoc it hon. Van phai co: neu chi thuong chuong
@@ -151,6 +151,7 @@ local function fighter(name, power, level)
 		taken = m(e, "taken", 1.0),          -- he so sat thuong PHAI CHIU
 		pierce = m(e, "pierce", 0.0),        -- bo qua bao nhieu phan giap
 		lifesteal = m(e, "lifesteal", 0.0),
+		reflect = 0.0,               -- doi lai bao nhieu sat thuong
 	}
 end
 
@@ -181,6 +182,12 @@ local function strike(a, b, rng)
 	b.hp = b.hp - dmg
 	if a.lifesteal > 0.0 then
 		a.hp = math.min(a.hp_max, a.hp + dmg * a.lifesteal)
+	end
+	-- Phan don: the tran `AllHeroReboundDamagePercent`. Doi lai theo sat thuong
+	-- DA CHIU, va khong doi tiep lan nua — khong thi hai ben cung co phan don
+	-- la thanh vong lap.
+	if (b.reflect or 0.0) > 0.0 then
+		a.hp = a.hp - dmg * b.reflect
 	end
 end
 
@@ -266,6 +273,46 @@ local LANE_WEIGHT = 4.0
 --- 6 tro len hai ben moi cung mot thang. Chuong sau thi quan cung manh len.
 local ARMY_BASE_LEVEL = 6
 
+--- Buff cua the tran `name` o cap `level` cho cho dung `place` (1/2/3).
+---
+--- The tran la mot trong so it he thong cua ban goc con NGUYEN CA SO LIEU:
+--- moi cap ghi ro tang gi, bao nhieu, cho cho dung nao. Khong co the tran do
+--- thi khong buff gi — im lang tra bang rong chu khong doan.
+local function formation_buffs(name, level, place)
+	local f = data.formations[name or ""]
+	if f == nil or f.levels == nil then
+		return {}
+	end
+	local lv = math.max(0, math.min(math.floor(level or 0), f.maxLevel))
+	local row = f.levels[lv + 1]          -- bang Lua dem tu 1, cap dem tu 0
+	if row == nil or row.buffs == nil then
+		return {}
+	end
+	return row.buffs[tostring(place)] or {}
+end
+
+--- Ap buff the tran vao mot tuong da dung xong.
+--- `dmg_pct` nhan thang vao cong: cong thuc giam thuong kieu chia tuyen tinh
+--- theo cong nen hai cach ra cung mot so.
+local function apply_buffs(f, b)
+	if f == nil or b == nil then
+		return f
+	end
+	local function g(k)
+		return tonumber(b[k]) or 0.0
+	end
+	f.hp_max = (f.hp_max + g("hp")) * (1.0 + g("hp_pct"))
+	f.hp = f.hp_max
+	local gain = 1.0 + g("dmg_pct")
+	f.ap_min = (f.ap_min + g("ap")) * gain
+	f.ap_max = (f.ap_max + g("ap")) * gain
+	f.defence = (f.defence + g("dp")) * (1.0 + g("dp_pct"))
+	f.taken = f.taken * (1.0 - g("taken_pct"))
+	f.lifesteal = f.lifesteal + g("lifesteal")
+	f.reflect = (f.reflect or 0.0) + g("reflect")
+	return f
+end
+
 --- Mot top linh, chi so da keo theo cap. Phai khop Combat.make_army trong
 --- battle/combat.gd va make_army trong sim/field.py.
 local function army_fighter(name, level)
@@ -294,6 +341,7 @@ local function army_fighter(name, level)
 		taken = 1.0,
 		pierce = 0.0,
 		lifesteal = 0.0,
+		reflect = 0.0,
 		reach = a.MaxAttackDistance or 30,
 		min_reach = a.MinAttackDistance or 0,
 		move_speed = a.MovingSpeed or 30,
@@ -520,9 +568,11 @@ end
 ---
 --- `levels` la bang ten tuong -> cap cua NGUOI CHOI. Doi dich luon cap 1; do
 --- manh cua chung the hien qua `power` theo chuong.
-local function army_battle(mine, theirs, rng, power, levels, chapter, seed_value)
+local function army_battle(mine, theirs, rng, power, levels, chapter, seed_value,
+		placement, formation, formation_level)
 	levels = levels or {}
 	chapter = chapter or 0
+	placement = placement or { 1, 1, 2, 3 }
 	local army_lv = ARMY_BASE_LEVEL + math.max(0, chapter)
 	local teams = { [0] = {}, [1] = {} }
 	local roster = { [0] = mine, [1] = theirs }
@@ -540,11 +590,18 @@ local function army_battle(mine, theirs, rng, power, levels, chapter, seed_value
 		for i, name in ipairs(names) do
 			local f = fighter(name, t == 0 and 1.0 or power, t == 0 and (levels[name] or 1) or 1)
 			if f ~= nil then
+				-- Cho dung quyet ca hai thu: dung o dau tren san, va an buff
+				-- nao cua the tran. Chi doi cua NGUOI CHOI co the tran.
+				local place = placement[i] or 1
+				if t == 0 and formation ~= nil and formation ~= "" then
+					apply_buffs(f, formation_buffs(formation, formation_level, place))
+				end
 				f.reach = 0.0
 				f.min_reach = 0.0
 				f.move_speed = data.base.MovingSpeed
+				local back = (place - 1) * ROW_BACK
 				local y = MID_Y + ((i - 1) - (#names - 1) * 0.5) * ROW_GAP
-				local x = (t == 0) and (LEFT_X + 52.0) or (RIGHT_X - 52.0)
+				local x = (t == 0) and (LEFT_X + 52.0 - back) or (RIGHT_X - 52.0 + back)
 				teams[t][#teams[t] + 1] = unit_new(f, t, x, y)
 			end
 		end
@@ -575,6 +632,13 @@ local function blank_save()
 		cleared = 0,              -- chuong cao nhat da qua
 		gold = 0,
 		levels = {},              -- ten tuong -> cap
+		-- The tran (KDBGameFormationConfig cua ban goc). `placement` la cho
+		-- dung cua tung tuong trong doi hinh: 1 truoc, 2 giua, 3 sau. Cho dung
+		-- quyet ca vi tri tren san lan buff nao cua the tran ap vao.
+		formation = "jichu",
+		formationLevel = 0,
+		formations = { jichu = 0 },   -- ten the tran -> cap da nang
+		placement = { 1, 1, 2, 3 },
 		lastResult = "",
 		updatedAt = 0,
 	}
@@ -610,6 +674,35 @@ local function read_save(user_id)
 				s.levels[tostring(name)] = math.max(1, math.min(max_level(), math.floor(n)))
 			end
 		end
+	end
+	-- The tran da nang: chi nhan ten co that va cap trong bang.
+	if type(v.formations) == "table" then
+		s.formations = {}
+		for name, lv in pairs(v.formations) do
+			local f = data.formations[tostring(name)]
+			if f ~= nil then
+				local n = math.floor(tonumber(lv) or 0)
+				s.formations[tostring(name)] = math.max(0, math.min(f.maxLevel, n))
+			end
+		end
+		if s.formations.jichu == nil then
+			s.formations.jichu = 0
+		end
+	end
+	local fname = tostring(v.formation or "jichu")
+	if data.formations[fname] == nil or s.formations[fname] == nil then
+		fname = "jichu"
+	end
+	s.formation = fname
+	s.formationLevel = s.formations[fname] or 0
+	-- Cho dung: dung bon so, moi so 1..3.
+	if type(v.placement) == "table" then
+		local out = {}
+		for i = 1, TEAM_SIZE do
+			local n = math.floor(tonumber(v.placement[i]) or 1)
+			out[i] = math.max(1, math.min(3, n))
+		end
+		s.placement = out
 	end
 	return s
 end
@@ -783,7 +876,8 @@ local function rpc_fight(context, payload)
 	-- khac. Trong tai xu DUNG tran dan tran ma client hien — truoc day o day
 	-- la team_fight(), ghep cap tuong danh tay doi, khac han cai tren man hinh.
 	local out, secs, alive_a, alive_b =
-			army_battle(s.roster, theirs, rng, power, s.levels, chapter, chapter)
+			army_battle(s.roster, theirs, rng, power, s.levels, chapter, chapter,
+					s.placement, s.formation, s.formationLevel)
 
 	s.battles = s.battles + 1
 	local unlocked = false
@@ -924,9 +1018,137 @@ local function rpc_fieldtest(context, payload)
 	return nk.json_encode({ ok = true, mine = mine, theirs = theirs, battles = out })
 end
 
+--- Danh sach the tran: cai nao da mo, cap may, nang tiep het bao nhieu.
+local function rpc_formations(context, payload)
+	if context.user_id == nil then
+		error("phai dang nhap")
+	end
+	local s = read_save(context.user_id)
+	local out = {}
+	for _, name in ipairs(data.formationOrder) do
+		local f = data.formations[name]
+		local owned = s.formations[name] ~= nil
+		local lv = s.formations[name] or 0
+		local nxt = f.levels[lv + 2]      -- cap ke tiep, bang dem tu 1
+		out[#out + 1] = {
+			name = name,
+			maxLevel = f.maxLevel,
+			owned = owned,
+			level = lv,
+			active = (s.formation == name),
+			unlockGold = f.unlockGold,
+			-- Het cap thi khong con gia nang: bao nil de client khoi hien nut.
+			nextGold = nxt ~= nil and nxt.gold or nil,
+			buffs = formation_buffs(name, lv, 1),
+			buffs2 = formation_buffs(name, lv, 2),
+			buffs3 = formation_buffs(name, lv, 3),
+		}
+	end
+	return nk.json_encode({ ok = true, formations = out, save = s })
+end
+
+--- Chon the tran dang dung. Phai da mo roi.
+local function rpc_set_formation(context, payload)
+	if context.user_id == nil then
+		error("phai dang nhap")
+	end
+	local ok, body = pcall(nk.json_decode, payload or "{}")
+	if not ok or type(body) ~= "table" then
+		error("payload hong")
+	end
+	local name = tostring(body.formation or "")
+	if data.formations[name] == nil then
+		error("khong co the tran " .. name)
+	end
+	local s = read_save(context.user_id)
+	if s.formations[name] == nil then
+		error("chua mo the tran " .. name)
+	end
+	s.formation = name
+	s.formationLevel = s.formations[name]
+	write_save(context.user_id, s)
+	return nk.json_encode({ ok = true, formation = name,
+			level = s.formationLevel, save = s })
+end
+
+--- Mo hoac nang the tran. Gia lay tu chinh bang cua ban goc (da chia lai cho
+--- vua nen kinh te o day) — cai manh thi dat, do la ca su can bang.
+local function rpc_upgrade_formation(context, payload)
+	if context.user_id == nil then
+		error("phai dang nhap")
+	end
+	local ok, body = pcall(nk.json_decode, payload or "{}")
+	if not ok or type(body) ~= "table" then
+		error("payload hong")
+	end
+	local s = read_save(context.user_id)
+	local name = tostring(body.formation or s.formation)
+	local f = data.formations[name]
+	if f == nil then
+		error("khong co the tran " .. name)
+	end
+
+	local cost, lv
+	if s.formations[name] == nil then
+		-- Chua co: day la lan mo.
+		cost = f.unlockGold
+		lv = 0
+	else
+		lv = s.formations[name] + 1
+		if lv > f.maxLevel then
+			error("the tran " .. name .. " da toi cap toi da " .. f.maxLevel)
+		end
+		cost = f.levels[lv + 1].gold
+	end
+	if s.gold < cost then
+		error("thieu vang: can " .. cost .. ", dang co " .. s.gold)
+	end
+	s.gold = s.gold - cost
+	s.formations[name] = lv
+	if s.formation == name then
+		s.formationLevel = lv
+	end
+	write_save(context.user_id, s)
+	return nk.json_encode({ ok = true, formation = name, level = lv,
+			cost = cost, save = s })
+end
+
+--- Doi cho dung cua bon tuong: 1 truoc, 2 giua, 3 sau.
+--- Cho dung quyet ca vi tri tren san lan buff nao cua the tran ap vao, nen day
+--- la mot canh chon that chu khong phai trang tri.
+local function rpc_set_placement(context, payload)
+	if context.user_id == nil then
+		error("phai dang nhap")
+	end
+	local ok, body = pcall(nk.json_decode, payload or "{}")
+	if not ok or type(body) ~= "table" or type(body.placement) ~= "table" then
+		error("thieu placement")
+	end
+	local out = {}
+	for i = 1, TEAM_SIZE do
+		local n = tonumber(body.placement[i])
+		if n == nil then
+			error("cho dung thu " .. i .. " khong phai so")
+		end
+		n = math.floor(n)
+		if n < 1 or n > 3 then
+			error("cho dung phai la 1, 2 hoac 3; nhan duoc " .. n)
+		end
+		out[i] = n
+	end
+	local s = read_save(context.user_id)
+	s.placement = out
+	write_save(context.user_id, s)
+	return nk.json_encode({ ok = true, placement = out, save = s })
+end
+
 nk.register_rpc(rpc_level_up, "bx.level_up")
 nk.register_rpc(rpc_set_roster, "bx.set_roster")
 nk.register_rpc(rpc_chapters, "bx.chapters")
 nk.register_rpc(rpc_fight, "bx.fight")
 nk.register_rpc(rpc_selftest, "bx.selftest")
 nk.register_rpc(rpc_fieldtest, "bx.fieldtest")
+nk.register_rpc(rpc_formations, "bx.formations")
+nk.register_rpc(rpc_set_formation, "bx.set_formation")
+nk.register_rpc(rpc_upgrade_formation, "bx.upgrade_formation")
+nk.register_rpc(rpc_set_placement, "bx.set_placement")

@@ -14,6 +14,14 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 color = Color(0.106, 0.118, 0.145, 1)
 
+[node name="Backdrop" type="TextureRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+expand_mode = 1
+stretch_mode = 6
+modulate = Color(0.62, 0.62, 0.66, 1)
+
 [node name="Title" type="Label" parent="."]
 offset_left = 20.0
 offset_top = 14.0
@@ -29,25 +37,32 @@ offset_bottom = 62.0
 text = "..."
 
 [node name="Buttons" type="HBoxContainer" parent="."]
-offset_left = 20.0
-offset_top = 68.0
+offset_left = 22.0
+offset_top = 60.0
 offset_right = 940.0
-offset_bottom = 100.0
+offset_bottom = 110.0
+theme_override_constants/separation = 12
 
 [node name="Save" type="Button" parent="Buttons"]
-custom_minimum_size = Vector2(140, 32)
+custom_minimum_size = Vector2(170, 50)
 text = "Luu"
 
 [node name="Back" type="Button" parent="Buttons"]
-custom_minimum_size = Vector2(140, 32)
+custom_minimum_size = Vector2(170, 50)
 text = "Quay lai"
 
+[node name="ListPanel" type="Panel" parent="."]
+offset_left = 14.0
+offset_top = 116.0
+offset_right = 946.0
+offset_bottom = 630.0
+
 [node name="Scroll" type="ScrollContainer" parent="."]
-offset_left = 20.0
-offset_top = 108.0
-offset_right = 940.0
-offset_bottom = 528.0
+offset_left = 78.0
+offset_top = 188.0
+offset_right = 878.0
+offset_bottom = 562.0
 
 [node name="Grid" type="GridContainer" parent="Scroll"]
-custom_minimum_size = Vector2(900, 0)
-columns = 4
+custom_minimum_size = Vector2(796, 0)
+columns = 3

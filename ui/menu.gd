@@ -11,7 +11,10 @@ extends Control
 
 
 func _ready() -> void:
-	$Backdrop.texture = Game.load_backdrop(Game.MENU_SCENE)
+	# Ban do the gioi co khung go — chinh la anh ban goc dung cho man ban do.
+	var world := UiTheme.tex("ui_background135")
+	$Backdrop.texture = world if world != null else Game.load_backdrop(Game.MENU_SCENE)
+	$Backdrop.modulate = Color(1, 1, 1) if world != null else Color(0.55, 0.55, 0.6)
 	$Buttons/Roster.pressed.connect(_on_roster)
 	$Buttons/Practice.pressed.connect(_on_practice)
 	_title.text = "BraveCross"
@@ -54,9 +57,14 @@ func _row(ch: Dictionary) -> Control:
 	var cleared := bool(ch.get("cleared", false))
 
 	var b := Button.new()
-	b.custom_minimum_size = Vector2(0, 38)
+	b.custom_minimum_size = Vector2(0, 62)
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	b.disabled = not unlocked
+	# Hinh nho ban do cua chuong, giong cach ban goc bay man chon chuong.
+	var thumb := Game.chapter_map(n)
+	if thumb != null:
+		b.icon = thumb
+		b.expand_icon = true
 	var mark := "[xong]" if cleared else ("      " if unlocked else "[khoa]")
 	b.text = "  %s  Chuong %-3d   dich manh x%.2f   %s" % [
 			mark, n, float(ch.get("power", 1.0)),

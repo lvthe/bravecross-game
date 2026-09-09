@@ -368,6 +368,35 @@ nhưng **không dùng** — `login()` đọc mã đã lưu ở `user://device_id
 lần chạy đều vào cùng một tài khoản và số liệu cộng dồn. `start()` nay nhận
 tham số `device`.
 
+## Khung giao diện
+
+`game/ui_theme.gd` dựng một `Theme` từ art của bản gốc rồi áp cho cả cây node,
+nên mọi màn theo cùng một kiểu:
+
+| chỗ | ảnh gốc |
+|---|---|
+| nút | `ui_background134` — khung gỗ, nền giấy |
+| bảng | `ui_background62` — cuộn giấy |
+| nền menu | `ui_background135` — bản đồ thế giới có khung |
+| hình nhỏ mỗi chương | `ui_background_chapter_*` — 16 bản đồ chương |
+
+Viết bằng **mã chứ không phải `.tres`**: theme này chỉ là phép nối giữa tên
+control của Godot và tên file art, viết ra mã thì đọc và sửa được ngay.
+
+Chưa xuất art thì `UiTheme.build()` trả về `null` và game dùng giao diện mặc
+định của Godot — không hỏng, chỉ là xấu.
+
+Hai chỗ phải mò bằng cách nhìn ảnh thật, không đoán được:
+
+* **Biên 9-patch.** Ảnh gốc là ảnh một miếng, không có sẵn thông tin biên. Đặt
+  tay: khung gỗ của nút dày ~14 px, hai trục cuộn giấy thì to hơn nhiều.
+* **Chọn đúng ảnh.** Lần đầu tôi lấy `ui_background188` vì tên và tỉ lệ 399×60
+  trông như một cái nút — hoá ra chỉ là một dải xám mờ, kéo ra thành vạch mỏng.
+  `work/contact.py` dán cả thư mục thành một tấm để nhìn một lần là biết.
+
+Nút phải cao hơn tổng hai biên (14+14), không thì khung bị bẹp — đó là lý do
+các nút để `custom_minimum_size.y = 50`.
+
 ## Nền cảnh
 
 Mỗi chương một nền, lấy từ bản gốc (`work/scenes.py` xuất ra 24 ảnh trên 9
@@ -463,6 +492,12 @@ rồi chép các thư mục nhân vật cần dùng vào `assets_ref/`. Nền c�
 
 ```bash
 python work/scenes.py --all --out <bravecross-game>/assets_ref/scenes
+```
+
+Art giao diện:
+
+```bash
+python work/scenes.py --raw <...>/assets/png/background --out <bravecross-game>/assets_ref/ui
 ```
 
 Và sinh lại bảng số:

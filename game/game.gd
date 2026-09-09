@@ -35,6 +35,24 @@ const SCENES := [
 const SCENE_DIR := "res://assets_ref/scenes/"
 const MENU_SCENE := "main3/mainscene3_background_a"
 
+## Ban do tung chuong, lay tu art giao dien cua ban goc. Ban goc dung dung
+## kieu nay cho man chon chuong.
+const CHAPTER_MAPS := [
+	"ui_background_chapter_prairie", "ui_background_chapter_forest",
+	"ui_background_chapter_desert", "ui_background_chapter_valley",
+	"ui_background_chapter_snow", "ui_background_chapter_battle",
+	"ui_background_chapter_guandu", "ui_background_chapter_purplebamboo",
+	"ui_background_chapter_cemetery", "ui_background_chapter_lava",
+	"ui_background_chapter_devil", "ui_background_chapter_cebi",
+]
+
+
+## Anh ban do cua mot chuong, de lam hinh nho tren nut.
+func chapter_map(chapter: int) -> Texture2D:
+	if chapter <= 0:
+		return null
+	return UiTheme.tex(CHAPTER_MAPS[(chapter - 1) % CHAPTER_MAPS.size()])
+
 
 ## Anh nen cho mot chuong. chapter <= 0 (danh tap) thi lay canh dau.
 func backdrop(chapter: int) -> Texture2D:
@@ -57,6 +75,10 @@ func _ready() -> void:
 	var err := combat.load_data()
 	if err != "":
 		push_error(err)
+	# Theme dung art cua ban goc, ap cho ca cay node nen man nao cung theo.
+	var th := UiTheme.build()
+	if th != null:
+		get_tree().root.theme = th
 	_maybe_shot()
 
 
@@ -73,6 +95,10 @@ func _maybe_shot() -> void:
 			at = float(a.substr(5))
 	if path == "":
 		return
+	# Khoa nhap lieu trong lan chup: cua so game gianh focus, va mot phim lac
+	# tu ban phim se bam vao nut dang duoc focus roi nhay sang man khac. Da
+	# dinh mot lan: dinh chup menu ma ra man tran.
+	get_tree().root.gui_disable_input = true
 	await get_tree().create_timer(at).timeout
 	await RenderingServer.frame_post_draw
 	var e := get_viewport().get_texture().get_image().save_png(path)

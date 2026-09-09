@@ -17,6 +17,9 @@ var _picked: Array = []
 
 
 func _ready() -> void:
+	var world := UiTheme.tex("ui_background135")
+	if world != null:
+		$Backdrop.texture = world
 	_save.pressed.connect(_on_save)
 	$Buttons/Back.pressed.connect(func(): Game.goto(Game.MENU))
 	await Game.ensure_session()
@@ -29,10 +32,11 @@ func _build() -> void:
 		c.queue_free()
 	for name in Game.hero_names():
 		var b := Button.new()
-		b.custom_minimum_size = Vector2(210, 34)
+		b.custom_minimum_size = Vector2(258, 46)
 		b.toggle_mode = true
 		b.button_pressed = _picked.has(name)
 		b.text = _label(name)
+		_mark(b, b.button_pressed)
 		b.toggled.connect(_on_toggle.bind(name, b))
 		_grid.add_child(b)
 	_refresh()
@@ -46,6 +50,12 @@ func _label(hero_name: String) -> String:
 			int(row.get("Viability", 0))]
 
 
+## Nut bam roi va nut chua bam chi khac nhau chut mau, nhin khong ra dang chon
+## ai. To sang han len cho ro.
+func _mark(b: Button, on: bool) -> void:
+	b.modulate = Color(1.25, 1.1, 0.7) if on else Color(1, 1, 1)
+
+
 func _on_toggle(pressed: bool, hero_name: String, b: Button) -> void:
 	if pressed:
 		if _picked.size() >= TEAM_SIZE:
@@ -55,6 +65,7 @@ func _on_toggle(pressed: bool, hero_name: String, b: Button) -> void:
 			_picked.append(hero_name)
 	else:
 		_picked.erase(hero_name)
+	_mark(b, b.button_pressed)
 	_refresh()
 
 

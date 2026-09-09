@@ -6,13 +6,59 @@
 # mot so cap tuong theo ban Python. tools/verify_battle.gd danh lai cac cap do
 # bang chinh file nay roi doi chieu; lech qua nguong la bao hong.
 #
-# Hai ban dung bo sinh so ngau nhien khac nhau (Python: Mersenne Twister,
-# Godot: PCG32) nen tung tran khong the trung nhau — chi ti le mo i so sanh
-# duoc, va so sanh trong sai so lay mau.
+# Ca ba ban cai dat dung CHUNG mot bo sinh so (Park-Miller, xem lop Rng ben
+# duoi), nen cung mot seed cho ra dung cung mot tran. Nho vay man tran phat lai
+# duoc dung tran ma may chu vua xu, chu khong phai dien mot tran khac cho de
+# nhin. Rieng phep doi chieu voi ban Python o tools/verify_battle.gd van so ti
+# le tren nhieu tran, vi ben do gieo mot chuoi khac.
 class_name Combat
 extends RefCounted
 
 const DATA_PATH := "res://data_ref/battle_data.json"
+
+
+## Bo sinh so Park-Miller. Phai KHOP `Rng` trong server/modules/battle.lua va
+## `Lcg` trong sim/field.py.
+##
+## KHONG dung RandomNumberGenerator cua Godot: no la PCG32, khong co ban Lua
+## tuong duong, ma khong chung bo sinh so thi khong bao gio phat lai dung tran.
+##
+## He so 16807 chu khong phai 1103515245: runtime Lua cua Nakama giu moi so
+## duoi dang float64, chi bieu dien chinh xac so nguyen toi 2^53. He so cu lam
+## tich cham 2,4e18 nen ba ngon ngu se tinh ra ba chuoi khac nhau.
+class Rng extends RefCounted:
+	var s: int = 1
+
+	func _init(seed_value: int = 0) -> void:
+		set_seed(seed_value)
+
+	## Lua va Python lay du (%) theo kieu SAN, luon ra so khong am; GDScript lay
+	## theo kieu CAT, giu dau cua so bi chia. Dua ve khong am truoc roi moi so.
+	func set_seed(seed_value: int) -> void:
+		s = ((seed_value % 2147483647) + 2147483647) % 2147483647
+		if s <= 0:
+			s += 2147483646
+
+	func next() -> int:
+		s = (s * 16807) % 2147483647
+		return s
+
+	## Ten `roll`/`roll_range` chu KHONG phai `randf`/`randf_range`: GDScript co
+	## san ham toan cuc ten y het, va `rng.randf_range(a, b)` lai goi trung ham
+	## toan cuc do — no dung bo sinh so chung, khong gieo seed, nen moi lan chay
+	## ra mot tran khac. Mat ba tieng moi tim ra: bo sinh so cua ta van nhich
+	## dung mot buoc moi don (do `randf` co goi dung), chi rieng cu danh la lay
+	## so o cho khac.
+	func roll() -> float:
+		return float(next()) / 2147483647.0
+
+	func roll_range(lo: float, hi: float) -> float:
+		return lo + (hi - lo) * roll()
+
+	## 0..n-1. Ban Lua tra 1..n roi tru 1 khi tra bang, ket qua nhu nhau.
+	func below(n: int) -> int:
+		return next() % n
+
 
 ## Ky nang rieng tung tuong. Phai KHOP tung so voi SKILLS trong sim/battle.py
 ## va SKILLS trong server/modules/battle.lua.
@@ -78,13 +124,18 @@ class Fighter extends RefCounted:
 	var reflect: float
 	var level: int
 
+	## `power` la he so manh cua doi dich theo chuong. May chu nhan no vao TRUOC
+	## GrowthFactor va truoc he so cap (xem fighter() trong battle.lua); thu tu
+	## do phai giu, khong thi phat lai ra tran khac.
 	func _init(row: Dictionary, base: Dictionary, rules: Dictionary,
-			lv: int = 1, buffs: Dictionary = {}) -> void:
+			lv: int = 1, buffs: Dictionary = {}, power: float = 1.0) -> void:
 		level = maxi(1, lv)
 		name = row.get("HeroSprite", "?")
 		job = int(row.get("HeroJobType", 0))
 		rarity = int(row.get("HeroRarity", 0))
-		var g: float = float(row.get("GrowthFactor", 1)) if rules.get("useGrowth", false) else 1.0
+		var g := power
+		if rules.get("useGrowth", false):
+			g *= float(row.get("GrowthFactor", 1))
 		g *= Combat.level_growth(row, level)
 		hp_max = float(base["HpBase"]) * float(row["Viability"]) * g
 		ap_min = float(base["MinApBase"]) * float(row["AttackCapability"]) * g
@@ -145,8 +196,8 @@ class Fighter extends RefCounted:
 		return hp > 0.0
 
 	## Mot don. Tra ve {damage, skill, crit}.
-	func strike(target: Fighter, rng: RandomNumberGenerator, rules: Dictionary) -> Dictionary:
-		var ap := rng.randf_range(ap_min, ap_max)
+	func strike(target: Fighter, rng: Rng, rules: Dictionary) -> Dictionary:
+		var ap := rng.roll_range(ap_min, ap_max)
 		anger += anger_gain
 		# Ten bien la `fired` chu khong phai `skill`: `skill` nay la ten ky
 		# nang rieng cua tuong.
@@ -163,7 +214,7 @@ class Fighter extends RefCounted:
 			dmg -= def_eff
 		# Thiet bich: he so nay thuoc ve BEN CHIU, khong phai ben danh.
 		dmg *= target.taken
-		var crit := rng.randf() < crit_chance
+		var crit := rng.roll() < crit_chance
 		if crit:
 			dmg *= crit_mult
 		dmg = maxf(1.0, dmg)
@@ -217,11 +268,11 @@ func load_data(path: String = DATA_PATH) -> String:
 	return ""
 
 
-func make(hero_name: String, level: int = 1,
-		buffs: Dictionary = {}) -> Fighter:
+func make(hero_name: String, level: int = 1, buffs: Dictionary = {},
+		power: float = 1.0) -> Fighter:
 	if not heroes.has(hero_name):
 		return null
-	return Fighter.new(heroes[hero_name], base, rules, level, buffs)
+	return Fighter.new(heroes[hero_name], base, rules, level, buffs, power)
 
 
 ## Cap toi da, lay tu bo du lieu (GameHeroMaxLevelConfig o pham chat 1).
@@ -291,7 +342,7 @@ func armies_in_row(r: int) -> PackedStringArray:
 
 ## Mot tran tay doi, khong do hoa. Tra ve {result, hits, seconds}
 ## result: 1 = a thang, -1 = b thang, 0 = hoa.
-func duel(a: Fighter, b: Fighter, rng: RandomNumberGenerator) -> Dictionary:
+func duel(a: Fighter, b: Fighter, rng: Rng) -> Dictionary:
 	a.reset()
 	b.reset()
 	var max_seconds := float(rules.get("maxSeconds", 600.0))
@@ -327,8 +378,7 @@ func match_up(a_name: String, b_name: String, n: int, seed_value: int = 0) -> Di
 	var b := make(b_name)
 	if a == null or b == null:
 		return {}
-	var rng := RandomNumberGenerator.new()
-	rng.seed = seed_value
+	var rng := Rng.new(seed_value)
 	var out := {"win": 0, "lose": 0, "draw": 0}
 	for i in n:
 		var r := duel(a, b, rng)

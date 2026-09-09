@@ -568,11 +568,19 @@ end
 ---
 --- `levels` la bang ten tuong -> cap cua NGUOI CHOI. Doi dich luon cap 1; do
 --- manh cua chung the hien qua `power` theo chuong.
+--- Cho dung mac dinh cua doi dich. Doi cua nguoi choi dung cho dung trong ban
+--- luu; doi dich khong co ban luu nen dung bang nay.
+---
+--- Truoc day ca hai ben deu dung cho dung CUA NGUOI CHOI, nghia la keo tuong
+--- cua minh lui ve sau thi tuong doi dich cung lui theo — mot canh chon dang le
+--- co y nghia lai thanh vo nghia.
+local FOE_PLACEMENT = { 1, 1, 2, 3 }
+
 local function army_battle(mine, theirs, rng, power, levels, chapter, seed_value,
 		placement, formation, formation_level)
 	levels = levels or {}
 	chapter = chapter or 0
-	placement = placement or { 1, 1, 2, 3 }
+	placement = placement or FOE_PLACEMENT
 	local army_lv = ARMY_BASE_LEVEL + math.max(0, chapter)
 	local teams = { [0] = {}, [1] = {} }
 	local roster = { [0] = mine, [1] = theirs }
@@ -592,7 +600,7 @@ local function army_battle(mine, theirs, rng, power, levels, chapter, seed_value
 			if f ~= nil then
 				-- Cho dung quyet ca hai thu: dung o dau tren san, va an buff
 				-- nao cua the tran. Chi doi cua NGUOI CHOI co the tran.
-				local place = placement[i] or 1
+				local place = (t == 0 and placement[i] or FOE_PLACEMENT[i]) or 1
 				if t == 0 and formation ~= nil and formation ~= "" then
 					apply_buffs(f, formation_buffs(formation, formation_level, place))
 				end

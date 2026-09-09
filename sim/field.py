@@ -138,7 +138,8 @@ class Unit(object):
                 continue
             ex, ey = snap[id(e)]
             dx, dy = ex - hx, ey - hy
-            cost = dx * dx + (dy * LANE_WEIGHT) ** 2
+            ly = dy * LANE_WEIGHT
+            cost = dx * dx + ly * ly
             if cost < best_d:
                 best_d, best = cost, e
         return best
@@ -309,6 +310,8 @@ def build_teams(hero_rows_by_name, army_rows, roster, rules,
 ARMY_BASE_LEVEL = 6
 
 ## Cho dung mac dinh cua bon tuong khi ban luu chua ghi gi: hai truoc, hai sau.
+## Cung la cho dung cua DOI DICH — no khong co ban luu. Phai khop FOE_PLACEMENT
+## trong server/modules/battle.lua va battle/battle.gd.
 DEFAULT_PLACEMENT = [1, 1, 2, 3]
 
 
@@ -364,7 +367,10 @@ def lua_battle(hero_by_name, army_rows, base, rules, mine, theirs,
             lv = (levels.get(name, 1) if t == 0 else 1)
             # Cho dung quyet ca hai thu: dung o dau tren san, va an buff nao
             # cua the tran. Chi doi cua NGUOI CHOI co the tran.
-            spot = place_of[i] if i < len(place_of) else 1
+            # Chi doi cua nguoi choi dung cho dung trong ban luu; doi dich
+            # dung bang mac dinh, khong soi guong theo nguoi choi.
+            src = place_of if t == 0 else DEFAULT_PLACEMENT
+            spot = src[i] if i < len(src) else 1
             bf = (formation_buffs(buffs_doc, formation, formation_level, spot)
                   if t == 0 and formation else {})
             f = Fighter(hero_by_name[name], base, rules, level=lv, buffs=bf)

@@ -10,6 +10,13 @@
 # chuong la co dinh, may chu quyet. Client khong khai ket qua, va cung khong
 # ghi duoc ban luu (permission_write = 0).
 #
+# Cai chieu tren man la DUNG tran ma may chu da xu, khong phai mot tran khac
+# dien lai cho de nhin. Phat lai duoc vi bon thu deu khop: cung mo hinh, cung
+# bo sinh so (Combat.Rng), cung buoc thoi gian co dinh (STEP), va may chu tra
+# ve chinh cai seed no da dung. Kiem bang:
+#
+#   godot --headless --path . battle/battle.tscn -- --replaycheck --url=...
+#
 # Khong noi duoc toi may chu thi van xem duoc tran tai cho, chi la khong tinh
 # diem; them --offline de bo han phan mang.
 #
@@ -41,10 +48,21 @@ const ARMY_BASE_LEVEL := 6
 const BODY := 56.0
 const RIG_SCALE := 0.55
 const ART := "res://assets_ref/"
+## Buoc thoi gian CO DINH. Phai khop FIELD_STEP trong server/modules/battle.lua
+## va STEP trong sim/field.py.
+##
+## Truoc day o day buoc theo `delta` cua khung hinh, nghia la may nhanh may cham
+## cho ra hai tran khac nhau tu cung mot seed — va khong bao gio phat lai dung
+## tran may chu da xu. Toc do 1x/2x/4x van chay duoc: Engine.time_scale lam
+## `delta` lon hon nen moi khung chay nhieu BUOC hon, chu buoc thi khong doi.
+const STEP := 0.033
+## Cho dung mac dinh cua doi dich. Doi cua nguoi choi dung cho dung trong ban
+## luu; doi dich khong co ban luu nen dung bang nay. Phai khop battle.lua.
+const FOE_PLACEMENT := [1, 1, 2, 3]
 
 var combat: Combat
 var session: PlayerSession = null
-var rng := RandomNumberGenerator.new()
+var rng := Combat.Rng.new()
 var teams: Array = [[], []]
 var roster: Array = [[], []]
 var finished := false
@@ -61,6 +79,13 @@ var server_result := -1
 ## soi guong theo, khong thi phep kiem thien vi khong con la soi guong nua —
 ## da dinh: bao lech 9.8 diem trong khi hai ben von da khac quan.
 var mirrored := false
+## Seed cua MAY CHU cho tran dang xem. 0 = khong phat lai (danh tap, xem lai
+## tai cho), khi do dung seed rieng cua client.
+var replay_seed := 0
+## He so manh cua doi dich theo chuong, do may chu tinh.
+var replay_power := 1.0
+## Thoi gian con du chua di het mot buoc.
+var _accum := 0.0
 
 
 func _ready() -> void:
@@ -77,6 +102,9 @@ func _ready() -> void:
 	if opts.has("sim"):
 		# Che do do dac khong dung toi mang.
 		_run_headless(int(opts["sim"]), opts.has("mirror"))
+		return
+	if opts.has("replaycheck"):
+		await _replay_check(String(opts.get("url", "")))
 		return
 
 	picks_seed = int(opts.get("seed", "1"))
@@ -110,13 +138,17 @@ func _ready() -> void:
 
 
 ## Mot tran XEP HANG. May chu boc doi dich, mo phong, cong so va ghi ban luu;
-## client chi dung lai va dien lai cho de nhin.
+## client PHAT LAI dung tran do.
 ##
-## Ban dien o day KHONG phai mo hinh cua may chu: no co di chuyen, chon muc
-## tieu, va tinh theo thoi gian thuc, con may chu ghep tung cap theo hang.
-## Ket qua hien len va duoc ghi luon la cua MAY CHU.
+## Phat lai duoc vi bon thu deu khop: cung mo hinh (co di chuyen, co vi tri),
+## cung bo sinh so (Park-Miller), cung buoc thoi gian co dinh, va cung seed —
+## may chu tra seed no da dung ve trong `seed`.
+##
+## Truoc day man nay dien mot tran KHAC roi ghi de ket qua cua may chu len tren,
+## nen co luc nhin thay thang ma bang diem ghi thua.
 func _ranked(chapter: int) -> void:
 	server_result = -1
+	replay_seed = 0
 	label.text = "dang xin chuong %d tu may chu..." % chapter
 	var f := await session.fight(chapter)
 	if not f.ok:
@@ -128,6 +160,8 @@ func _ranked(chapter: int) -> void:
 	if opp.size() == TEAM_SIZE and _all_known(opp):
 		roster[1] = opp.duplicate()
 	server_result = int(f.get("result", 2))
+	replay_seed = int(f.get("seed", 0))
+	replay_power = float(f.get("power", 1.0))
 	_spawn()
 
 
@@ -199,19 +233,23 @@ func _pick_armies(seed_value: int) -> Array:
 	return out
 
 
-func _place(t: int, row: int, slot: int, of: int) -> Vector2:
+## Tra ve [x, y] kieu float 64 bit chu khong phai Vector2: Vector2 cua Godot la
+## float 32 bit, khong du de khop voi may chu.
+func _place(t: int, row: int, slot: int, of: int) -> Array:
 	var back := (row - 1) * ROW_BACK
 	var x := (LEFT_X - back) if t == 0 else (RIGHT_X + back)
 	var y := MID_Y + (float(slot) - (of - 1) * 0.5) * SQUAD_SPREAD
-	return Vector2(x, y)
+	return [x, y]
 
 
-func _add_unit(f, t: int, pos: Vector2, art_name: String, with_art: bool) -> void:
+func _add_unit(f, t: int, pos: Array, art_name: String, with_art: bool) -> void:
 	if f == null:
 		return
 	var u := BattleUnit.new()
 	u.visual = with_art
-	u.position = pos
+	u.sx = pos[0]
+	u.sy = pos[1]
+	u.position = Vector2(u.sx, u.sy)
 	add_child(u)
 	u.setup(f, t, combat.rules, rng, (ART + art_name) if with_art else "", RIG_SCALE)
 	teams[t].append(u)
@@ -221,7 +259,8 @@ func _spawn(with_art := true) -> void:
 	_clear()
 	finished = false
 	elapsed = 0.0
-	rng.seed = 20260908 + picks_seed
+	_accum = 0.0
+	rng.set_seed(replay_seed if replay_seed != 0 else 20260908 + picks_seed)
 
 	for t in 2:
 		# --- quan linh: moi hang mot top, moi top MaxUnit nguoi
@@ -243,24 +282,27 @@ func _spawn(with_art := true) -> void:
 		# --- tuong: moi nguoi dung o CHO DUNG cua minh (1 truoc, 2 giua, 3 sau)
 		for i in roster[t].size():
 			var hero_name: String = roster[t][i]
-			# Doi cua nguoi choi dung cap that; doi dich luon cap 1 (do manh
-			# cua chung the hien qua he so cua chuong).
+			# Doi cua nguoi choi dung cap that; doi dich luon cap 1 va do manh
+			# cua chung the hien qua he so `power` cua chuong — dung nhu may chu.
 			var lv := 1
-			if t == 0 and session != null:
-				lv = session.level_of(hero_name)
+			var power := 1.0
 			# Cho dung quyet ca hai thu: dung o dau tren san, va an buff nao cua
 			# the tran. Chi doi cua NGUOI CHOI co the tran.
-			var spot := 1
+			var spot: int = FOE_PLACEMENT[i] if i < FOE_PLACEMENT.size() else 1
 			var buffs: Dictionary = {}
-			if t == 0 and session != null:
-				spot = session.placement_of(i)
-				buffs = combat.formation_buffs(
-						session.formation(), session.formation_level(), spot)
+			if t == 0:
+				if session != null:
+					lv = session.level_of(hero_name)
+					spot = session.placement_of(i)
+					buffs = combat.formation_buffs(
+							session.formation(), session.formation_level(), spot)
+			else:
+				power = replay_power
 			var y: float = MID_Y + (float(i) - (roster[t].size() - 1) * 0.5) * ROW_GAP
 			# Tuong dung nhinh len truoc top linh cung hang, khong de len nhau.
 			var back := (spot - 1) * ROW_BACK
 			var x: float = (LEFT_X + 52.0 - back) if t == 0 else (RIGHT_X - 52.0 + back)
-			_add_unit(combat.make(hero_name, lv, buffs), t, Vector2(x, y),
+			_add_unit(combat.make(hero_name, lv, buffs, power), t, [x, y],
 					hero_name, with_art)
 	_refresh()
 
@@ -286,7 +328,7 @@ func _step(delta: float) -> int:
 	var snap := {}
 	for t in 2:
 		for u in teams[t]:
-			snap[u] = u.position
+			snap[u] = [u.sx, u.sy]
 
 	var strikes := []
 	for t in 2:
@@ -327,26 +369,47 @@ func _separate() -> void:
 		for u in teams[t]:
 			if u.alive():
 				all.append(u)
-	var shove := {}
+	# Cong don bang float 64 bit, khong dung Vector2 (32 bit) — xem BattleUnit.sx.
+	var sh_x := {}
+	var sh_y := {}
 	for i in all.size():
 		for j in range(i + 1, all.size()):
 			var a: BattleUnit = all[i]
 			var b: BattleUnit = all[j]
-			var d := b.position - a.position
-			var dist := d.length()
+			var dx: float = b.sx - a.sx
+			var dy: float = b.sy - a.sy
+			var dist := sqrt(dx * dx + dy * dy)
 			if dist >= BODY or dist < 0.001:
 				continue
-			var push := d / dist * (BODY - dist) * 0.5
-			shove[a] = shove.get(a, Vector2.ZERO) - push
-			shove[b] = shove.get(b, Vector2.ZERO) + push
-	for u in shove:
-		u.position += shove[u]
+			# He so truoc, roi moi nhan vao toa do — dung thu tu cua ban Lua.
+			var k := (BODY - dist) * 0.5 / dist
+			var px := dx * k
+			var py := dy * k
+			sh_x[a] = float(sh_x.get(a, 0.0)) - px
+			sh_y[a] = float(sh_y.get(a, 0.0)) - py
+			sh_x[b] = float(sh_x.get(b, 0.0)) + px
+			sh_y[b] = float(sh_y.get(b, 0.0)) + py
+	for u in all:
+		if sh_x.has(u):
+			u.sx += float(sh_x[u])
+			u.sy += float(sh_y[u])
+			u.position = Vector2(u.sx, u.sy)
 
 
 func _process(delta: float) -> void:
 	if scripted or finished or teams[0].is_empty():
 		return
-	var out := _step(delta)
+	# Gom `delta` lai roi chay tung BUOC CO DINH. Buoc thang bang delta thi cung
+	# mot seed ra hai tran khac nhau tuy toc do khung hinh.
+	_accum += delta
+	var out := -1
+	# Chan so buoc moi khung: may giat mot cai (hoac vua bam 4x) thi khong nen
+	# chay bu ca tram buoc trong mot khung roi treo hinh.
+	var budget := 40
+	while _accum >= STEP and out < 0 and budget > 0:
+		_accum -= STEP
+		budget -= 1
+		out = _step(STEP)
 	if out >= 0:
 		finished = true
 		_report(out)
@@ -376,8 +439,12 @@ func _refresh(out := -1) -> void:
 	if server_result >= 0 and out >= 0:
 		var verdict: String = ["BAN THANG", "BAN THUA", "HOA"][server_result]
 		txt += "   |   may chu xu: %s" % verdict
+		# Gio ban dien la ban PHAT LAI cua chinh tran may chu xu, nen hai ket
+		# qua phai trung. Lech la co loi that (lech mo hinh, lech buoc thoi
+		# gian, hoac may chu doi ma client chua doi theo) — bao ra chu khong
+		# giau di.
 		if server_result != out:
-			txt += "  (ban dien ra khac — xem README)"
+			txt += "  (!! ban dien lech voi may chu — chay --replaycheck)"
 	if session != null:
 		txt += "\n" + session.status_line()
 	label.text = txt
@@ -389,6 +456,7 @@ func _unhandled_input(e: InputEvent) -> void:
 	match e.keycode:
 		KEY_R:                       # danh lai tai cho, khong tinh diem
 			server_result = -1
+			replay_seed = 0      # gieo seed rieng: day khong con la tran cua may chu
 			_spawn()
 		KEY_F:                       # danh lai chuong nay (tinh diem)
 			if session != null and session.online and Game.chapter > 0:
@@ -403,6 +471,7 @@ func _unhandled_input(e: InputEvent) -> void:
 			if session != null:
 				await session.set_roster(roster[0])
 			server_result = -1
+			replay_seed = 0
 			_spawn()
 		KEY_SPACE:
 			get_tree().paused = not get_tree().paused
@@ -412,6 +481,84 @@ func _unhandled_input(e: InputEvent) -> void:
 			Engine.time_scale = 2.0
 		KEY_3:
 			Engine.time_scale = 4.0
+
+
+## Kiem tra dieu quan trong nhat cua man nay: cai chieu tren man co DUNG la
+## tran ma may chu da xu khong.
+##
+##   godot --headless --path . battle/battle.tscn -- --replaycheck --url=...
+##
+## bx.fieldtest cho may chu danh may tran voi seed dinh san roi tra ve ket qua,
+## so nguoi con song va so giay. O day dung CHINH duong danh cua man tran —
+## _spawn() roi _step() — de danh lai tung tran do, va doi chieu.
+##
+## Chay voi NAKAMA THAT chu khong phai ban gia: runtime Lua cua Nakama giu moi
+## so duoi dang float64, con lupa thi co so nguyen 64 bit. Chi may chu that moi
+## tra loi duoc cau hoi nay.
+func _replay_check(url: String) -> void:
+	scripted = true
+	var n_pass := 0
+	var n_fail := 0
+
+	var client := NakamaClient.new()
+	if url != "":
+		client.url = url
+	add_child(client)
+	var la := await client.login("replay-%d-%d"
+			% [Time.get_unix_time_from_system(), randi() % 100000])
+	if not la.ok:
+		print("khong dang nhap duoc: %s" % str(la.get("error", "")))
+		print("Can Nakama that:  cd server && docker compose up -d")
+		get_tree().quit(1)
+		return
+	var ft := await client.call_rpc("bx.fieldtest", {})
+	if not ft.ok:
+		print("khong goi duoc bx.fieldtest: %s" % str(ft.get("error", "")))
+		get_tree().quit(1)
+		return
+
+	var mine: Array = ft.data.get("mine", [])
+	var theirs: Array = ft.data.get("theirs", [])
+	print("may chu: %s" % client.url)
+	print("doi trai : %s" % ", ".join(mine))
+	print("doi phai : %s\n" % ", ".join(theirs))
+
+	for e in ft.data.get("battles", []):
+		var seed_value := int(e.get("seed", 0))
+		# bx.fieldtest goi army_battle(mine, theirs, Rng.new(seed), 1.0, {},
+		# chapter = seed, seed_value = seed) — khong ban luu nen khong the tran,
+		# khong cap, cho dung mac dinh. Dung lai y het o day.
+		Game.chapter = seed_value
+		session = null
+		roster = [mine.duplicate(), theirs.duplicate()]
+		replay_seed = seed_value
+		replay_power = 1.0
+		_spawn(false)
+
+		var out := -1
+		var guard := 0
+		while out < 0 and guard < 100000:
+			out = _step(STEP)
+			guard += 1
+
+		var want_out := int(e.get("result", -1))
+		var want_a := int(e.get("aliveA", -1))
+		var want_b := int(e.get("aliveB", -1))
+		var want_s := float(e.get("seconds", -1.0))
+		var same := (out == want_out and _alive(0) == want_a and _alive(1) == want_b
+				and absf(elapsed - want_s) < 0.05)
+		if same:
+			n_pass += 1
+			print("  dat   seed %d: ket qua %d, con song %d-%d, %.1f giay"
+					% [seed_value, out, _alive(0), _alive(1), elapsed])
+		else:
+			n_fail += 1
+			print("  HONG  seed %d  ->  may chu %d/%d-%d/%.2fs   client %d/%d-%d/%.2fs"
+					% [seed_value, want_out, want_a, want_b, want_s,
+					out, _alive(0), _alive(1), elapsed])
+
+	print("\n===== dat %d, hong %d =====" % [n_pass, n_fail])
+	get_tree().quit(0 if n_fail == 0 else 1)
 
 
 ## Danh n tran lien tiep, luu sau moi tran, roi bao ket qua va thoat.
@@ -439,7 +586,7 @@ func _play_through(n: int) -> void:
 ## ket thuc khong, va voi doi hinh guong thi co thien vi ben nao khong.
 func _run_headless(n: int, mirror: bool) -> void:
 	scripted = true
-	var dt := 1.0 / 30.0
+	var dt := STEP
 	var win := [0, 0, 0]
 	var secs := 0.0
 	var steps := 0

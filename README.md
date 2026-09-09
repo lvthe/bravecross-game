@@ -539,15 +539,15 @@ godot --headless --path . --script tools/verify_rpc.gd -- --url=http://127.0.0.1
 
 30/30, gồm cả bước tấn công.
 
-### Bản diễn ở client KHÔNG phải mô hình của máy chủ
+### Bản diễn ở client ĐÚNG LÀ trận máy chủ đã xử
 
-Máy chủ ghép từng cặp theo hàng rồi đấu tay đôi. Màn trận ở client có di
-chuyển, chọn mục tiêu, tính theo thời gian thực. Hai mô hình khác nhau, nên
-**bản diễn có thể cho ra kết quả khác với phán xử của máy chủ** — khi đó màn
-hình ghi rõ "bản diễn ra khác". Cái được ghi vào sổ luôn là của máy chủ.
+*(Mục này từng ghi ngược lại: máy chủ ghép từng cặp đấu tay đôi, client diễn
+một trận khác, và màn hình phải ghi "bản diễn ra khác" khi hai bên lệch nhau.
+Nay máy chủ chạy đúng mô hình có vị trí, ba bản dùng chung một bộ sinh số và
+một bước thời gian cố định, nên bản diễn là bản **phát lại**.)*
 
-Muốn khớp hẳn thì phải cho máy chủ chạy đúng mô hình có vị trí, và hai bên dùng
-chung một bộ sinh số — chưa làm.
+Xem mục "Màn trận phát lại đúng trận máy chủ đã xử" ở dưới. Nếu hai bên còn
+lệch thì đó là lỗi thật, và màn hình báo ra chứ không giấu.
 
 ### Chỗ chưa làm
 
@@ -589,12 +589,17 @@ sát thương = công × k / (k + giáp)        k = 100
 Đổi công thức không động gì tới cân bằng giữa các tướng (tỉ lệ thắng vẫn trải 3%–94% y như cũ), vì mọi tướng
 đều dùng chung `DpBase` = 30 — với chúng thì giáp gần như một hằng số.
 
-Đo lại trên client, 300 trận đội hình gương:
+Đo lại trên client, đội hình gương:
 
 | | trái | phải | hoà | trận trung bình |
 | --- | --- | --- | --- | --- |
-| trước | 36,3% | 42,8% | 21,0% | 192,5 giây |
-| sau | 50,7% | 49,3% | **0,0%** | **91,9 giây** |
+| trước (300 trận) | 36,3% | 42,8% | 21,0% | 192,5 giây |
+| sau (300 trận) | 50,7% | 49,3% | **0,0%** | **91,9 giây** |
+| sau, đo lại (200 trận) | 55,0% | 45,0% | **0,0%** | **89,7 giây** |
+
+Hàng thứ hai đo trước khi đổi bộ sinh số sang Park-Miller, hàng thứ ba là sau —
+nên hai hàng không so trực tiếp với nhau được. Cả hai đều qua phép kiểm thiên vị
+(lệch 10,0 điểm trên 200 trận, cho phép 10,6 — khoảng 1,4 lần độ lệch chuẩn).
 
 ### Quân lính có cấp
 
@@ -690,6 +695,54 @@ con số cân, cấp quân lính, công thức giảm thương đều đo ở đ
 python sim/field.py --sim 400 --mirror
 python sim/field.py --sweep          # quét công thức giảm thương × cấp quân lính
 ```
+
+## Màn trận phát lại đúng trận máy chủ đã xử
+
+Trước đây màn trận diễn **một trận khác** rồi ghi đè phán quyết của máy chủ lên trên, nên có lúc nhìn thấy
+thắng mà bảng điểm ghi thua. Nay cái chiếu trên màn đúng là trận máy chủ vừa xử — cùng người chết, cùng thứ
+tự, cùng số giây.
+
+Muốn thế thì bốn thứ phải khớp:
+
+| | |
+| --- | --- |
+| cùng mô hình | cả ba bản đều là trận dàn trận có toạ độ, tầm đánh, hàng |
+| cùng bộ sinh số | Park-Miller, `Combat.Rng` = `Rng` (Lua) = `Lcg` (Python) |
+| cùng bước thời gian | `STEP = 0.033` cố định, không theo `delta` của khung hình |
+| cùng seed | máy chủ trả về chính cái seed nó đã dùng, trong `seed` |
+
+Kiểm bằng:
+
+```bash
+godot --headless --path . battle/battle.tscn -- --replaycheck --url=http://127.0.0.1:7350
+```
+
+`bx.fieldtest` cho máy chủ đánh mấy trận với seed định sẵn rồi trả về kết quả, số người còn sống và số giây;
+màn trận dùng **chính đường đánh của nó** — `_spawn()` rồi `_step()` — để đánh lại từng trận đó và đối chiếu.
+Phải chạy với Nakama thật.
+
+Tốc độ 1x/2x/4x vẫn chạy được: `Engine.time_scale` làm `delta` lớn hơn nên mỗi khung chạy nhiều **bước** hơn,
+chứ bước thì không đổi.
+
+### Hai lỗi phải sửa mới phát lại được
+
+**`randf_range` gọi nhầm hàm toàn cục.** `Combat.Rng` ban đầu đặt tên hai hàm là `randf()` và `randf_range()`.
+GDScript có sẵn hai hàm toàn cục tên y hệt, và `rng.randf_range(a, b)` lại gọi trúng hàm toàn cục đó — dùng bộ
+sinh số chung, không gieo seed. Nghĩa là **cú đánh lấy số ở chỗ khác**, mỗi lần chạy ra một trận khác.
+
+Cái làm lộ ra: bộ sinh số của ta vẫn nhích **đúng một bước** mỗi đòn, trong khi `strike()` phải rút hai số
+(một cho lực đánh, một cho chí mạng). `randf()` thì gọi đúng hàm của mình, chỉ `randf_range` là không. Đổi tên
+thành `roll()` / `roll_range()` là hết.
+
+**`Vector2` chỉ có 32 bit.** Máy chủ (Lua) và `sim/field.py` (Python) đều tính bằng float 64 bit, còn
+`Node2D.position` là `Vector2` — trong Godot là float **32 bit**. Sai số đó dồn lại qua hàng nghìn bước, đủ để
+một đơn vị chọn mục tiêu khác và cả trận đi theo hướng khác.
+
+Nay mô phỏng chạy trên `BattleUnit.sx` / `sy` kiểu float 64 bit, còn `position` chỉ để **vẽ**.
+
+Thứ tự phép tính cũng phải khớp, không chỉ công thức. `d / dist * (BODY - dist) * 0.5` và
+`d * ((BODY - dist) * 0.5 / dist)` bằng nhau trên giấy nhưng làm tròn khác nhau, và sai khác đó cũng dồn lên.
+Cả ba bản nay đều tính hệ số trước rồi mới nhân vào toạ độ.
 
 ## Bản quyền
 

@@ -24,6 +24,10 @@ SUITES = [
     ('giao van mang',        'script', 'tools/verify_net.gd',     True,  []),
     ('phien choi',           'script', 'tools/verify_session.gd', True,  []),
     ('RPC / chong gian lan', 'script', 'tools/verify_rpc.gd',     True,  []),
+    # Cau hoi quan trong nhat cua man tran: cai chieu tren man co DUNG la tran
+    # may chu da xu khong. Can may chu that.
+    ('phat lai dung tran',   'scene',  'battle/battle.tscn',      True,
+     ['--replaycheck']),
 ]
 
 SCORE = re.compile(r'dat (\d+), hong (\d+)')

@@ -85,8 +85,7 @@ func _init() -> void:
 
 	# Sat thuong khong bao gio duoi 1, ke ca don yeu nhat vao muc thu cao nhat.
 	var lo := INF
-	var rng := RandomNumberGenerator.new()
-	rng.seed = 5
+	var rng := Combat.Rng.new(5)
 	var weakest := c.order[0]
 	var toughest := c.order[0]
 	for n in c.order:

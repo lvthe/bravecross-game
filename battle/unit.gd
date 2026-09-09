@@ -29,6 +29,14 @@ var reach := 58.0
 ## Tam toi thieu: vai quan chung khong danh duoc muc tieu qua gan (Artillery,
 ## Catapult). 0 = khong co han che.
 var min_reach := 0.0
+## Toa do dung cho MO PHONG. `position` cua Node2D la Vector2, ma Vector2 trong
+## Godot dung float 32 BIT — khong du chinh xac de khop voi may chu (Lua) va
+## sim/field.py (Python), ca hai deu tinh bang 64 bit. Sai so 32 bit don lai qua
+## hang nghin buoc du de doi muc tieu va doi ket qua tran.
+##
+## `position` tu day chi de VE, va duoc cap nhat theo sx/sy.
+var sx := 0.0
+var sy := 0.0
 var target: BattleUnit = null
 var state: State = State.ADVANCE
 var cooldown := 0.0
@@ -36,13 +44,13 @@ var facing := 1.0
 var visual := true
 
 var _rules: Dictionary = {}
-var _rng: RandomNumberGenerator = null
+var _rng: Combat.Rng = null
 var _anim := ""
 var _death_timer := 0.0
 
 
 func setup(f: Combat.Fighter, team_index: int, rules: Dictionary,
-		rng: RandomNumberGenerator, art_dir: String = "", art_scale := 1.0) -> void:
+		rng: Combat.Rng, art_dir: String = "", art_scale := 1.0) -> void:
 	fighter = f
 	team = team_index
 	_rules = rules
@@ -104,16 +112,23 @@ func advance(delta: float, enemies: Array, snap: Dictionary) -> BattleUnit:
 		_play("Standby")
 		return null
 
-	var here: Vector2 = snap.get(self, position)
-	var there: Vector2 = snap.get(target, target.position)
-	var to := there - here
-	var dist := to.length()
+	var here: Array = snap[self]
+	var there: Array = snap[target]
+	var dx: float = there[0] - here[0]
+	var dy: float = there[1] - here[1]
+	var dist := sqrt(dx * dx + dy * dy)
 
 	# Qua gan thi lui ra: Artillery/Catapult co MinAttackDistance nen khong
 	# danh duoc muc tieu ap sat.
 	if min_reach > 0.0 and dist < min_reach:
 		state = State.ADVANCE
-		position = here - to / maxf(dist, 0.001) * speed * delta * 0.6
+		# `k` tach rieng chu khong viet lien mot dong: ban Lua va ban Python
+		# deu tinh he so truoc roi moi nhan vao toa do. Doi thu tu la doi ket
+		# qua lam tron, va tran phat lai se lech dan.
+		var k := speed * delta * 0.6 / maxf(dist, 0.001)
+		sx = here[0] - dx * k
+		sy = here[1] - dy * k
+		_sync()
 		_play("Walk")
 		return null
 
@@ -122,11 +137,17 @@ func advance(delta: float, enemies: Array, snap: Dictionary) -> BattleUnit:
 		# Di theo LAN: chay thang mot mach theo truc x, con doi lan thi cham
 		# hon nhieu. Neu cho di thang toi muc tieu thi ca tam don vi don ve
 		# mot diem giua san roi chong len nhau thanh mot dong.
-		position = here + Vector2(
-				signf(to.x) * speed * delta,
-				clampf(to.y, -speed * LANE_PULL * delta, speed * LANE_PULL * delta))
-		if absf(to.x) > 1.0:
-			facing = signf(to.x)
+		var step_y := speed * LANE_PULL * delta
+		if dx > 0.0:
+			sx = here[0] + speed * delta
+		elif dx < 0.0:
+			sx = here[0] - speed * delta
+		else:
+			sx = here[0]
+		sy = here[1] + maxf(-step_y, minf(step_y, dy))
+		_sync()
+		if absf(dx) > 1.0:
+			facing = signf(dx)
 			if rig != null:
 				rig.scale.x = facing * absf(rig.scale.y)
 		_play("Walk")
@@ -156,16 +177,24 @@ func resolve(victim: BattleUnit) -> void:
 func _nearest(enemies: Array, snap: Dictionary) -> BattleUnit:
 	var best: BattleUnit = null
 	var best_d := INF
-	var here: Vector2 = snap.get(self, position)
+	var here: Array = snap[self]
 	for e in enemies:
 		if not e.alive():
 			continue
-		var d: Vector2 = snap.get(e, e.position) - here
-		var cost := d.x * d.x + (d.y * LANE_WEIGHT) * (d.y * LANE_WEIGHT)
+		var s: Array = snap[e]
+		var dx: float = s[0] - here[0]
+		var dy: float = s[1] - here[1]
+		var ly := dy * LANE_WEIGHT
+		var cost := dx * dx + ly * ly
 		if cost < best_d:
 			best_d = cost
 			best = e
 	return best
+
+
+## Chep toa do mo phong sang `position` de ve. Chi hinh anh moi dung Vector2.
+func _sync() -> void:
+	position = Vector2(sx, sy)
 
 
 func die() -> void:

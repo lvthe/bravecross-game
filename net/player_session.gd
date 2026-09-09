@@ -175,7 +175,7 @@ func set_roster(names: Array) -> Dictionary:
 ## ghi ban luu. Client khong khai gi ca — no khong the ghi ban luu nua
 ## (permission_write = 0), nen co sua client cung khong bia duoc thanh tich.
 ##
-## Tra ve {ok, result, opponent, seconds, survivors} khi online.
+## Tra ve {ok, result, seed, power, opponent, seconds, survivors} khi online.
 func fight(chapter := 0) -> Dictionary:
 	if not online:
 		return {"ok": false, "error": "dang choi ngoai tuyen, khong danh duoc"}
@@ -189,6 +189,9 @@ func fight(chapter := 0) -> Dictionary:
 	dirty = false
 	return {"ok": true, "result": int(d.get("result", 2)),
 			"chapter": int(d.get("chapter", 0)),
+			# Seed may chu da dung. Man tran gieo lai dung so nay de phat lai
+			# dung tran do, khong phai dien mot tran khac cho de nhin.
+			"seed": int(d.get("seed", 0)),
 			"unlockedNext": bool(d.get("unlockedNext", false)),
 			"power": float(d.get("power", 1.0)),
 			"opponent": d.get("opponent", []),

@@ -86,11 +86,28 @@ class Rules(object):
         self.use_skills = use_skills
 
 
+def level_growth(row, level):
+    """He so tang truong theo cap, CHUAN HOA ve 1.0 o cap 1.
+
+    Bang tuong co GrowthFactor (bac 1..4) va AddGrowthFactor (moi tuong mot
+    kieu, 0 den 2.0) — nghia tu nhien la moi cap cong them AddGrowthFactor vao
+    bac goc. Chia lai cho bac goc de cap 1 luon bang 1.0, nho vay moi con so
+    tham chieu tinh o cap 1 van giu nguyen khi them he cap vao.
+
+    Tuong AddGrowthFactor cao thi len cap an hon nhieu — day la mot canh chon
+    doi hinh that, khong phai do ta bia ra.
+    """
+    g = float(row.get('GrowthFactor', 1)) or 1.0
+    add = float(row.get('AddGrowthFactor', 0.0))
+    return (g + add * (max(1, int(level)) - 1)) / g
+
+
 class Fighter(object):
     """Mot tuong da quy ra chi so, san sang danh."""
 
-    def __init__(self, row, base, rules=None):
+    def __init__(self, row, base, rules=None, level=1):
         r = rules or Rules()
+        self.level = max(1, int(level))
         self.name = row['HeroSprite']
         self.hero_id = row['HeroID']
         self.job = row['HeroJobType']
@@ -98,6 +115,7 @@ class Fighter(object):
         self.faction = row['HeroFactions']
 
         g = float(row['GrowthFactor']) if r.use_growth else 1.0
+        g *= level_growth(row, self.level)
 
         self.hp_max = float(base['HpBase']) * float(row['Viability']) * g
         self.ap_min = float(base['MinApBase']) * float(row['AttackCapability']) * g
@@ -204,7 +222,8 @@ def duel(a, b, rng, rules=None):
     return 0, hits, t        # het gio ma chua ai chet
 
 
-def match(row_a, row_b, base, n, seed=0, rules=None, stats=None):
+def match(row_a, row_b, base, n, seed=0, rules=None, stats=None,
+          level_a=1, level_b=1):
     """Danh n tran giua hai tuong. Tra ve (thang, thua, hoa) cua tuong a.
 
     Truyen `stats` (mot dict) de gom them do dai tran — so don va so giay. Tran
@@ -212,8 +231,8 @@ def match(row_a, row_b, base, n, seed=0, rules=None, stats=None):
     sau 2 don thi khong con la tran nua, ket qua do chi so quyet dinh het.
     """
     r = rules or Rules()
-    a = Fighter(row_a, base, r)
-    b = Fighter(row_b, base, r)
+    a = Fighter(row_a, base, r, level_a)
+    b = Fighter(row_b, base, r, level_b)
     rng = random.Random(seed)
     win = lose = draw = 0
     for _ in range(n):

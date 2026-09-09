@@ -178,7 +178,12 @@ func _spawn(with_art := true) -> void:
 					LEFT_X if t == 0 else RIGHT_X,
 					MID_Y + (float(i) - (roster[t].size() - 1) * 0.5) * ROW_GAP)
 			add_child(u)
-			u.setup(combat.make(hero_name), t, combat.rules, rng,
+			# Doi cua nguoi choi dung cap that; doi dich luon cap 1 (do manh
+			# cua chung the hien qua he so cua chuong).
+			var lv := 1
+			if t == 0 and session != null:
+				lv = session.level_of(hero_name)
+			u.setup(combat.make(hero_name, lv), t, combat.rules, rng,
 					(ART + hero_name) if with_art else "", RIG_SCALE)
 			teams[t].append(u)
 	_refresh()

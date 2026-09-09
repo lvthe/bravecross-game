@@ -23,7 +23,16 @@ local data = require("hero_data")
 local COLLECTION = "player"
 local KEY = "save"
 local TEAM_SIZE = 4
-local SAVE_VERSION = 2
+local SAVE_VERSION = 3
+--- Vang thuong khi qua MOT CHUONG MOI.
+local GOLD_PER_CHAPTER = 60
+--- Thang mot chuong DA QUA thi duoc it hon. Van phai co: neu chi thuong chuong
+--- moi thi nguoi choi ket o mot chuong la het duong kiem vang, ma khong co vang
+--- thi khong nang cap duoc, ma khong nang cap thi khong qua noi chuong do —
+--- ket cung vinh vien. Da dinh dung the o chuong 3.
+local GOLD_REPLAY = 0.25
+--- Gia nang mot cap: cang cao cang dat.
+local LEVEL_COST = 40
 local CHAPTERS = 12
 --- Doi dich manh dan theo chuong. 1.18 moi chuong nghia la chuong 12 manh
 --- gap ~6 lan chuong 1 — du de bat nguoi choi phai doi doi hinh, chua toi muc
@@ -89,8 +98,19 @@ local function m(e, k, dflt)
 	return v
 end
 
+--- He so tang truong theo cap, CHUAN HOA ve 1.0 o cap 1. Phai KHOP
+--- level_growth() trong sim/battle.py va Combat.level_growth trong
+--- battle/combat.gd.
+local function level_growth(row, level)
+	local g = row.GrowthFactor or 1
+	if g == 0 then g = 1 end
+	local add = row.AddGrowthFactor or 0
+	local lv = math.max(1, math.floor(level or 1))
+	return (g + add * (lv - 1)) / g
+end
+
 -- ------------------------------------------------------------- mo hinh tran
-local function fighter(name, power)
+local function fighter(name, power, level)
 	local row = data.heroes[name]
 	if row == nil then
 		return nil
@@ -100,6 +120,7 @@ local function fighter(name, power)
 	if data.rules.useGrowth then
 		g = g * row.GrowthFactor
 	end
+	g = g * level_growth(row, level or 1)
 	local e = eff(row)
 	local hp = b.HpBase * row.Viability * g * m(e, "hp", 1.0)
 	return {
@@ -183,11 +204,15 @@ end
 --- Tran doi hinh: ghep tung cap theo hang, ai thang nhieu cap hon thi thang.
 --- Don gian hon man tran ben client (khong co di chuyen, khong co vi tri) —
 --- day la trong tai, khong phai ban dien.
-local function team_fight(mine, theirs, rng, power)
+--- `levels` la bang ten tuong -> cap cua NGUOI CHOI. Doi dich luon cap 1;
+--- do manh cua chung the hien qua `power` theo chuong.
+local function team_fight(mine, theirs, rng, power, levels)
 	local a_win, b_win = 0, 0
 	local lanes = {}
+	levels = levels or {}
 	for i = 1, math.min(#mine, #theirs) do
-		local x, y = fighter(mine[i], 1.0), fighter(theirs[i], power)
+		local x = fighter(mine[i], 1.0, levels[mine[i]] or 1)
+		local y = fighter(theirs[i], power, 1)
 		if x and y then
 			local r = duel(x, y, rng)
 			if r > 0 then
@@ -195,7 +220,8 @@ local function team_fight(mine, theirs, rng, power)
 			elseif r < 0 then
 				b_win = b_win + 1
 			end
-			lanes[#lanes + 1] = { mine = mine[i], theirs = theirs[i], result = r }
+			lanes[#lanes + 1] = { mine = mine[i], theirs = theirs[i], result = r,
+					level = levels[mine[i]] or 1 }
 		end
 	end
 	local out = 2
@@ -208,12 +234,27 @@ local function team_fight(mine, theirs, rng, power)
 end
 
 -- --------------------------------------------------------------- ban luu
+local function max_level()
+	return math.floor(data.rules.maxLevel or 40)
+end
+
+local function level_of(s, name)
+	return math.max(1, math.floor(s.levels[name] or 1))
+end
+
+--- Gia nang tu cap hien tai len mot cap.
+local function level_price(level)
+	return LEVEL_COST * level
+end
+
 local function blank_save()
 	return {
 		version = SAVE_VERSION,
 		roster = {},
 		wins = 0, losses = 0, draws = 0, battles = 0,
 		cleared = 0,              -- chuong cao nhat da qua
+		gold = 0,
+		levels = {},              -- ten tuong -> cap
 		lastResult = "",
 		updatedAt = 0,
 	}
@@ -231,13 +272,23 @@ local function read_save(user_id)
 		return blank_save()
 	end
 	local s = blank_save()
-	for _, k in ipairs({ "wins", "losses", "draws", "battles", "cleared", "updatedAt" }) do
+	for _, k in ipairs({ "wins", "losses", "draws", "battles", "cleared",
+			"gold", "updatedAt" }) do
 		s[k] = tonumber(v[k]) or 0
 	end
 	s.lastResult = tostring(v.lastResult or "")
 	if type(v.roster) == "table" then
 		for _, n in ipairs(v.roster) do
 			s.roster[#s.roster + 1] = tostring(n)
+		end
+	end
+	if type(v.levels) == "table" then
+		for name, lv in pairs(v.levels) do
+			-- Ban luu la du lieu ben ngoai: chan cap vo ly ngay o day.
+			local n = tonumber(lv) or 1
+			if data.heroes[tostring(name)] ~= nil then
+				s.levels[tostring(name)] = math.max(1, math.min(max_level(), math.floor(n)))
+			end
 		end
 	end
 	return s
@@ -274,11 +325,54 @@ local function default_roster(rng)
 	return out
 end
 
+--- Tuong xep theo suc manh (bac cong + bac thu). Dung de chia doi dich cho
+--- tung chuong.
+local function ranked_pool()
+	local pool = {}
+	for i, name in ipairs(data.order) do
+		pool[i] = name
+	end
+	table.sort(pool, function(x, y)
+		local a, b = data.heroes[x], data.heroes[y]
+		local sa = a.AttackCapability + a.Viability
+		local sb = b.AttackCapability + b.Viability
+		if sa ~= sb then
+			return sa < sb
+		end
+		return x < y                  -- hoa thi xep theo ten cho on dinh
+	end)
+	return pool
+end
+
 --- Doi dich cua mot chuong. Seed lay tu SO CHUONG chu khong tu dong ho, nen
 --- chuong nao cung luon gap dung doi do — nguoi choi hoc duoc tran dau va doi
 --- doi hinh cho hop, dung nghia mot man choi chu khong phai boc ngau nhien.
+---
+--- Va doi dich phai MANH DAN theo chuong. Ban dau o day boc ngau nhien tu ca
+--- bang, nen chuong 1 co the gap ngay LvBuGod — nguoi choi hoa 2-2 vinh vien,
+--- ma tran thi tat dinh nen danh lai bao nhieu lan cung hoa, va khong co vang
+--- de nang cap. Tien do ket cung ngay tu chuong dau.
 local function chapter_enemies(n)
-	return default_roster(Rng.new(n * 2654435761))
+	local pool = ranked_pool()
+	local span = #pool
+	if span <= TEAM_SIZE then
+		return default_roster(Rng.new(n * 2654435761))
+	end
+	-- Cua so truot: chuong 1 lay trong nhom yeu nhat, chuong cuoi trong nhom
+	-- manh nhat.
+	local top = span - TEAM_SIZE
+	local start = math.floor(top * (n - 1) / math.max(1, CHAPTERS - 1))
+	local window = {}
+	for i = 1, TEAM_SIZE do
+		window[i] = pool[start + i]
+	end
+	-- Tron trong cua so cho moi chuong mot thu tu khac nhau.
+	local rng = Rng.new(n * 2654435761)
+	for i = #window, 2, -1 do
+		local j = rng:int(i)
+		window[i], window[j] = window[j], window[i]
+	end
+	return window
 end
 
 local function chapter_power(n)
@@ -329,7 +423,8 @@ local function rpc_chapters(context, payload)
 		}
 	end
 	return nk.json_encode({ ok = true, cleared = s.cleared,
-			total = CHAPTERS, chapters = out, save = s })
+			total = CHAPTERS, chapters = out, save = s,
+			maxLevel = max_level(), levelCost = LEVEL_COST })
 end
 
 local function rpc_fight(context, payload)
@@ -363,17 +458,24 @@ local function rpc_fight(context, payload)
 	local theirs = chapter_enemies(chapter)
 	local power = chapter_power(chapter)
 
-	local out, lanes, a_win, b_win = team_fight(s.roster, theirs, rng, power)
+	local out, lanes, a_win, b_win = team_fight(s.roster, theirs, rng, power, s.levels)
 
 	s.battles = s.battles + 1
 	local unlocked = false
+	local reward = 0
 	if out == 0 then
 		s.wins = s.wins + 1
 		s.lastResult = "thang"
 		if chapter == s.cleared + 1 then
 			s.cleared = chapter
 			unlocked = true
+			reward = GOLD_PER_CHAPTER * chapter
+		else
+			-- Chuong da qua: van co vang de con duong ma go the khi bi ket,
+			-- nhung it hon han de tien len van la duong nhanh nhat.
+			reward = math.floor(GOLD_PER_CHAPTER * chapter * GOLD_REPLAY)
 		end
+		s.gold = s.gold + reward
 	elseif out == 1 then
 		s.losses = s.losses + 1
 		s.lastResult = "thua"
@@ -390,6 +492,7 @@ local function rpc_fight(context, payload)
 		power = power,
 		result = out,
 		unlockedNext = unlocked,
+		goldGained = reward,
 		opponent = theirs,
 		lanes = lanes,
 		laneWins = { mine = a_win, theirs = b_win },
@@ -448,6 +551,37 @@ end
 
 nk.register_req_after(after_authenticate, "AuthenticateDevice")
 
+--- Nang mot tuong len mot cap. May chu tru vang va ghi ban luu; client khong
+--- tu dat duoc cap nao (ban luu de permission_write = 0).
+local function rpc_level_up(context, payload)
+	if context.user_id == nil then
+		error("phai dang nhap")
+	end
+	local ok, body = pcall(nk.json_decode, payload or "{}")
+	if not ok or type(body) ~= "table" then
+		error("than tin nhan khong doc duoc")
+	end
+	local name = tostring(body.hero or "")
+	if data.heroes[name] == nil then
+		error("khong co tuong ten " .. name)
+	end
+	local s = read_save(context.user_id)
+	local lv = level_of(s, name)
+	if lv >= max_level() then
+		error(name .. " da toi cap toi da " .. max_level())
+	end
+	local price = level_price(lv)
+	if s.gold < price then
+		error("thieu vang: can " .. price .. ", dang co " .. s.gold)
+	end
+	s.gold = s.gold - price
+	s.levels[name] = lv + 1
+	write_save(context.user_id, s)
+	return nk.json_encode({ ok = true, hero = name, level = lv + 1,
+			cost = price, save = s })
+end
+
+nk.register_rpc(rpc_level_up, "bx.level_up")
 nk.register_rpc(rpc_set_roster, "bx.set_roster")
 nk.register_rpc(rpc_chapters, "bx.chapters")
 nk.register_rpc(rpc_fight, "bx.fight")

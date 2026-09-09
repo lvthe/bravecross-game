@@ -148,10 +148,72 @@ def main():
         check(bool(r['unlockedNext']), 'bao la vua mo chuong moi')
         r2 = rpcs['bx.fight'](ctx, L.table(chapter=1))
         check(int(r2['save']['cleared']) == 1,
-              'danh lai chuong da qua khong cong them', r2['save']['cleared'])
+              'danh lai chuong da qua khong mo them chuong', r2['save']['cleared'])
+        # Nhung van phai co vang, khong thi ket o mot chuong la het duong go.
+        if int(r2['result']) == 0:
+            check(int(r2['goldGained']) > 0,
+                  'thang chuong da qua van duoc it vang', r2['goldGained'])
+            check(int(r2['goldGained']) < int(r['goldGained']),
+                  'nhung it hon lan dau qua chuong do',
+                  '%s vs %s' % (r2['goldGained'], r['goldGained']))
     else:
         check(cleared == 0, 'khong thang thi khong mo them', cleared)
         check(not bool(r['unlockedNext']), 'khong bao mo chuong moi')
+
+    print('\n=== 5b. vang va nang cap ===')
+    save = rpcs['bx.chapters'](ctx, None)['save']
+    gold = int(save['gold'])
+    check(gold >= 0, 'ban luu co truong vang', gold)
+
+    # Nang cap khi chua co vang phai bi tu choi, khong duoc am tham cho qua.
+    poor = L.table(user_id='u-ngheo')
+    rpcs['bx.chapters'](poor, None)
+    ok = True
+    try:
+        rpcs['bx.level_up'](poor, L.table(hero='MaChao'))
+        ok = False
+    except lupa.LuaError:
+        pass
+    check(ok, 'thieu vang thi khong nang cap duoc')
+
+    ok = True
+    try:
+        rpcs['bx.level_up'](ctx, L.table(hero='KhongCoAi'))
+        ok = False
+    except lupa.LuaError:
+        pass
+    check(ok, 'tu choi tuong khong ton tai')
+
+    if gold > 0:
+        before_lv = 1
+        r_lv = rpcs['bx.level_up'](ctx, L.table(hero='MaChao'))
+        check(int(r_lv['level']) == before_lv + 1, 'len dung 1 cap',
+              r_lv['level'])
+        check(int(r_lv['save']['gold']) == gold - int(r_lv['cost']),
+              'tru dung so vang', '%d - %d' % (gold, int(r_lv['cost'])))
+        check(int(r_lv['save']['levels']['MaChao']) == 2, 'ban luu ghi cap moi')
+    else:
+        print('  (chua co vang de thu nang cap — bo qua)')
+
+    print('\n=== 5c. len cap thi manh len that ===')
+    # He so tang truong chuan hoa ve 1.0 o cap 1, nen cap 1 phai giu nguyen
+    # moi con so cu, con cap cao hon thi phai hon han.
+    lg = L.eval('''function(row, lv)
+        local g = row.GrowthFactor or 1
+        if g == 0 then g = 1 end
+        local add = row.AddGrowthFactor or 0
+        return (g + add * (math.max(1, math.floor(lv)) - 1)) / g
+    end''')
+    hero_data = L.eval('require("hero_data")')
+    row = hero_data['heroes']['MaChao']
+    check(abs(float(lg(row, 1)) - 1.0) < 1e-9, 'cap 1 = he so 1.0', lg(row, 1))
+    check(float(lg(row, 20)) > float(lg(row, 1)), 'cap 20 manh hon cap 1',
+          '%.2f -> %.2f' % (lg(row, 1), lg(row, 20)))
+    # Moi tuong len cap mot kieu — do la mot canh chon doi hinh that.
+    a_g = float(lg(hero_data['heroes']['MaChao'], 40))
+    b_g = float(lg(hero_data['heroes']['GuYong'], 40))
+    check(abs(a_g - b_g) > 0.5, 'cac tuong len cap khac nhau',
+          'MaChao %.2f vs GuYong %.2f' % (a_g, b_g))
 
     print('\n=== 6. doi hinh: may chu kiem ten ===')
     for roster, why in (

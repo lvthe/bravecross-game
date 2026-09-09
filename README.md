@@ -446,6 +446,43 @@ của bên A**. GDScript và Lua đều đúng; chỉ bản Python sai.
 Lỗi này ẩn suốt vì mọi tướng đều có `AttackInterval = 2.5`. Không có kỹ năng
 thì không bao giờ lộ. `sim/test_sim.py` nay có test chặn nó.
 
+## Cấp và nâng cấp
+
+Bảng tướng có **`AddGrowthFactor` khác nhau từng tướng** (0 → 2,0) và
+`GameHeroMaxLevelConfig` cho cấp tối đa 40 ở phẩm chất 1. Đó là dữ liệu thật,
+nên hệ cấp dựng thẳng trên nó:
+
+```
+hệ số = (GrowthFactor + AddGrowthFactor × (cấp − 1)) / GrowthFactor
+```
+
+Chia lại cho `GrowthFactor` để **cấp 1 luôn bằng 1.00** — nhờ vậy mọi con số
+tham chiếu cũ giữ nguyên khi thêm hệ cấp vào.
+
+Các tướng lên cấp khác hẳn nhau, và đó là một cửa chọn đội hình thật:
+
+| tướng | cấp 20 | cấp 40 |
+|---|---|---|
+| LvBuGod | ×10,5 | ×20,5 |
+| MaChao | ×8,1 | ×15,6 |
+| GuYong | ×3,9 | ×6,9 |
+
+Vàng: qua **chương mới** được `60 × chương`; thắng lại chương **đã qua** được
+25% chỗ đó. Nâng một cấp tốn `40 × cấp hiện tại`.
+
+### Hai lỗi thiết kế đã sửa, đều là bế tắc thật
+
+**Chương 1 bốc trúng tướng mạnh nhất.** Đội địch ban đầu bốc ngẫu nhiên từ cả
+bảng, nên chương 1 gặp ngay LvBuGod. Kết quả: hoà 2-2, mà trận thì gần như tất
+định nên đánh lại bao nhiêu lần cũng hoà, và không có vàng để nâng cấp —
+**kẹt cứng ngay chương đầu**. Nay đội địch lấy từ một cửa sổ trượt trên danh
+sách xếp theo sức mạnh: chương 1 gặp nhóm yếu nhất, chương 12 gặp nhóm mạnh
+nhất.
+
+**Kẹt ở một chương là hết đường kiếm vàng.** Ban đầu chỉ chương mới mới thưởng.
+Ai kẹt thì thu nhập bằng 0 → không nâng cấp được → không qua nổi. Nay thắng
+chương cũ vẫn được 25%.
+
 ## Máy chủ tự xử trận (`server/modules/battle.lua`)
 
 Trước đây client đánh xong rồi tự ghi thành tích. Nay **máy chủ quyết định**:

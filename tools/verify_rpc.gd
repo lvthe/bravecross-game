@@ -156,13 +156,17 @@ func _init() -> void:
 
 	print("\n=== 4. CLIENT KHONG DUOC GHI BAN LUU ===")
 	# Day moi la phan cuong che. Khong co no thi moi thu tren chi la hinh thuc.
+	# Doc lai ngay truoc khi thu: cac muc tren vua danh them tran, nen con so
+	# ghi tu muc 3 da cu. (Da dinh: test bao hong vi so sanh voi so cu.)
+	var w_now := int(ses.data.get("wins", -1))
 	var cheat := await ses.client.save({"wins": 999999, "battles": 999999})
 	_check(not cheat.ok, "may chu tu choi ban luu do client ghi thang")
 	_check(String(cheat.get("error", "")).to_lower().contains("permission"),
 			"tu choi vi phan quyen", String(cheat.get("error", "")))
 	var after := await ses.client.load_save()
-	_check(int((after.get("data", {}) as Dictionary).get("wins", -1)) == w,
-			"so thang khong bi sua", str((after.get("data", {}) as Dictionary).get("wins")))
+	_check(int((after.get("data", {}) as Dictionary).get("wins", -1)) == w_now,
+			"so thang khong bi sua",
+			"%s vs %d" % [(after.get("data", {}) as Dictionary).get("wins"), w_now])
 
 	# Va duong cu cua PlayerSession cung phai tu choi, khong im lang.
 	var fl := await ses.flush()

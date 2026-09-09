@@ -21,7 +21,7 @@ extends Node
 
 ## Doi so nay khi cau truc ban luu thay doi, de con biet duong nang cap.
 ## Phai khop SAVE_VERSION ben server/modules/battle.lua.
-const SAVE_VERSION := 2
+const SAVE_VERSION := 3
 
 var client: NakamaClient = null
 var data: Dictionary = {}
@@ -48,6 +48,8 @@ static func blank() -> Dictionary:
 		"roster": [],
 		"wins": 0, "losses": 0, "draws": 0, "battles": 0,
 		"cleared": 0,                 # chuong cao nhat da qua
+		"gold": 0,
+		"levels": {},                 # ten tuong -> cap
 		"lastResult": "",
 		"updatedAt": 0,
 	}
@@ -92,8 +94,13 @@ func _upgrade(raw: Variant) -> Dictionary:
 	var d: Dictionary = raw
 	# Thieu mot ten o day la truong do bien mat lang le: may chu van giu, nhung
 	# client doc ra khong thay. Da dinh dung the voi "cleared".
-	for k in ["wins", "losses", "draws", "battles", "cleared"]:
+	for k in ["wins", "losses", "draws", "battles", "cleared", "gold"]:
 		out[k] = int(d.get(k, 0))
+	var levels := {}
+	if typeof(d.get("levels")) == TYPE_DICTIONARY:
+		for name in d["levels"]:
+			levels[str(name)] = maxi(1, int(d["levels"][name]))
+	out["levels"] = levels
 	out["lastResult"] = String(d.get("lastResult", ""))
 	out["updatedAt"] = int(d.get("updatedAt", 0))
 	var roster: Array = []
@@ -163,6 +170,28 @@ func fight(chapter := 0) -> Dictionary:
 			"laneWins": d.get("laneWins", {})}
 
 
+## Nang mot tuong len mot cap. May chu tru vang va ghi ban luu.
+func level_up(hero_name: String) -> Dictionary:
+	if not online:
+		return {"ok": false, "error": "dang choi ngoai tuyen, khong nang cap duoc"}
+	var r := await client.call_rpc("bx.level_up", {"hero": hero_name})
+	if not r.ok:
+		last_error = String(r.get("error", "khong nang cap duoc"))
+		return r
+	data = _upgrade(r.data.get("save", {}))
+	return {"ok": true, "hero": hero_name, "level": int(r.data.get("level", 1)),
+			"cost": int(r.data.get("cost", 0))}
+
+
+func level_of(hero_name: String) -> int:
+	var lv: Dictionary = data.get("levels", {})
+	return maxi(1, int(lv.get(hero_name, 1)))
+
+
+func gold() -> int:
+	return int(data.get("gold", 0))
+
+
 ## Ngoai tuyen: cong ket qua vao bo nho. Online thi khong dung — may chu cong.
 func flush() -> Dictionary:
 	if not online:
@@ -176,8 +205,9 @@ func flush() -> Dictionary:
 func status_line() -> String:
 	if not online:
 		return "ngoai tuyen — %s" % (last_error if last_error != "" else "khong ro")
-	return "%s  ·  %d tran: %d thang / %d thua / %d hoa%s" % [
+	return "%s  ·  %d vang  ·  chuong %d  ·  %d tran: %d thang / %d thua / %d hoa%s" % [
 			client.username if client.username != "" else client.user_id.substr(0, 8),
+			gold(), int(data.get("cleared", 0)),
 			int(data.get("battles", 0)), int(data.get("wins", 0)),
 			int(data.get("losses", 0)), int(data.get("draws", 0)),
 			"  (chua luu)" if dirty else ""]

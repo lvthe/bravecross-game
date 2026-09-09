@@ -33,6 +33,16 @@ const SKILLS := {
 }
 
 
+## He so tang truong theo cap, CHUAN HOA ve 1.0 o cap 1. Phai KHOP
+## level_growth() trong sim/battle.py va o server/modules/battle.lua.
+static func level_growth(row: Dictionary, level: int) -> float:
+	var g := float(row.get("GrowthFactor", 1))
+	if g == 0.0:
+		g = 1.0
+	var add := float(row.get("AddGrowthFactor", 0.0))
+	return (g + add * float(maxi(1, level) - 1)) / g
+
+
 ## Mot tuong da quy ra chi so, giu luon mau va no hien tai.
 class Fighter extends RefCounted:
 	var name: String
@@ -54,12 +64,16 @@ class Fighter extends RefCounted:
 	var taken: float          ## he so sat thuong PHAI CHIU (thuoc ben chiu)
 	var pierce: float         ## bo qua bao nhieu phan giap doi phuong
 	var lifesteal: float
+	var level: int
 
-	func _init(row: Dictionary, base: Dictionary, rules: Dictionary) -> void:
+	func _init(row: Dictionary, base: Dictionary, rules: Dictionary,
+			lv: int = 1) -> void:
+		level = maxi(1, lv)
 		name = row.get("HeroSprite", "?")
 		job = int(row.get("HeroJobType", 0))
 		rarity = int(row.get("HeroRarity", 0))
 		var g: float = float(row.get("GrowthFactor", 1)) if rules.get("useGrowth", false) else 1.0
+		g *= Combat.level_growth(row, level)
 		hp_max = float(base["HpBase"]) * float(row["Viability"]) * g
 		ap_min = float(base["MinApBase"]) * float(row["AttackCapability"]) * g
 		ap_max = float(base["MaxApBase"]) * float(row["AttackCapability"]) * g
@@ -150,10 +164,15 @@ func load_data(path: String = DATA_PATH) -> String:
 	return ""
 
 
-func make(hero_name: String) -> Fighter:
+func make(hero_name: String, level: int = 1) -> Fighter:
 	if not heroes.has(hero_name):
 		return null
-	return Fighter.new(heroes[hero_name], base, rules)
+	return Fighter.new(heroes[hero_name], base, rules, level)
+
+
+## Cap toi da, lay tu bo du lieu (GameHeroMaxLevelConfig o pham chat 1).
+func max_level() -> int:
+	return int(rules.get("maxLevel", 40))
 
 
 ## Mot tran tay doi, khong do hoa. Tra ve {result, hits, seconds}

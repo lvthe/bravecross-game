@@ -32,7 +32,8 @@ DEFAULT_ART = os.path.normpath(os.path.join(HERE, '..', 'assets_ref'))
 # khong xuat, de sau nay nhin file so lieu la biet mo hinh an vao dau.
 FIELDS = ['HeroID', 'HeroSprite', 'HeroJobType', 'HeroRarity', 'HeroFactions',
           'AttackCapability', 'Viability', 'GrowthFactor',
-          'InjuryRates', 'SkillInjuryRates', 'AngerRecovery', 'TalentSkill']
+          'InjuryRates', 'SkillInjuryRates', 'AngerRecovery', 'TalentSkill',
+          'AddGrowthFactor']
 
 BASE_FIELDS = ['HpBase', 'MinApBase', 'MaxApBase', 'DpBase', 'AttackInterval',
                'CriticalStrikeBase', 'CritDamageDouble', 'MovingSpeed']
@@ -175,6 +176,8 @@ def main():
             ('angerFull', rules.anger_full),
             ('maxSeconds', rules.max_seconds),
             ('useSkills', rules.use_skills),
+            # Cap toi da o pham chat 1, lay tu GameHeroMaxLevelConfig.
+            ('maxLevel', 40),
         ])),
         ('heroes', rows),
         ('reference', ref),

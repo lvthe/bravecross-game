@@ -19,9 +19,9 @@ server/modules/hero_data.lua
 server/.cookie
 
 # Bo cuc man hinh trich tu ban goc — co ban quyen, sinh lai bang:
-#   python ../brave-cross/work/layout.py --all --out layout_ref
+#   cd ../brave-cross/work && python layout.py --all --out <day>/layout_ref
 layout_ref/
 
 # Anh giao dien giai tu .pkm — co ban quyen, sinh lai bang:
-#   python ../brave-cross/work/uiart.py --out ui_ref
+#   cd ../brave-cross/work && python uiart.py --out <day>/ui_ref
 ui_ref/

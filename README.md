@@ -777,29 +777,65 @@ Cả ba bản nay đều tính hệ số trước rồi mới nhân vào toạ �
 
 ## Bản quyền
 
-`assets_ref/` (art) và `data_ref/` (bảng số) đều lấy từ bản gốc, **có bản
-quyền**. Cả hai bị `.gitignore` và chỉ dùng làm placeholder trong lúc dev. Phải thay hết bằng art tự làm trước
-khi phát hành. Tạo lại bằng:
+Bốn thư mục dưới đây đều lấy từ bản gốc, **có bản quyền**, đều bị
+`.gitignore` và chỉ dùng làm placeholder trong lúc dev. Phải thay hết bằng art
+tự làm trước khi phát hành:
+
+| Thư mục | Nội dung | Cỡ |
+|---|---|---:|
+| `ui_ref/` | 12 491 ảnh giao diện giải từ `.pkm` | 408 MB |
+| `assets_ref/` | art nhân vật và nền cảnh | 332 MB |
+| `layout_ref/` | 296 bố cục màn hình trích từ `.xgg` | 16 MB |
+| `data_ref/` | bảng số chiến đấu | 232 KB |
+
+Không đẩy lên repo, nhưng **sinh lại được hết** từ APK — thứ đáng giữ trong
+lịch sử là công cụ, không phải sản phẩm của nó. Máy mới thì chạy hết các lệnh
+dưới đây, nếu không thì `SngRig` báo thiếu art, `XggLayout` không dựng được
+màn nào, và bộ kiểm sẽ đỏ.
+
+**Chạy từ `brave-cross/work`**, không phải từ thư mục game: các công cụ này
+mặc định tìm `vn/decrypted/assets` theo thư mục hiện hành.
+
+Art nhân vật:
 
 ```bash
-python work/export.py --all --out <thư mục>
+python export.py --all --out <thư mục>
 ```
 
 rồi chép các thư mục nhân vật cần dùng vào `assets_ref/`. Nền cảnh:
 
 ```bash
-python work/scenes.py --all --out <bravecross-game>/assets_ref/scenes
+python scenes.py --all --out <bravecross-game>/assets_ref/scenes
 ```
 
-Art giao diện:
+Art khung và nút cho `UiTheme` (khác với `ui_ref/` bên dưới — cái này lấy từ
+`assets/png/background`, tấm rời, không phải atlas):
 
 ```bash
-python work/scenes.py --raw <...>/assets/png/background --out <bravecross-game>/assets_ref/ui
+python scenes.py --raw <...>/assets/png/background --out <bravecross-game>/assets_ref/ui
 ```
 
 
-Và sinh lại bảng số:
+Bố cục màn hình (cần cho mọi màn dựng bằng `XggLayout` — màn trang bị, HUD).
+296 màn, 33 472 node:
+
+```bash
+python layout.py --all --out <bravecross-game>/layout_ref
+```
+
+Ảnh giao diện, 6248 tấm (cần cho `UiFrames`). Chạy khá lâu; đứt thì chạy lại,
+nó dùng tiếp những ảnh đã giải:
+
+```bash
+python uiart.py --out <bravecross-game>/ui_ref
+```
+
+Và sinh lại bảng số — lệnh này chạy từ **thư mục game**:
 
 ```bash
 python sim/export_stats.py --battles 4000
 ```
+
+Riêng `data_ref/equipment_ref.json` (bộ ca đối chiếu trang bị) thì
+`tools/check.py` tự sinh khi thiếu — nó là công thức thuần, không dùng bảng số
+nào của bản gốc.

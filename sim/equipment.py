@@ -160,6 +160,76 @@ VIP_REFINE_DISCOUNT_LEVEL = 10      # HeroLogic:GetUpgradeRefineCost
 VIP_REFINE_DISCOUNT = 0.2
 
 
+# --- Thuoc tinh phu va tay luyen (RecastEquipment) ---------------------
+# share_EquipmentPropertyLogic:getAppendPropertyValue
+#
+#   value = coef * (base * quality - 0.3) * (levelCoef / 20)
+#
+# `base` la so BOC RA trong dai 0.8..1.3; tay luyen chinh la boc lai no.
+# `coef` lay tu AppendPropertyCoefficient (share_EquipmentLogic:68).
+AP_MIN = 22
+AP_MAX = 23
+CRIT_MULT = 25
+
+APPEND_COEF = {
+    HP_LIMIT: 40.0,
+    AP_MIN: 2.7,
+    AP_MAX: 11.8,
+    DP_ADDITION: 2.5,
+    CRITICAL_STRIKE: 0.1,
+    CRIT_MULT: 50.0,
+}
+
+# Thuoc tinh phu QUY RA LUC CHIEN theo DAI BOC DUOC, khong phai theo gia tri
+# nhan trong so — day la cho de nham nhat trong ca he:
+#   CalcEquipFightingCapacity: `if BaseValue > band and score > val`
+AAPPEND_SCORE_BANDS = ((1.2, 60), (1.1, 40), (1.0, 30), (0.9, 20), (0.8, 10))
+
+# Ban goc: 10 000 vang, hoac 100 kim cuong, hoac MOT vien da tay luyen
+# (vat pham 97) — dung da thi khong ton tien.
+RECAST_COST_GOLD = 10000
+RECAST_COST_DIAMOND = 100
+
+# Loai chi so phu -> kenh buff, kem he so doi don vi. Chi mang va he so sat
+# thuong chi mang cua ban goc tinh theo DIEM PHAN TRAM (CriticalStrikeBase = 1
+# nghia la 1%), con mo hinh chien dau ben nay dung phan so — nen chia 100.
+APPEND_TO_BUFF = {
+    HP_LIMIT: ('hp', 1.0),
+    AP_MAX: ('ap', 1.0),
+    AP_MIN: ('ap', 1.0),
+    DP_ADDITION: ('dp', 1.0),
+    CRITICAL_STRIKE: ('crit', 0.01),
+    CRIT_MULT: ('crit_mult', 0.01),
+}
+
+
+def append_value(base, prop_type, quality, level_coef):
+    """Gia tri mot thuoc tinh phu. getAppendPropertyValue."""
+    coef = APPEND_COEF.get(prop_type)
+    if coef is None:
+        return 0.0
+    return coef * (float(base) * float(quality) - 0.3) * (float(level_coef) / 20.0)
+
+
+def append_score(base):
+    """Diem luc chien cua mot thuoc tinh phu, cham theo DAI boc duoc."""
+    val = 0
+    for band, score in AAPPEND_SCORE_BANDS:
+        if float(base) > band and score > val:
+            val = score
+    return val
+
+
+def roll_append_base(rand):
+    """Boc mot lan: so trong dai 0.8..1.3."""
+    return APPEND_RANGE_MIN + rand() * (APPEND_RANGE_MAX - APPEND_RANGE_MIN)
+
+
+def make_append(prop_type, base, quality, level_coef):
+    """(loai, gia tri, base) — giu ca `base` vi luc chien cham theo no."""
+    return (prop_type, append_value(base, prop_type, quality, level_coef), base)
+
+
 # --- Trang bi chuyen thuoc (ExclusiveEquip) ----------------------------
 # Mon do thuong tay toi bac 5 (+25%) thi REN len duoc thanh do chuyen thuoc —
 # neu tuong do nam trong danh sach 22 tuong co do rieng. Do chuyen thuoc dung
@@ -444,13 +514,28 @@ class Equipment(object):
         if bonus:
             out[ptype] = out.get(ptype, 0.0) + bonus
         if self.append_unlocked():
-            for t, v in self.appends:
+            for ap in self.appends:
+                t, v = ap[0], ap[1]
                 out[t] = out.get(t, 0.0) + v
         return out
 
     def capacity(self):
-        """Luc chien: tung chi so nhan trong so cua no roi cong lai."""
-        return sum(v * weight_of(t) for t, v in self.stats().items())
+        """Luc chien mon do. CalcEquipFightingCapacity:
+
+            chi so chinh * trong so
+          + phan cuong hoa * trong so
+          + TONG DIEM cua cac thuoc tinh phu
+
+        Thuoc tinh phu KHONG nhan trong so — no cham theo DAI boc duoc
+        (0.8 -> 10 diem, 1.2 -> 60 diem). Cho nay de nham nhat trong ca he.
+        """
+        ptype = self.main[0]
+        st = self.stats()
+        out = st.get(ptype, 0.0) * weight_of(ptype)
+        if self.append_unlocked():
+            for ap in self.appends:
+                out += append_score(ap[2] if len(ap) > 2 else 1.0)
+        return out
 
     def capacity_as_original(self):
         """Luc chien tinh Y HET client ban goc, de doi chieu.
@@ -464,7 +549,8 @@ class Equipment(object):
         total = pval + intensify_property_val(pval, ptype)
         out = total * weight_of(ptype)
         if self.append_unlocked():
-            out += sum(v * weight_of(t) for t, v in self.appends)
+            for ap in self.appends:
+                out += append_score(ap[2] if len(ap) > 2 else 1.0)
         return out
 
     # --------------------------------------------------------------- nuoi
@@ -482,6 +568,26 @@ class Equipment(object):
         if not self.exclusive or self.purify >= MAX_PURIFY_LEVEL:
             return 0
         return exclusive_cost(purify_table, self.part, self.purify + 1)
+
+    def recast(self, rand, level_coef):
+        """Tay luyen: boc LAI toan bo thuoc tinh phu.
+
+        Ban goc chi boc lai `BaseValue` roi tinh lai `Value`
+        (updateAppendProperty) — loai chi so giu nguyen, chi con so doi.
+        """
+        out = []
+        for ap in self.appends:
+            base = roll_append_base(rand)
+            out.append(make_append(ap[0], base, self.quality, level_coef))
+        self.appends = out
+        return out
+
+    def append_score_total(self):
+        """Tong diem cac thuoc tinh phu — de so truoc/sau khi tay."""
+        if not self.append_unlocked():
+            return 0
+        return sum(append_score(ap[2] if len(ap) > 2 else 1.0)
+                   for ap in self.appends)
 
     def skills(self):
         """Ky nang mon do cho. Chi do chuyen thuoc moi co.
@@ -538,11 +644,20 @@ def to_buffs(items):
     """
     out = {}
     for e in items:
-        for t, v in e.stats().items():
-            k = BUFF_KEY.get(t)
-            if k is None:
-                continue
-            out[k] = out.get(k, 0.0) + v
+        main_t = e.main[0]
+        st = e.stats()
+        # Chi so CHINH (da gom cuong hoa) di theo bang BUFF_KEY.
+        k = BUFF_KEY.get(main_t)
+        if k is not None:
+            out[k] = out.get(k, 0.0) + st.get(main_t, 0.0)
+        # Thuoc tinh PHU co bang rieng, vi don vi khac (chi mang tinh theo
+        # diem phan tram trong bang goc, con mo hinh o day dung phan so).
+        if e.append_unlocked():
+            for ap in e.appends:
+                pair = APPEND_TO_BUFF.get(ap[0])
+                if pair is None:
+                    continue
+                out[pair[0]] = out.get(pair[0], 0.0) + ap[1] * pair[1]
         for _name, key, val in e.skills():
             out[key] = out.get(key, 0.0) + val
     return out
@@ -586,10 +701,14 @@ def reference_cases():
                     etype = REF_TYPES_EQUIP[len(out) % len(REF_TYPES_EQUIP)]
                     # O do doi theo ca de phu ca gia vu khi lan gia o khac.
                     part = 1 if len(out) % 2 == 0 else 3
+                    # Base cua thuoc tinh phu chay vong qua ca 5 dai cham
+                    # diem, de ba ban doi chieu ca phep cham do.
+                    abase = (0.85, 0.95, 1.05, 1.15, 1.25)[len(out) % 5]
                     e = Equipment(part=part, main=(ptype, base), level=lv,
                                   intensify=iv, quality=2, refine=rf,
-                                  appends=[(CRITICAL_STRIKE, 0.05),
-                                           (HP_LIMIT, 120.0)])
+                                  appends=[
+                                      make_append(CRITICAL_STRIKE, abase, 2, base),
+                                      make_append(HP_LIMIT, abase, 2, base)])
                     out.append({
                         'prop': ptype, 'base': base, 'level': lv,
                         'intensify': iv, 'quality': 2,
@@ -597,6 +716,10 @@ def reference_cases():
                         'refinePercent': refine_percent(rf),
                         'refineCost': e.refine_cost_next(),
                         'mainValue': e.main_value(),
+                        'appendBase': abase,
+                        'appendValue': append_value(abase, CRITICAL_STRIKE, 2, base),
+                        'appendScore': append_score(abase),
+                        'appendTotal': e.append_score_total(),
                         'increment': intensify_increment(iv, base),
                         'propVal': intensify_property_val(base, ptype),
                         'total': intensify_total(iv, base),

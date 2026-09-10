@@ -126,6 +126,66 @@ static func main_property_val(prop_type: int, level_coef: float,
 	return 0.0
 
 
+## Thuoc tinh phu va tay luyen (RecastEquipment).
+## share_EquipmentPropertyLogic:getAppendPropertyValue
+##
+##   value = coef * (base * quality - 0.3) * (levelCoef / 20)
+##
+## `base` la so BOC RA trong dai 0.8..1.3; tay luyen chinh la boc lai no.
+const AP_MIN := 22
+const AP_MAX := 23
+const CRIT_MULT := 25
+
+const APPEND_COEF := {
+	HP_LIMIT: 40.0,
+	AP_MIN: 2.7,
+	AP_MAX: 11.8,
+	DP_ADDITION: 2.5,
+	CRITICAL_STRIKE: 0.1,
+	CRIT_MULT: 50.0,
+}
+
+## Thuoc tinh phu QUY RA LUC CHIEN theo DAI boc duoc, khong phai theo gia tri
+## nhan trong so (CalcEquipFightingCapacity).
+const APPEND_SCORE_BANDS := [[1.2, 60], [1.1, 40], [1.0, 30], [0.9, 20], [0.8, 10]]
+
+const RECAST_COST_GOLD := 10000
+const RECAST_COST_DIAMOND := 100
+
+## Loai chi so phu -> [kenh buff, he so doi don vi]. Chi mang cua ban goc tinh
+## theo DIEM PHAN TRAM, mo hinh chien dau ben nay dung phan so.
+const APPEND_TO_BUFF := {
+	HP_LIMIT: ["hp", 1.0],
+	AP_MAX: ["ap", 1.0],
+	AP_MIN: ["ap", 1.0],
+	DP_ADDITION: ["dp", 1.0],
+	CRITICAL_STRIKE: ["crit", 0.01],
+	CRIT_MULT: ["crit_mult", 0.01],
+}
+
+
+static func append_value(base: float, prop_type: int, quality: float,
+		level_coef: float) -> float:
+	if not APPEND_COEF.has(prop_type):
+		return 0.0
+	return float(APPEND_COEF[prop_type]) * (base * quality - 0.3) * (level_coef / 20.0)
+
+
+## Diem luc chien cua mot thuoc tinh phu, cham theo DAI boc duoc.
+static func append_score(base: float) -> int:
+	var val := 0
+	for row in APPEND_SCORE_BANDS:
+		if base > float(row[0]) and int(row[1]) > val:
+			val = int(row[1])
+	return val
+
+
+## [loai, gia tri, base] — giu ca `base` vi luc chien cham theo no.
+static func make_append(prop_type: int, base: float, quality: float,
+		level_coef: float) -> Array:
+	return [prop_type, append_value(base, prop_type, quality, level_coef), base]
+
+
 ## Trang bi chuyen thuoc (ExclusiveEquip). Mon do thuong tay toi bac 5 (+25%)
 ## thi ren len duoc thanh do chuyen thuoc — neu tuong nam trong danh sach 22
 ## tuong co do rieng. Do chuyen thuoc dung duong tay KHAC: 21 bac (0..20), bat
@@ -298,11 +358,17 @@ static func to_buffs(items: Array) -> Dictionary:
 	var out := {}
 	for e in items:
 		var st: Dictionary = e.stats()
-		for t in st:
-			if not BUFF_KEY.has(int(t)):
-				continue
-			var k: String = BUFF_KEY[int(t)]
-			out[k] = float(out.get(k, 0.0)) + float(st[t])
+		var mt: int = e.main_type
+		if BUFF_KEY.has(mt):
+			var k: String = BUFF_KEY[mt]
+			out[k] = float(out.get(k, 0.0)) + float(st.get(mt, 0.0))
+		# Thuoc tinh PHU co bang rieng vi don vi khac.
+		if e.append_unlocked():
+			for a in e.appends:
+				if not APPEND_TO_BUFF.has(int(a[0])):
+					continue
+				var pair: Array = APPEND_TO_BUFF[int(a[0])]
+				out[pair[0]] = float(out.get(pair[0], 0.0)) 						+ float(a[1]) * float(pair[1])
 		for sk in e.skills():
 			out[sk[1]] = float(out.get(sk[1], 0.0)) + float(sk[2])
 	return out
@@ -350,13 +416,23 @@ func stats() -> Dictionary:
 	return out
 
 
-## Luc chien: tung chi so nhan trong so cua no roi cong lai.
-func capacity() -> float:
-	var sum := 0.0
-	var st := stats()
-	for t in st:
-		sum += float(st[t]) * weight_of(int(t))
+## Tong diem cac thuoc tinh phu.
+func append_score_total() -> int:
+	if not append_unlocked():
+		return 0
+	var sum := 0
+	for a in appends:
+		sum += append_score(float(a[2]) if a.size() > 2 else 1.0)
 	return sum
+
+
+## Luc chien: tung chi so nhan trong so cua no roi cong lai.
+## Luc chien mon do (CalcEquipFightingCapacity): chi so chinh (da gom cuong
+## hoa) nhan trong so, CONG tong DIEM cua thuoc tinh phu. Thuoc tinh phu khong
+## nhan trong so — no cham theo dai boc duoc.
+func capacity() -> float:
+	var st := stats()
+	return float(st.get(main_type, 0.0)) * weight_of(main_type) 			+ float(append_score_total())
 
 
 ## Luc chien tinh Y HET client ban goc, de doi chieu: dung moc co dinh thay vi
@@ -365,10 +441,7 @@ func capacity() -> float:
 func capacity_as_original() -> float:
 	var mv := effective_main()
 	var out := (mv + intensify_property_val(mv, main_type)) * weight_of(main_type)
-	if append_unlocked():
-		for a in appends:
-			out += float(a[1]) * weight_of(int(a[0]))
-	return out
+	return out + float(append_score_total())
 
 
 func cost_to_next() -> float:

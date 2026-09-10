@@ -440,12 +440,16 @@ def main():
     fields = ('increment', 'propVal', 'total', 'cost', 'costTo',
               'qualityRange', 'capacity', 'capacityOrig',
               'refinePercent', 'refineCost', 'mainValue',
-              'jobOf', 'categoryOf', 'mainFormula')
+              'jobOf', 'categoryOf', 'mainFormula',
+              'appendValue', 'appendScore', 'appendTotal')
     bad = dict((f, []) for f in fields)
     bad_stats = []
     for c in cases:
-        appends = L.table(L.table(type=EQ.CRITICAL_STRIKE, value=0.05),
-                          L.table(type=EQ.HP_LIMIT, value=120.0))
+        # Dung DUNG cach ban Python dung: make_append (giu ca `base`), vi luc
+        # chien cham theo `base` chu khong theo gia tri.
+        appends = L.table(
+            LE.make_append(EQ.CRITICAL_STRIKE, c['appendBase'], 2, c['base']),
+            LE.make_append(EQ.HP_LIMIT, c['appendBase'], 2, c['base']))
         e = LE.make(c['part'], c['prop'], c['base'], L.table(
             level=c['level'], intensify=c['intensify'], quality=2,
             refine=c['refine'], appends=appends))
@@ -466,6 +470,10 @@ def main():
                 LE.equip_job(c['equipType'])),
             'refineCost': LE.refine_cost_next(e),
             'mainValue': LE.main_value(e),
+            'appendValue': LE.append_value(c['appendBase'], EQ.CRITICAL_STRIKE,
+                                           2, c['base']),
+            'appendScore': LE.append_score(c['appendBase']),
+            'appendTotal': LE.append_score_total(e),
         }
         for f in fields:
             if not lclose(float(got[f]), c[f]):
@@ -881,6 +889,89 @@ def main():
         except lupa.LuaError:
             pass
         check(ok, 'het bac thi dung lai')
+
+        print('\n=== 10h. tay luyen ===')
+        rec_u = 'u-tay-luyen'
+        # Du vang cho ca 30 lan tay o duoi: 10 000 mot lan.
+        env['store'][rec_u + '/player/save'] = L.table(
+            version=8, gold=10000000, concentrate=0,
+            levels=L.table(MaChao=40),
+            equipment=L.table(MaChao=L.table(
+                L.table(part=1, level=5, intensify=0, quality=2, refine=0,
+                        equipType=1,
+                        main=L.table(type=20, value=100.0),
+                        appends=L.table(
+                            L.table(type=1, value=68.0, base=0.85),
+                            L.table(type=16, value=0.17, base=0.85))))))
+        rec = L.table(user_id=rec_u)
+        e9 = rpcs['bx.equipment'](rec, None)
+        it9 = list(dict(e9['equipment'])['MaChao'].values())[0]
+        check(int(it9['appendScore']) == 20,
+              'hai thuoc tinh base 0.85 -> 10 + 10 = 20 diem', it9['appendScore'])
+        check(int(it9['recastCost']) == 10000, 'gia tay luyen 10 000 vang',
+              it9['recastCost'])
+
+        gold9 = int(e9['gold'])
+        r9 = rpcs['bx.recast'](rec, L.table(hero='MaChao', part=1))
+        check(int(r9['save']['gold']) == gold9 - 10000, 'tru dung 10 000 vang',
+              r9['save']['gold'])
+        after = [r9['after'][i] for i in range(1, len(r9['after']) + 1)]
+        check(len(after) == 2, 'van du hai dong thuoc tinh phu', len(after))
+        check([int(a['type']) for a in after] == [1, 16],
+              'loai chi so GIU NGUYEN, chi con so doi',
+              [int(a['type']) for a in after])
+        check(all(0.8 <= float(a['base']) <= 1.3 for a in after),
+              'base moi nam trong dai 0.8-1.3',
+              [float(a['base']) for a in after])
+        # Gia tri phai khop dung cong thuc theo base moi.
+        lc9 = float(LE.level_coefficient(env['store'] is not None
+                    and L.eval('(require("hero_data"))')['equipSynthesis'], 1, 5))
+        bad9 = [a for a in after
+                if abs(float(a['value'])
+                       - float(LE.append_value(float(a['base']), int(a['type']),
+                                               2, lc9))) > 1e-9]
+        check(not bad9, 'gia tri tinh lai dung theo base moi', bad9)
+
+        # Tay nhieu lan thi diem len xuong — do la ca canh bac.
+        seen_scores = set()
+        for _ in range(30):
+            rpcs['bx.equipment'](rec, None)
+            rr = rpcs['bx.recast'](rec, L.table(hero='MaChao', part=1))
+            seen_scores.add(int(rr['scoreAfter']))
+        check(len(seen_scores) > 1, 'tay lai cho diem khac nhau',
+              sorted(seen_scores))
+
+        # Chua toi cap 4 thi khong co thuoc tinh phu ma tay.
+        env['store']['u-tay-som/player/save'] = L.table(
+            version=8, gold=100000, levels=L.table(MaChao=40),
+            equipment=L.table(MaChao=L.table(
+                L.table(part=1, level=2, intensify=0, quality=2, refine=0,
+                        equipType=1, main=L.table(type=20, value=100.0)))))
+        ok = True
+        try:
+            rpcs['bx.recast'](L.table(user_id='u-tay-som'),
+                              L.table(hero='MaChao', part=1))
+            ok = False
+        except lupa.LuaError:
+            pass
+        check(ok, 'chua mo thuoc tinh phu thi khong tay duoc')
+
+        # Thieu vang thi tu choi.
+        env['store']['u-ngheo-tay/player/save'] = L.table(
+            version=8, gold=100, levels=L.table(MaChao=40),
+            equipment=L.table(MaChao=L.table(
+                L.table(part=1, level=5, intensify=0, quality=2, refine=0,
+                        equipType=1, main=L.table(type=20, value=100.0),
+                        appends=L.table(
+                            L.table(type=1, value=68.0, base=0.85))))))
+        ok = True
+        try:
+            rpcs['bx.recast'](L.table(user_id='u-ngheo-tay'),
+                              L.table(hero='MaChao', part=1))
+            ok = False
+        except lupa.LuaError:
+            pass
+        check(ok, 'thieu vang thi khong tay duoc')
 
 
     print('\n=== 10d. ban luu ban thi bo mon do, khong sua cho lanh ===')

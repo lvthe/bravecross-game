@@ -18,6 +18,7 @@
 --   bx.refine       {hero, part}       tinh luyen mot cap, ton tinh hoa
 --   bx.synthesize   {hero, part}       ghep do len mot cap, ton vang
 --   bx.forge_exclusive {hero, part}    ren thanh do chuyen thuoc (can tay bac 5)
+--   bx.recast       {hero, part}       tay luyen: boc lai thuoc tinh phu
 --
 -- Mo hinh chien dau la ban Lua cua sim/battle.py. Doi chieu bang RPC thu ba:
 --   bx.selftest     {}                 danh lai cac cap tham chieu roi so
@@ -697,10 +698,13 @@ local EQUIP_MAX_INTENSIFY = 200
 local EQUIP_MAX_LEVEL = 10
 local EQUIP_MAX_QUALITY = 5
 local EQUIP_MAX_APPENDS = 3
---- Mot diem chi mang o day la 1% — dung thang cua CriticalStrikeBase (bang so
---- goc ghi 1 nghia la 1%), va trong so 50 cua ban goc noi dung dieu do: chi
---- mang tinh theo phan tram chu khong theo hang nghin nhu mau.
-local EQUIP_APPEND_CRIT = 0.01
+--- Cac loai chi so phu co the ra. Ban goc co 24 loai trong bang he so, nhung
+--- chi nhung loai co CHO trong mo hinh chien dau ben nay moi dua vao —
+--- khong bia mot co che moi chi de co them dong chu tren mon do.
+local APPEND_POOL = {
+	equip.HP_LIMIT, equip.AP_MAX, equip.DP_ADDITION,
+	equip.CRITICAL_STRIKE, equip.CRIT_MULT,
+}
 --- Nguon ra TINH HOA (Concentrate, ResourceType 8 cua ban goc). Ban goc cho
 --- tinh hoa tu viec phan giai vat pham (RPC ClientRefineItem, moi vat pham mot
 --- gia tri Concentrate trong bang do). Game moi chua co he vat pham, nhung da
@@ -727,13 +731,18 @@ local function roll_equipment(rng, chapter, part, hero_name)
 			math.floor((chapter or 1) / 3) + rng:int(2)))
 	local quality = rng:int(3)
 	local it = equip.make_equipment(data.equipSynthesis, etype, level, quality, part, {})
-	-- Thuoc tinh phu chi co tu cap 4, dung luat ban goc.
+	-- Thuoc tinh phu chi co tu cap 4, dung luat ban goc. Gia tri KHONG bia:
+	-- boc mot so trong dai 0.8..1.3 roi cho qua dung cong thuc cua ban goc.
 	if level >= equip.APPEND_UNLOCK_LEVEL then
-		it.appends = { {
-			type = equip.CRITICAL_STRIKE,
-			value = equip.roll_append(EQUIP_APPEND_CRIT,
-					function() return rng:float() end),
-		} }
+		local lc = equip.level_coefficient(data.equipSynthesis, etype, level)
+		local rand = function() return rng:float() end
+		it.appends = {}
+		-- So thuoc tinh phu di theo pham chat: pham cang cao cang nhieu dong.
+		for i = 1, math.min(quality, EQUIP_MAX_APPENDS) do
+			local t = APPEND_POOL[rng:int(#APPEND_POOL)]
+			it.appends[i] = equip.make_append(t, equip.roll_append_base(rand),
+					quality, lc)
+		end
 	end
 	return it
 end
@@ -772,9 +781,16 @@ local function sanitize_item(v)
 		for _, ap in ipairs(v.appends) do
 			local at = math.floor(tonumber(ap.type) or 0)
 			local av = tonumber(ap.value) or -1
-			if equip.BUFF_KEY[at] ~= nil and av == av and av >= 0 and av <= 1e9
-					and #it.appends < EQUIP_MAX_APPENDS then
-				it.appends[#it.appends + 1] = { type = at, value = av }
+			if equip.APPEND_COEF[at] ~= nil and av == av and av >= 0
+					and av <= 1e9 and #it.appends < EQUIP_MAX_APPENDS then
+				-- Giu ca `base`: luc chien cham theo no chu khong theo gia
+				-- tri, nen mat `base` la mat luon phan diem.
+				local ab = tonumber(ap.base) or 1.0
+				if ab ~= ab or ab < equip.APPEND_RANGE_MIN
+						or ab > equip.APPEND_RANGE_MAX then
+					ab = 1.0
+				end
+				it.appends[#it.appends + 1] = { type = at, value = av, base = ab }
 			end
 		end
 	end
@@ -869,6 +885,8 @@ local function blank_save()
 		placement = { 1, 1, 2, 3 },
 		-- Tinh hoa: tai nguyen rieng de tinh luyen, khong phai vang.
 		concentrate = 0,
+		-- So lan da tay luyen. Chi dung de lam seed khac nhau giua cac lan.
+		recasts = 0,
 		-- Trang bi: ten tuong -> mang toi da 6 mon, moi mon mot o khac nhau.
 		-- Luu thang thanh mang chu khong phai bang khoa so, vi qua JSON thi
 		-- khoa so bien thanh chuoi — mang thi con nguyen la mang.
@@ -891,7 +909,7 @@ local function read_save(user_id)
 	end
 	local s = blank_save()
 	for _, k in ipairs({ "wins", "losses", "draws", "battles", "cleared",
-			"gold", "concentrate", "updatedAt" }) do
+			"gold", "concentrate", "recasts", "updatedAt" }) do
 		s[k] = tonumber(v[k]) or 0
 	end
 	s.lastResult = tostring(v.lastResult or "")
@@ -1500,6 +1518,14 @@ local function rpc_equipment(context, payload)
 				purify = it.purify or 0,
 				purifyPercent = it.purifyPercent or 0.0,
 				bonusPercent = equip.bonus_percent(it),
+				appendScore = equip.append_score_total(it),
+				-- He so cap: client can no de tinh GIA TRI TOI DA cua mot
+				-- thuoc tinh phu ma hien cho nguoi choi so sanh.
+				levelCoef = equip.level_coefficient(data.equipSynthesis,
+						it.equipType or 0, it.level or 1),
+				recastCost = equip.append_unlocked(it)
+						and #(it.appends or {}) > 0
+						and equip.RECAST_COST_GOLD or nil,
 				nextPurifyCost = (it.exclusive
 						and it.purify < equip.MAX_PURIFY_LEVEL)
 						and equip.exclusive_cost(data.exclusiveEquip, it.part,
@@ -1783,6 +1809,84 @@ local function rpc_forge_exclusive(context, payload)
 	})
 end
 
+--- Tay luyen: boc LAI toan bo thuoc tinh phu cua mot mon.
+---
+--- Ban goc lay 10 000 vang, hoac 100 kim cuong, hoac MOT vien da tay luyen
+--- (vat pham 97). Game moi chua co kim cuong lan he vat pham nen chi nhan
+--- vang — dung con so cua ban goc.
+---
+--- Loai chi so GIU NGUYEN, chi con so doi: dung y updateAppendProperty. Va
+--- luc chien cham theo DAI boc duoc, nen tay luyen la mot canh bac that.
+local function rpc_recast(context, payload)
+	if context.user_id == nil then
+		error("phai dang nhap")
+	end
+	local ok, body = pcall(nk.json_decode, payload or "{}")
+	if not ok or type(body) ~= "table" then
+		error("payload khong doc duoc")
+	end
+	local name = tostring(body.hero or "")
+	local part = math.floor(tonumber(body.part) or 0)
+	if data.heroes[name] == nil then
+		error("khong co tuong " .. name)
+	end
+	if part < 1 or part > EQUIP_PARTS then
+		error("khong co o thu " .. part)
+	end
+	local s = read_save(context.user_id)
+	local it = slot_of(s, name, part)
+	if it == nil then
+		error(name .. " chua co do o o " .. (EQUIP_PART_NAME[part] or part))
+	end
+	if not equip.append_unlocked(it) then
+		error("cap " .. equip.APPEND_UNLOCK_LEVEL .. " moi co thuoc tinh phu")
+	end
+	if #(it.appends or {}) == 0 then
+		error("mon nay khong co thuoc tinh phu de tay")
+	end
+	if s.gold < equip.RECAST_COST_GOLD then
+		error("thieu vang: can " .. equip.RECAST_COST_GOLD
+				.. ", dang co " .. s.gold)
+	end
+
+	local before_score = equip.append_score_total(it)
+	local before = {}
+	for i, ap in ipairs(it.appends) do
+		before[i] = { type = ap.type, value = ap.value, base = ap.base }
+	end
+
+	s.gold = s.gold - equip.RECAST_COST_GOLD
+	-- Seed do MAY CHU dat, y nhu tran danh: client khong do tim duoc lan boc
+	-- nao ra dep roi chi gui lan do.
+	--
+	-- Phai co MOT BIEN DEM rieng trong seed. Truoc day seed chi gom os.time()
+	-- (chinh xac toi GIAY) va so tran — ca hai deu khong doi giua hai lan tay
+	-- lien tiep, nen tay bao nhieu lan cung ra dung mot ket qua. Bo test bat
+	-- duoc: 30 lan tay deu ra 40 diem.
+	s.recasts = (s.recasts or 0) + 1
+	local rng = Rng.new(math.floor(os.time() * 1000) + s.battles * 7919
+			+ part * 31 + s.recasts * 104729)
+	local lc = equip.level_coefficient(data.equipSynthesis, it.equipType or 0,
+			it.level or 1)
+	equip.recast(it, function() return rng:float() end, lc)
+	write_save(context.user_id, s)
+
+	return nk.json_encode({
+		ok = true,
+		hero = name,
+		part = part,
+		partName = EQUIP_PART_NAME[part],
+		cost = equip.RECAST_COST_GOLD,
+		before = before,
+		after = it.appends,
+		scoreBefore = before_score,
+		scoreAfter = equip.append_score_total(it),
+		capacity = equip.capacity(it),
+		item = it,
+		save = s,
+	})
+end
+
 nk.register_rpc(rpc_level_up, "bx.level_up")
 nk.register_rpc(rpc_set_roster, "bx.set_roster")
 nk.register_rpc(rpc_chapters, "bx.chapters")
@@ -1798,3 +1902,4 @@ nk.register_rpc(rpc_intensify, "bx.intensify")
 nk.register_rpc(rpc_refine, "bx.refine")
 nk.register_rpc(rpc_synthesize, "bx.synthesize")
 nk.register_rpc(rpc_forge_exclusive, "bx.forge_exclusive")
+nk.register_rpc(rpc_recast, "bx.recast")

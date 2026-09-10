@@ -339,6 +339,18 @@ func forge_exclusive(hero_name: String, part: int) -> Dictionary:
 	return r
 
 
+## Tay luyen: boc lai toan bo thuoc tinh phu cua mot mon. Ton vang; loai chi
+## so giu nguyen, chi con so doi. May chu boc, client khong do tim duoc.
+func recast(hero_name: String, part: int) -> Dictionary:
+	if not online:
+		return {"ok": false, "error": "chua noi duoc may chu"}
+	var r := await client.call_rpc("bx.recast",
+			{"hero": hero_name, "part": part})
+	if r.ok:
+		data = _upgrade(r.data.get("save", {}))
+	return r
+
+
 ## Tinh hoa dang co. Nguon ra: do thua bi phan giai (xem battle.lua).
 func concentrate() -> int:
 	return int(data.get("concentrate", 0))

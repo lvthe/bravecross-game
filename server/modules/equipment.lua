@@ -175,6 +175,102 @@ function M.synthesis_ready(tbl, equip_type, level, hero_level)
 	return true, ""
 end
 
+-- ------------------------ Thuoc tinh phu va tay luyen (RecastEquipment)
+-- share_EquipmentPropertyLogic:getAppendPropertyValue
+--
+--   value = coef * (base * quality - 0.3) * (levelCoef / 20)
+--
+-- `base` la so BOC RA trong dai 0.8..1.3; tay luyen chinh la boc lai no.
+M.AP_MIN = 22
+M.AP_MAX = 23
+M.CRIT_MULT = 25
+
+M.APPEND_COEF = {
+	[M.HP_LIMIT] = 40.0,
+	[M.AP_MIN] = 2.7,
+	[M.AP_MAX] = 11.8,
+	[M.DP_ADDITION] = 2.5,
+	[M.CRITICAL_STRIKE] = 0.1,
+	[M.CRIT_MULT] = 50.0,
+}
+
+-- Thuoc tinh phu QUY RA LUC CHIEN theo DAI boc duoc, khong phai theo gia tri
+-- nhan trong so (CalcEquipFightingCapacity).
+M.APPEND_SCORE_BANDS = {
+	{ 1.2, 60 }, { 1.1, 40 }, { 1.0, 30 }, { 0.9, 20 }, { 0.8, 10 },
+}
+
+M.RECAST_COST_GOLD = 10000
+M.RECAST_COST_DIAMOND = 100
+
+-- Loai chi so phu -> { kenh buff, he so doi don vi }. Chi mang cua ban goc
+-- tinh theo DIEM PHAN TRAM, mo hinh chien dau ben nay dung phan so.
+M.APPEND_TO_BUFF = {
+	[M.HP_LIMIT] = { "hp", 1.0 },
+	[M.AP_MAX] = { "ap", 1.0 },
+	[M.AP_MIN] = { "ap", 1.0 },
+	[M.DP_ADDITION] = { "dp", 1.0 },
+	[M.CRITICAL_STRIKE] = { "crit", 0.01 },
+	[M.CRIT_MULT] = { "crit_mult", 0.01 },
+}
+
+function M.append_value(base, prop_type, quality, level_coef)
+	local coef = M.APPEND_COEF[prop_type]
+	if coef == nil then
+		return 0.0
+	end
+	return coef * (base * quality - 0.3) * (level_coef / 20.0)
+end
+
+--- Diem luc chien cua mot thuoc tinh phu, cham theo DAI boc duoc.
+function M.append_score(base)
+	local val = 0
+	for _, row in ipairs(M.APPEND_SCORE_BANDS) do
+		if base > row[1] and row[2] > val then
+			val = row[2]
+		end
+	end
+	return val
+end
+
+--- Boc mot lan: so trong dai 0.8..1.3.
+function M.roll_append_base(rand)
+	return M.APPEND_RANGE_MIN + rand() * (M.APPEND_RANGE_MAX - M.APPEND_RANGE_MIN)
+end
+
+--- { type, value, base } — giu ca `base` vi luc chien cham theo no.
+function M.make_append(prop_type, base, quality, level_coef)
+	return {
+		type = prop_type,
+		value = M.append_value(base, prop_type, quality, level_coef),
+		base = base,
+	}
+end
+
+--- Tong diem cac thuoc tinh phu.
+function M.append_score_total(e)
+	if not M.append_unlocked(e) then
+		return 0
+	end
+	local sum = 0
+	for _, ap in ipairs(e.appends or {}) do
+		sum = sum + M.append_score(ap.base or 1.0)
+	end
+	return sum
+end
+
+--- Tay luyen: boc LAI toan bo thuoc tinh phu. Loai chi so giu nguyen, chi
+--- con so doi — dung y updateAppendProperty cua ban goc.
+function M.recast(e, rand, level_coef)
+	local out = {}
+	for i, ap in ipairs(e.appends or {}) do
+		out[i] = M.make_append(ap.type, M.roll_append_base(rand),
+				e.quality or 1, level_coef)
+	end
+	e.appends = out
+	return out
+end
+
 -- ---------------------------------- Trang bi chuyen thuoc (ExclusiveEquip)
 -- Mon do thuong tay toi bac 5 (+25%) thi REN len duoc thanh do chuyen thuoc —
 -- neu tuong do nam trong danh sach 22 tuong co do rieng. Do chuyen thuoc dung
@@ -419,12 +515,13 @@ function M.stats(e)
 end
 
 --- Luc chien: tung chi so nhan trong so cua no roi cong lai.
+--- Luc chien mon do (CalcEquipFightingCapacity): chi so chinh (da gom cuong
+--- hoa) nhan trong so, CONG tong DIEM cua thuoc tinh phu. Thuoc tinh phu
+--- khong nhan trong so — no cham theo dai boc duoc.
 function M.capacity(e)
-	local sum = 0.0
-	for t, v in pairs(M.stats(e)) do
-		sum = sum + v * M.weight_of(t)
-	end
-	return sum
+	local t = e.main.type
+	local sum = (M.stats(e)[t] or 0.0) * M.weight_of(t)
+	return sum + M.append_score_total(e)
 end
 
 --- Luc chien tinh Y HET client ban goc, de doi chieu: dung moc co dinh thay vi
@@ -433,12 +530,7 @@ end
 function M.capacity_as_original(e)
 	local t, v = e.main.type, M.main_value(e)
 	local out = (v + M.intensify_property_val(v, t)) * M.weight_of(t)
-	if M.append_unlocked(e) then
-		for _, ap in ipairs(e.appends or {}) do
-			out = out + ap.value * M.weight_of(ap.type)
-		end
-	end
-	return out
+	return out + M.append_score_total(e)
 end
 
 function M.cost_to_next(e)
@@ -481,10 +573,18 @@ M.BUFF_KEY = {
 function M.to_buffs(items)
 	local out = {}
 	for _, e in ipairs(items or {}) do
-		for t, v in pairs(M.stats(e)) do
-			local k = M.BUFF_KEY[t]
-			if k ~= nil then
-				out[k] = (out[k] or 0.0) + v
+		local mt = e.main.type
+		local k = M.BUFF_KEY[mt]
+		if k ~= nil then
+			out[k] = (out[k] or 0.0) + (M.stats(e)[mt] or 0.0)
+		end
+		-- Thuoc tinh PHU co bang rieng vi don vi khac.
+		if M.append_unlocked(e) then
+			for _, ap in ipairs(e.appends or {}) do
+				local pair = M.APPEND_TO_BUFF[ap.type]
+				if pair ~= nil then
+					out[pair[1]] = (out[pair[1]] or 0.0) + ap.value * pair[2]
+				end
 			end
 		end
 		-- Ke ca ky nang cua do chuyen thuoc: ca bon deu quy ve kenh buff.

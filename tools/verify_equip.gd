@@ -43,7 +43,8 @@ func _item(part: int, prop: int, value: float, lv: int, intensify: int,
 		e.appends.append(a)
 	var aps: Array = []
 	for a in appends:
-		aps.append({"type": a[0], "value": a[1]})
+		aps.append({"type": a[0], "value": a[1],
+				"base": float(a[2]) if a.size() > 2 else 1.0})
 	var syn = null
 	if lv < Equipment.MAX_EQUIP_LEVEL:
 		syn = {"nextLevel": lv + 1, "gold": 3700, "needHeroLevel": 20,
@@ -57,6 +58,8 @@ func _item(part: int, prop: int, value: float, lv: int, intensify: int,
 		"capacity": e.capacity(),
 		"nextCost": ceili(Equipment.intensify_cost(intensify + 1)),
 		"nextRefineCost": e.refine_cost_next(),
+		"levelCoef": 20.0, "recastCost": Equipment.RECAST_COST_GOLD,
+		"appendScore": e.append_score_total(),
 	}
 
 
@@ -117,13 +120,13 @@ func _ready() -> void:
 	var main_ui := XggLayout.find_node(scr.ui, "lEquipmentMainUI")
 	var refine := XggLayout.find_node(scr.ui, "lEquipmentRefineUI")
 	var forge := XggLayout.find_node(scr.ui, "lEquipmentForgeUI")
-	var alter := XggLayout.find_node(scr.ui, "lEquipmentAlterUI")
+	var quality_ui := XggLayout.find_node(scr.ui, "lEquipmentUpgradeQualityUI")
 	_check(main_ui != null and main_ui.visible, "panel mon do duoc bat len")
 	_check(refine != null, "co bang tinh luyen trong bo cuc")
 	_check(forge != null, "co bang ghep do trong bo cuc")
-	# Tay luyen (chua co luat) thi van phai an — chi bat cai da co luat.
-	_check(alter != null and not alter.visible,
-			"bang tay luyen (chua co luat) van an")
+	# Pham chat (chua co luat) thi van phai an — chi bat cai da co luat.
+	_check(quality_ui != null and not quality_ui.visible,
+			"bang pham chat (chua co luat) van an")
 
 	print("\n=== 2. do vao thi hien dung so ===")
 	var data := {
@@ -133,8 +136,9 @@ func _ready() -> void:
 		"maxRefine": 5,
 		"equipment": {
 			"MaChao": [
-				_item(1, Equipment.AP, 100.0, 5, 3,
-						[[Equipment.CRITICAL_STRIKE, 0.0123]]),
+				_item(1, Equipment.AP, 100.0, 5, 3, [
+					Equipment.make_append(Equipment.CRITICAL_STRIKE,
+							1.0, 2.0, 20.0)]),
 				_item(2, Equipment.HP_LIMIT, 250.0, 2, 0),
 			],
 			"GanNing": [_item(1, Equipment.AP, 40.0, 6, 0)],
@@ -159,7 +163,9 @@ func _ready() -> void:
 
 	# Cap 5 >= 4 nen thuoc tinh phu da mo, va chi mang hien theo phan tram.
 	var ap1 := _text(scr, "ttfEquipMainUIAppendProperty1")
-	_check(ap1 == "Chi mang +1.23%", "thuoc tinh phu hien theo phan tram", ap1)
+	# Chi mang cua thuoc tinh phu tinh theo DIEM PHAN TRAM: coef 0.1, base 1.0,
+	# pham 2, he so cap 20 -> 0.1 * (2 - 0.3) * 1 = 0.17 diem phan tram.
+	_check(ap1 == "Chi mang +0.17%", "thuoc tinh phu theo diem phan tram", ap1)
 
 	print("\n=== 3. bang cuong hoa: hien tai va sau khi cuong hoa ===")
 	_check(_text_cls(scr, scr.CLS_NOW_LEVEL) == "+3", "cap hien tai",
@@ -370,6 +376,70 @@ func _ready() -> void:
 			"o 4 cho ky nang chi mang", str(sk))
 	_check(is_equal_approx(float(Equipment.to_buffs([e_exc]).get("crit", 0.0)), 0.10),
 			"ky nang quy ra buff crit +10%")
+
+	scr.set_data(data, ["MaChao", "GanNing"])
+	scr._set_tab("intensify")
+	scr.part = 1
+	scr._refresh()
+
+	print("\n=== 3g. bang tay luyen ===")
+	var alter_data := {
+		"gold": 50000, "concentrate": 0, "maxIntensify": 200, "maxRefine": 5,
+		"maxPurify": 20,
+		"equipment": {"MaChao": [_item(1, Equipment.AP, 100.0, 5, 0, [
+			Equipment.make_append(Equipment.HP_LIMIT, 0.85, 2.0, 20.0),
+			Equipment.make_append(Equipment.CRITICAL_STRIKE, 1.25, 2.0, 20.0)])]},
+	}
+	scr.set_data(alter_data, ["MaChao"])
+	scr.part = 1
+	scr._set_tab("alter")
+	var pan_al := XggLayout.find_node(scr.ui, "lEquipmentAlterUI")
+	_check(pan_al != null and pan_al.visible, "doi sang bang tay luyen")
+	_check(pan_fg != null and not pan_fg.visible, "bang ghep do an di")
+
+	var line1 := _text_of(scr, XggLayout.find_by_cls(pan_al, "属性1"))
+	_check(line1.begins_with("Mau "), "dong 1 la thuoc tinh mau", line1)
+	var max1 := _text_of(scr, XggLayout.find_by_cls(pan_al, "最大值1"))
+	_check(max1.begins_with("10 diem"), "base 0.85 duoc 10 diem", max1)
+	var max2 := _text_of(scr, XggLayout.find_by_cls(pan_al, "最大值2"))
+	_check(max2.begins_with("60 diem"), "base 1.25 duoc 60 diem", max2)
+	# Dong 3 tro di phai trong.
+	_check(_text_of(scr, XggLayout.find_by_cls(pan_al, "属性3")) == "",
+			"chi hien dung so dong co that")
+	var tip_al := _text_of(scr, XggLayout.find_by_cls(pan_al, scr.CLS_ALTER_TIPS))
+	_check(tip_al == "Tong 70 diem", "tong diem = 10 + 60", tip_al)
+
+	# Chi mang cua thuoc tinh phu tinh theo DIEM PHAN TRAM, khong phai phan so.
+	var line2 := _text_of(scr, XggLayout.find_by_cls(pan_al, "属性2"))
+	var want_v: float = Equipment.append_value(1.25, Equipment.CRITICAL_STRIKE, 2.0, 20.0)
+	_check(line2 == "Chi mang %.2f%%" % want_v,
+			"hien dung don vi diem phan tram", line2)
+
+	var abtn := XggLayout.find_by_cls(pan_al, scr.CLS_ALTER_BTN)
+	_check(abtn != null and abtn.visible, "co nut tay luyen")
+	_check(abtn != null and abtn.modulate.r > 0.9, "co 50 000 vang thi du 10 000")
+	var gbox := XggLayout.find_by_cls(pan_al, scr.CLS_ALTER_GOLD_BOX)
+	_check(_text_of(scr, XggLayout.find_node(gbox, "uiGoldIconCount")) == "10000",
+			"gia tay luyen dung bang goc")
+
+	# Tay cao cap ton kim cuong, va dem da tay luyen — chua co, phai an.
+	var adv := XggLayout.find_by_cls(pan_al, scr.CLS_ALTER_BTN_ADV)
+	_check(adv != null and not adv.visible, "nut tay cao cap (kim cuong) an di")
+	var stone := XggLayout.find_node(scr.ui, "g_AlterStroeCount")
+	_check(stone != null and not stone.visible, "dem da tay luyen an di")
+
+	print("\n=== 3h. mon chua mo thuoc tinh phu ===")
+	var no_ap := {
+		"gold": 50000, "concentrate": 0, "maxIntensify": 200, "maxRefine": 5,
+		"maxPurify": 20,
+		"equipment": {"MaChao": [_item(1, Equipment.AP, 100.0, 2, 0, [])]},
+	}
+	scr.set_data(no_ap, ["MaChao"])
+	scr.part = 1
+	scr._refresh()
+	_check(abtn != null and not abtn.visible, "khong co thuoc tinh phu thi giau nut")
+	_check(scr._tips.text.begins_with("Mon nay chua co"), "noi ro vi sao",
+			scr._tips.text)
 
 	scr.set_data(data, ["MaChao", "GanNing"])
 	scr._set_tab("intensify")

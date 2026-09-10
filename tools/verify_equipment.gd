@@ -70,7 +70,8 @@ func _init() -> void:
 	var fields := ["increment", "propVal", "total", "cost", "costTo",
 			"qualityRange", "capacity", "capacityOrig",
 			"refinePercent", "refineCost", "mainValue",
-			"jobOf", "categoryOf", "mainFormula"]
+			"jobOf", "categoryOf", "mainFormula",
+			"appendValue", "appendScore", "appendTotal"]
 	var bad := {}
 	var worst := {}
 	for f in fields:
@@ -86,8 +87,10 @@ func _init() -> void:
 		var iv := int(c["intensify"])
 		var rf := int(c["refine"])
 		var pt := int(c["part"])
-		var e := Equipment.new(pt, ptype, base, lv, iv, 2,
-				[[Equipment.CRITICAL_STRIKE, 0.05], [Equipment.HP_LIMIT, 120.0]], rf)
+		var abase := float(c["appendBase"])
+		var e := Equipment.new(pt, ptype, base, lv, iv, 2, [
+				Equipment.make_append(Equipment.CRITICAL_STRIKE, abase, 2.0, base),
+				Equipment.make_append(Equipment.HP_LIMIT, abase, 2.0, base)], rf)
 		var got := {
 			"increment": Equipment.intensify_increment(iv, base),
 			"propVal": Equipment.intensify_property_val(base, ptype),
@@ -105,6 +108,10 @@ func _init() -> void:
 					base, 2.0, Equipment.equip_job(int(c["equipType"]))),
 			"refineCost": e.refine_cost_next(),
 			"mainValue": e.effective_main(),
+			"appendValue": Equipment.append_value(abase,
+					Equipment.CRITICAL_STRIKE, 2.0, base),
+			"appendScore": Equipment.append_score(abase),
+			"appendTotal": e.append_score_total(),
 		}
 		for f in fields:
 			var want := float(c[f])

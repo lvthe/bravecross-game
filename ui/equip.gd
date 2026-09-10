@@ -90,6 +90,13 @@ const CLS_FORGE_NAME := "装备名字"
 const CLS_FORGE_LEVEL := "装备等级"
 const CLS_FORGE_TIPS := "提示语"
 const CLS_FORGE_MAXED := "锻造到达最高级"
+
+# --- tab tay luyen (lEquipmentAlterUI) ---
+const CLS_ALTER_BTN := "普通洗练按钮"        # nut tay luyen thuong (ton vang)
+const CLS_ALTER_BTN_ADV := "高级洗练按钮"    # tay cao cap (kim cuong) — chua co
+const CLS_ALTER_GOLD_BOX := "普通洗练的资源"
+const CLS_ALTER_DIAMOND_BOX := "高级洗练的资源"
+const CLS_ALTER_TIPS := "tips"
 const CLS_MAXED := "强化到达最高级"          # bao da toi cap cao nhat
 
 ## Man nay lam viec duoc ma khong can may chu: set_data() nhan thang du lieu.
@@ -128,6 +135,8 @@ func _ready() -> void:
 			_set_tab("refine")
 		elif "--forge" in OS.get_cmdline_user_args():
 			_set_tab("forge")
+		elif "--alter" in OS.get_cmdline_user_args():
+			_set_tab("alter")
 		if "--part4" in OS.get_cmdline_user_args():
 			part = 4
 			_refresh()
@@ -143,9 +152,12 @@ func _fake() -> Dictionary:
 		var out: Array = []
 		for a in aps:
 			e.appends.append(a)
-			out.append({"type": a[0], "value": a[1]})
+			out.append({"type": a[0], "value": a[1],
+					"base": float(a[2]) if a.size() > 2 else 1.0})
 		return {"part": part, "level": lv, "intensify": iv, "quality": 2,
 				"refine": rf, "main": {"type": prop, "value": v}, "appends": out,
+				"levelCoef": 20.0, "recastCost": Equipment.RECAST_COST_GOLD,
+				"appendScore": 30,
 				"capacity": e.capacity(), "equipType": 1,
 				"nextCost": ceili(Equipment.intensify_cost(iv + 1)),
 				"nextRefineCost": e.refine_cost_next(),
@@ -158,7 +170,8 @@ func _fake() -> Dictionary:
 		"equipment": {
 			"MaChao": [
 				mk.call(1, Equipment.AP, 118.4, 7, 12,
-						[[Equipment.CRITICAL_STRIKE, 0.0132]], 2),
+						[Equipment.make_append(Equipment.CRITICAL_STRIKE, 1.15, 2.0, 20.0),
+						 Equipment.make_append(Equipment.HP_LIMIT, 0.92, 2.0, 20.0)], 2),
 				mk.call(2, Equipment.HP_LIMIT, 264.0, 5, 3, []),
 				# Mot mon da la do chuyen thuoc, de xem thu duong tay rieng.
 				{"part": 4, "level": 4, "intensify": 2, "quality": 3,
@@ -195,7 +208,8 @@ func _build() -> void:
 	# Ban goc an gan het roi de Lua bat dung cai can. Bat ba lop ta dung, va
 	# CHI ba lop do — bat het thi 5 bang hanh dong ve chong len nhau.
 	for n in ["lEquipmentUI", "lEquipmentMainUI", "lEquipmentChildUI",
-			"lEquipmentIntensifyUI", "lEquipmentRefineUI", "lEquipmentForgeUI"]:
+			"lEquipmentIntensifyUI", "lEquipmentRefineUI", "lEquipmentForgeUI",
+			"lEquipmentAlterUI"]:
 		var node := XggLayout.find_node(ui, n)
 		if node != null:
 			XggLayout.show_branch(node, ui)
@@ -230,6 +244,24 @@ func _build() -> void:
 			func(): _set_tab("refine"))
 	_click(XggLayout.find_node(ui, "btnEquipmentUI_ShowEquipForgeUI"),
 			func(): _set_tab("forge"))
+	_click(XggLayout.find_node(ui, "btnShowEquipmentAlterUI"),
+			func(): _set_tab("alter"))
+	_click(XggLayout.find_by_cls(ui, CLS_ALTER_BTN), _on_recast)
+	_button_art(XggLayout.find_by_cls(ui, CLS_ALTER_BTN), "v6/ui_button01.png")
+	_backing(XggLayout.find_node(ui, "lEquipmentAlterUI"))
+	# Tay cao cap ton KIM CUONG, va dem da tay luyen — game moi chua co ca
+	# hai, nen an di thay vi de nut bam khong lam gi.
+	for n in [XggLayout.find_by_cls(ui, CLS_ALTER_BTN_ADV),
+			XggLayout.find_by_cls(ui, CLS_ALTER_DIAMOND_BOX),
+			XggLayout.find_node(ui, "g_AlterStroeCount")]:
+		if n != null:
+			n.visible = false
+	# Va hai icon dung roi ben canh: kim cuong va DA TAY LUYEN (xilianshi).
+	# Tim theo TEN ANH chu khong doan theo vi tri.
+	var alter_panel := XggLayout.find_node(ui, "lEquipmentAlterUI")
+	if alter_panel != null:
+		_hide_by_image(alter_panel, "zuanshi")
+		_hide_by_image(alter_panel, "xilianshi")
 	_click(XggLayout.find_node(ui, "snsEquipForge"), _on_synthesize)
 	_button_art(XggLayout.find_node(ui, "snsEquipForge"), "v6/ui_button01.png")
 	_backing(XggLayout.find_node(ui, "lEquipmentForgeUI"))
@@ -299,6 +331,17 @@ func _button_art(node: Control, frame: String) -> void:
 	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	node.add_child(tr)
 	node.move_child(tr, 0)
+
+
+## Giau moi node mang mot anh co ten chua `frag`. Dung khi ban goc de san
+## mot thu ma game moi chua co (kim cuong chang han).
+func _hide_by_image(node: Control, frag: String) -> void:
+	if String(node.get_meta("img", "")).findn(frag) >= 0:
+		node.visible = false
+		return
+	for c in node.get_children():
+		if c is Control:
+			_hide_by_image(c as Control, frag)
 
 
 ## Bat mot node cua bo cuc thanh bam duoc. Bo cuc tra ve node MOUSE_FILTER
@@ -400,12 +443,15 @@ func _set_tab(which: String) -> void:
 	var it := XggLayout.find_node(ui, "lEquipmentIntensifyUI")
 	var rf := XggLayout.find_node(ui, "lEquipmentRefineUI")
 	var fg := XggLayout.find_node(ui, "lEquipmentForgeUI")
+	var al := XggLayout.find_node(ui, "lEquipmentAlterUI")
 	if it != null:
 		it.visible = which == "intensify"
 	if rf != null:
 		rf.visible = which == "refine"
 	if fg != null:
 		fg.visible = which == "forge"
+	if al != null:
+		al.visible = which == "alter"
 	_refresh()
 
 
@@ -474,7 +520,10 @@ func _model(it: Dictionary) -> Equipment:
 	e.purify = int(it.get("purify", 0))
 	e.purify_percent = float(it.get("purifyPercent", 0.0))
 	for ap in it.get("appends", []):
-		e.appends.append([int(ap.get("type", 0)), float(ap.get("value", 0.0))])
+		# Phai keo theo ca `base`: luc chien cham theo no chu khong theo gia
+		# tri. Bo quen la moi mon deu ra dung mot so diem.
+		e.appends.append([int(ap.get("type", 0)), float(ap.get("value", 0.0)),
+				float(ap.get("base", 1.0))])
 	return e
 
 
@@ -523,7 +572,8 @@ func _refresh() -> void:
 	var lines: Array = []
 	if e.append_unlocked():
 		for a in e.appends:
-			lines.append("%s +%s" % [PROP_NAME.get(int(a[0]), a[0]), _num(float(a[1]), int(a[0]))])
+			lines.append("%s +%s" % [_append_name(int(a[0])),
+					_num_append(float(a[1]), int(a[0]))])
 	else:
 		lines.append("Cap %d moi mo thuoc tinh phu" % Equipment.APPEND_UNLOCK_LEVEL)
 	for i in range(1, 7):
@@ -534,6 +584,7 @@ func _refresh() -> void:
 	_refresh_intensify(it, e, mt)
 	_refresh_refine(it, e, mt)
 	_refresh_forge(it)
+	_refresh_alter(it, e)
 
 
 ## Icon mon do va nen theo pham chat, dung cach dat ten cua ban goc:
@@ -907,6 +958,135 @@ func _forge_materials(box: Control, mats: Array, n: int) -> void:
 			lb.position = Vector2(4, slot.size.y - 22)
 		else:
 			slot.visible = false
+
+
+## Bang tay luyen. Ban goc bay san sau dong thuoc tinh phu (属性1..6) va sau
+## dong GIA TRI TOI DA tuong ung (最大值1..6) — de nguoi choi thay minh boc
+## duoc bao nhieu phan so voi kich.
+##
+## Luc chien cham theo DAI boc duoc (0.8 -> 10 diem ... 1.2 -> 60), nen o day
+## hien ca so diem: do moi la thu nguoi choi dang danh bac.
+func _refresh_alter(it: Dictionary, e: Equipment) -> void:
+	var panel := XggLayout.find_node(ui, "lEquipmentAlterUI")
+	if panel == null:
+		return
+	var aps: Array = it.get("appends", [])
+	var unlocked := int(it.get("level", 1)) >= Equipment.APPEND_UNLOCK_LEVEL
+	var lc := float(it.get("levelCoef", 0.0))
+	var quality := float(it.get("quality", 1))
+
+	for i in range(1, 7):
+		var line := XggLayout.find_by_cls(panel, "属性%d" % i)
+		var maxi_lb := XggLayout.find_by_cls(panel, "最大值%d" % i)
+		if not unlocked or i > aps.size():
+			_label(line, "", true)
+			_label(maxi_lb, "", true)
+			continue
+		var ap: Dictionary = aps[i - 1]
+		var t := int(ap.get("type", 0))
+		var base := float(ap.get("base", 1.0))
+		_label(line, "%s %s" % [_append_name(t),
+				_num_append(float(ap.get("value", 0.0)), t)], false)
+		# Cot phai: diem boc duoc va gia tri toi da co the.
+		var best := Equipment.append_value(Equipment.APPEND_RANGE_MAX, t, quality, lc)
+		_label(maxi_lb, "%d diem / toi da %s"
+				% [Equipment.append_score(base), _num_append(best, t)], false)
+
+	var tips := XggLayout.find_by_cls(panel, CLS_ALTER_TIPS)
+	if unlocked and aps.size() > 0:
+		_label(tips, "Tong %d diem" % e.append_score_total(), false)
+	else:
+		_label(tips, "Cap %d moi co thuoc tinh phu"
+				% Equipment.APPEND_UNLOCK_LEVEL, false)
+
+	var cost := int(it.get("recastCost", Equipment.RECAST_COST_GOLD))
+	var gold_box := XggLayout.find_by_cls(panel, CLS_ALTER_GOLD_BOX)
+	if gold_box != null:
+		gold_box.visible = unlocked and aps.size() > 0
+		var lb := XggLayout.find_node(gold_box, "uiGoldIconCount")
+		if lb != null:
+			_label(lb, str(cost))
+
+	var btn := XggLayout.find_by_cls(panel, CLS_ALTER_BTN)
+	if btn != null:
+		btn.visible = unlocked and aps.size() > 0
+		for c in btn.get_children():
+			if c is Label:
+				_label(c, "Tay luyen")
+				(c as Label).horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				(c as Label).vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+				c.size = btn.size
+				c.position = Vector2.ZERO
+		btn.modulate = Color(1, 1, 1) if gold >= cost else Color(0.55, 0.55, 0.55)
+
+	# Icon mon do cua chinh bang nay.
+	var icon := XggLayout.find_node(ui, "spEquipmentUIAlterAction0")
+	if icon != null:
+		_slot_art(icon, "v6/equipment_b_%d.png"
+				% clampi(int(it.get("quality", 1)), 2, 6))
+		var inner := XggLayout.find_by_cls(icon, "CCSprite")
+		if inner != null:
+			_slot_art(inner, "equip_%d_%d.png" % [(part - 1) % 5 + 1,
+					clampi(int(it.get("level", 1)), 0, 10)])
+
+	if tab == "alter":
+		if not unlocked or aps.size() == 0:
+			_tips.text = "Mon nay chua co thuoc tinh phu de tay"
+		elif gold < cost:
+			_tips.text = "Thieu vang: can %d, dang co %d" % [cost, gold]
+		else:
+			_tips.text = ""
+
+
+## Ten hien cua mot loai chi so phu.
+## Hien mot gia tri THUOC TINH PHU.
+##
+## Khac chi so chinh: ban goc luu chi mang va he so sat thuong chi mang cua
+## thuoc tinh phu theo DIEM PHAN TRAM (0.2 nghia la 0,2%), con chi so chinh
+## thi dung phan so. Dung nham la sai 100 lan.
+func _num_append(v: float, prop_type: int) -> String:
+	if prop_type == Equipment.CRITICAL_STRIKE or prop_type == Equipment.CRIT_MULT:
+		return "%.2f%%" % v
+	return "%.1f" % v
+
+
+func _append_name(prop_type: int) -> String:
+	if PROP_NAME.has(prop_type):
+		return PROP_NAME[prop_type]
+	if prop_type == Equipment.AP_MAX or prop_type == Equipment.AP_MIN:
+		return "Cong"
+	if prop_type == Equipment.CRIT_MULT:
+		return "ST chi mang"
+	return str(prop_type)
+
+
+func _on_recast() -> void:
+	if _busy:
+		return
+	var it := item()
+	if it.is_empty():
+		return
+	var aps: Array = it.get("appends", [])
+	if aps.is_empty():
+		_tips.text = "Mon nay chua co thuoc tinh phu de tay"
+		return
+	var cost := int(it.get("recastCost", Equipment.RECAST_COST_GOLD))
+	if gold < cost:
+		_tips.text = "Thieu vang: can %d, dang co %d" % [cost, gold]
+		return
+	_busy = true
+	_tips.text = "dang tay luyen..."
+	var ses := await Game.ensure_session()
+	var r := await ses.recast(hero(), part)
+	_busy = false
+	if not r.ok:
+		_tips.text = "khong tay duoc: %s" % str(r.get("error", ""))
+		return
+	await _reload()
+	var before := int(r.data.get("scoreBefore", 0))
+	var after := int(r.data.get("scoreAfter", 0))
+	var verdict := "hon" if after > before else ("kem" if after < before else "hoa")
+	_tips.text = "Tay xong: %d -> %d diem (%s)" % [before, after, verdict]
 
 
 func _child(box: Control, cls: String) -> Control:

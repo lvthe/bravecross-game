@@ -285,6 +285,68 @@ bf = E.to_buffs([E.Equipment(5, (E.HP_LIMIT, 100.0), exclusive=True)])
 check(close(bf.get('crit_mult', 0.0), 0.25),
       'ky nang quy thang ra kenh buff', bf)
 
+print('\n=== 6f. thuoc tinh phu va tay luyen ===')
+# value = coef * (base*quality - 0.3) * (levelCoef/20)
+want = 40.0 * (1.0 * 2 - 0.3) * (20.0 / 20.0)
+check(close(E.append_value(1.0, E.HP_LIMIT, 2, 20), want),
+      'cong thuc thuoc tinh phu khop tinh tay',
+      E.append_value(1.0, E.HP_LIMIT, 2, 20))
+check(E.append_value(1.0, 999, 2, 20) == 0.0,
+      'loai khong co he so thi tra 0, khong bia')
+check(E.append_value(1.2, E.HP_LIMIT, 2, 20) > E.append_value(0.8, E.HP_LIMIT, 2, 20),
+      'boc cao hon thi gia tri cao hon')
+check(E.append_value(1.0, E.HP_LIMIT, 3, 20) > E.append_value(1.0, E.HP_LIMIT, 2, 20),
+      'pham chat cao hon thi gia tri cao hon')
+
+# Luc chien cua thuoc tinh phu cham theo DAI, khong theo gia tri.
+check([E.append_score(b) for b in (0.85, 0.95, 1.05, 1.15, 1.25)]
+      == [10, 20, 30, 40, 60], 'thang diem 10/20/30/40/60 theo dai',
+      [E.append_score(b) for b in (0.85, 0.95, 1.05, 1.15, 1.25)])
+check(E.append_score(0.8) == 0, 'dung 0.8 thi chua qua dai dau tien')
+check(E.append_score(2.0) == 60, 'vuot dai cuoi thi van la 60')
+# Hai mon cung loai nhung base khac nhau cho luc chien khac nhau — day la ly
+# do phai giu `base` tren mon do, khong chi giu gia tri.
+lo = E.Equipment(1, (E.AP, 100.0), level=5,
+                 appends=[E.make_append(E.HP_LIMIT, 0.85, 2, 20)])
+hi = E.Equipment(1, (E.AP, 100.0), level=5,
+                 appends=[E.make_append(E.HP_LIMIT, 1.25, 2, 20)])
+check(hi.capacity() - lo.capacity() == 50, 'chenh dung 60 - 10 = 50 diem',
+      '%.1f vs %.1f' % (lo.capacity(), hi.capacity()))
+
+check(E.RECAST_COST_GOLD == 10000 and E.RECAST_COST_DIAMOND == 100,
+      'gia tay luyen dung bang goc')
+
+# Tay luyen: boc lai base, loai chi so GIU NGUYEN.
+rnd = random.Random(7)
+w4 = E.Equipment(1, (E.AP, 100.0), level=5, quality=2, appends=[
+    E.make_append(E.HP_LIMIT, 0.8, 2, 20),
+    E.make_append(E.CRITICAL_STRIKE, 0.8, 2, 20)])
+types_before = [a[0] for a in w4.appends]
+w4.recast(rnd.random, 20)
+check([a[0] for a in w4.appends] == types_before,
+      'tay luyen giu nguyen loai chi so, chi doi con so')
+check(all(0.8 <= a[2] <= 1.3 for a in w4.appends),
+      'base moi nam trong dai 0.8-1.3', [a[2] for a in w4.appends])
+check(all(close(a[1], E.append_value(a[2], a[0], 2, 20)) for a in w4.appends),
+      'gia tri tinh lai dung theo base moi')
+
+rnd2 = random.Random(11)
+scores = []
+for _ in range(200):
+    w4.recast(rnd2.random, 20)
+    scores.append(w4.append_score_total())
+check(min(scores) < max(scores), 'tay lai cho diem khac nhau',
+      '%d..%d' % (min(scores), max(scores)))
+check(min(scores) >= 0 and max(scores) <= 120,
+      'diem nam trong khoang co the (2 thuoc tinh x toi da 60)',
+      '%d..%d' % (min(scores), max(scores)))
+
+# Doi don vi khi quy ra buff: chi mang cua ban goc la DIEM PHAN TRAM.
+bf2 = E.to_buffs([E.Equipment(1, (E.AP, 100.0), level=5, quality=2,
+                              appends=[(E.CRITICAL_STRIKE, 5.0, 1.0)])])
+check(close(bf2.get('crit', 0.0), 0.05),
+      '5 diem phan tram -> 0.05 phan so', bf2)
+
 print('\n=== 7. chi phi cong don ===')
 w2 = E.Equipment(1, (E.AP, 100.0), intensify=0)
 step = sum(E.intensify_cost(i) for i in range(1, 11))

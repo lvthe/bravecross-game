@@ -17,7 +17,7 @@ chieu — lech nhau la biet ngay.
     python export_stats.py
     python export_stats.py --battles 4000
 """
-import os, sys, json, argparse, collections
+import os, re, sys, json, argparse, collections
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -72,7 +72,9 @@ REFERENCE_PAIRS = [
 # de vao nhat, yanyue (7500) la cai phai danh lau moi voi toi.
 FORMATION_GOLD_DIV = 1000.0
 
-SAFE = set('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-. ')
+# Ky tu PHAI thoat trong chuoi Lua nhay kep. Ngoai ba cai nay va cac ky tu
+# dieu khien, moi thu khac di thang qua duoc — ke ca dau ngoac va chu Han.
+LUA_ESCAPE = {'\\': '\\\\', '"': '\\"', '\n': '\\n', '\r': '\\r', '\t': '\\t'}
 
 
 def formation_doc(forms):
@@ -110,15 +112,45 @@ def formation_doc(forms):
 
 
 def lua_str(v):
-    """Chuoi Lua.
+    """Chuoi Lua nhay kep, thoat dung nhung gi Lua doi hoi.
 
-    Moi chuoi di qua day deu la ten tuong, ten cot, hoac ten quy tac — toan ky
-    tu an toan. Chan lai bang assert thay vi viet bo thoat ky tu: neu mot ngay
-    nao do co chuoi la, no phai bao loi chu khong duoc am tham sinh ra Lua hong.
+    Truoc day cho la moi chuoi di qua day deu la ten tuong / ten cot / ten quy
+    tac nen toan ky tu an toan, va chan bang mot danh sach cho phep rat hep.
+    Du lieu goc phu nhan dieu do: co ten kieu 'Archer(new)', co ten chuong bang
+    chu Han ('九伐中原', 'Đổng quân nhập xâm'), co ca dau ngoac full-width ')'.
+    Nhung thu do KHONG can thoat trong chuoi Lua — chi \\ " va ky tu dieu khien
+    moi can. Danh sach cho phep hep chi lam vo pipeline moi lan gap ten moi.
+
+    Van giu tinh than cu: khong bao gio am tham sinh ra Lua hong. Chi khac la
+    gio thoat that thay vi bao loi.
     """
-    bad = [c for c in v if c not in SAFE]
-    assert not bad, 'chuoi co ky tu can thoat, chua ho tro: %r trong %r' % (bad, v)
-    return '"%s"' % v
+    out = []
+    for c in v:
+        if c in LUA_ESCAPE:
+            out.append(LUA_ESCAPE[c])
+        elif ord(c) < 0x20 or ord(c) == 0x7F:
+            out.append('\\%d' % ord(c))     # ky tu dieu khien -> \ddd
+        else:
+            out.append(c)                   # ke ca UTF-8, Lua giu nguyen byte
+    return '"%s"' % ''.join(out)
+
+
+LUA_KEYWORDS = frozenset(
+    'and break do else elseif end false for function goto if in local nil not '
+    'or repeat return then true until while'.split())
+
+_LUA_IDENT = re.compile(r'[A-Za-z_][A-Za-z0-9_]*\Z')
+
+
+def lua_identifier(k):
+    """Khoa co viet tran duoc dang  key = ...  khong?
+
+    KHONG dung str.isidentifier() cua Python o day. Python theo quy tac Unicode
+    nen coi '海王boss' va 'Đổng' la dinh danh hop le, con Lua thi chi nhan ASCII
+    — sinh ra la loi cu phap. No cung coi 'end' la dinh danh, ma 'end = {...}'
+    thi Lua cung khong nuot.
+    """
+    return bool(_LUA_IDENT.match(k)) and k not in LUA_KEYWORDS
 
 
 def lua_value(v, indent=0):
@@ -139,7 +171,7 @@ def lua_value(v, indent=0):
             return '{}'
         lines = []
         for k, val in v.items():
-            key = k if k.isidentifier() else '[%s]' % lua_str(k)
+            key = k if lua_identifier(k) else '[%s]' % lua_str(k)
             lines.append('%s  %s = %s,' % (pad, key, lua_value(val, indent + 2)))
         return '{' + os.linesep.join([''] + lines) + os.linesep + pad + '}'
     return 'nil'

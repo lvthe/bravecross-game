@@ -174,5 +174,35 @@ tank['InjuryRates'] = 0.0
 w, l, d = match(tank, dict(tank), heroes.base, 20, seed=2)
 check(w + l + d == 20, 'tran ben nhau van ket thuc', (w, l, d))
 
+print('\n=== 10. sinh Lua: chuoi va khoa la van ra Lua hop le ===')
+# Hai loi that da chan pipeline: danh sach ky tu cho phep qua hep lam vo o ten
+# 'Archer(new)', va str.isidentifier() cua Python coi '海王boss' va 'end' la
+# dinh danh hop le trong khi Lua thi khong.
+import export_stats as X
+
+check(X.lua_str('Archer(new)') == '"Archer(new)"', 'dau ngoac khong bi thoat')
+check(X.lua_str('a"b') == '"a\\"b"', 'nhay kep duoc thoat')
+check(X.lua_str('a\\b') == '"a\\\\b"', 'gach cheo nguoc duoc thoat')
+check(X.lua_str('d\nf') == '"d\\nf"', 'xuong dong duoc thoat')
+check(X.lua_str('海王boss') == '"海王boss"', 'chu Han giu nguyen trong chuoi')
+check(not X.lua_identifier('海王boss'), 'chu Han KHONG phai dinh danh Lua')
+check(not X.lua_identifier('end'), 'tu khoa Lua KHONG phai dinh danh')
+check(not X.lua_identifier('Archer(new)'), 'ten co ngoac KHONG phai dinh danh')
+check(X.lua_identifier('Archer') and X.lua_identifier('_x9'),
+      'ten thuong van la dinh danh')
+
+# Cho lupa cham vao that: sinh ra thi phai nap duoc va doc lai dung.
+try:
+    import lupa
+    doc = {'armies': {'海王boss': {'id': 1030, 'name': 'Archer(new)'},
+                      'end': {'id': 1}, 'Archer': {'id': 2}}}
+    t = lupa.LuaRuntime().execute('return ' + X.lua_value(doc))
+    ok = (t['armies']['海王boss']['id'] == 1030
+          and t['armies']['海王boss']['name'] == 'Archer(new)'
+          and t['armies']['end']['id'] == 1)
+    check(ok, 'Lua sinh ra nap duoc va doc lai dung')
+except ImportError:
+    print('  bo qua  lupa chua cai')
+
 print('\n===== dat %d, hong %d =====' % (nPass, nFail))
 sys.exit(0 if nFail == 0 else 1)

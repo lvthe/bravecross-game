@@ -379,6 +379,73 @@ def main():
               % (e['result'], e['aliveA'], e['aliveB'], e['seconds'],
                  res, a, b, secs))
 
+    print('\n=== 9. TRANG BI: Lua khop Python tung ca ===')
+    # Cho nay khong co ngau nhien nen doi hoi chat hon muc 8: hai ban cung
+    # float64, cung thu tu phep tinh, phai ra dung mot so. Nguong 1e-9 chi de
+    # bo qua sai so lam tron.
+    import equipment as EQ
+
+    eq_path = os.path.join(ROOT, 'server', 'modules', 'equipment.lua')
+    L.execute('''
+        local src = ...
+        package.preload["equipment"] = function()
+            return assert(load(src, "equipment"))()
+        end
+    ''', io.open(eq_path, encoding='utf-8').read())
+    # Lua 5.4 cua lupa cho `require` tra VE HAI gia tri (bang + duong dan), va
+    # runtime nay bat unpack_returned_tuples nen ben Python nhan ra mot tuple.
+    LE = L.eval('(require("equipment"))')
+
+    check(abs(float(LE.INTENSIFY_STEP) - EQ.INTENSIFY_STEP) < 1e-15,
+          'buoc cuong hoa khop', '%r vs %r' % (LE.INTENSIFY_STEP, EQ.INTENSIFY_STEP))
+    check(int(LE.APPEND_UNLOCK_LEVEL) == EQ.APPEND_UNLOCK_LEVEL,
+          'cap mo thuoc tinh phu khop')
+    check(int(LE.RECAST_ITEM_ID) == EQ.RECAST_ITEM_ID, 'id da tay luyen khop')
+    w_bad = [t for t, v in EQ.CAPACITY_WEIGHT.items()
+             if abs(float(LE.weight_of(t)) - v) > 1e-12]
+    check(not w_bad, '%d trong so luc chien khop' % len(EQ.CAPACITY_WEIGHT), w_bad)
+
+    def lclose(a, b):
+        return abs(a - b) <= 1e-9 * max(1.0, abs(a), abs(b))
+
+    cases = EQ.reference_cases()
+    fields = ('increment', 'propVal', 'total', 'cost', 'costTo',
+              'qualityRange', 'capacity', 'capacityOrig')
+    bad = dict((f, []) for f in fields)
+    bad_stats = []
+    for c in cases:
+        appends = L.table(L.table(type=EQ.CRITICAL_STRIKE, value=0.05),
+                          L.table(type=EQ.HP_LIMIT, value=120.0))
+        e = LE.make(1, c['prop'], c['base'], L.table(
+            level=c['level'], intensify=c['intensify'], quality=2,
+            appends=appends))
+        got = {
+            'increment': LE.intensify_increment(c['intensify'], c['base']),
+            'propVal': LE.intensify_property_val(c['base'], c['prop']),
+            'total': LE.intensify_total(c['intensify'], c['base']),
+            'cost': LE.intensify_cost(max(1, c['intensify'])),
+            'costTo': LE.cost_to_level(e, c['intensify'] + 5),
+            'qualityRange': LE.quality_range(c['base'], 10.0, 2.0),
+            'capacity': LE.capacity(e),
+            'capacityOrig': LE.capacity_as_original(e),
+        }
+        for f in fields:
+            if not lclose(float(got[f]), c[f]):
+                bad[f].append('loai %d goc %.1f cap %d +%d: Lua %.10f vs Python %.10f'
+                              % (c['prop'], c['base'], c['level'],
+                                 c['intensify'], got[f], c[f]))
+        st = dict(LE.stats(e))
+        want = dict((int(k), v) for k, v in c['stats'].items())
+        if set(st) != set(want) or any(not lclose(float(st[k]), want[k]) for k in want):
+            bad_stats.append('loai %d +%d: %s vs %s'
+                             % (c['prop'], c['intensify'], st, want))
+
+    for f in fields:
+        check(not bad[f], '%-13s khop ca %d ca' % (f, len(cases)),
+              '%d ca lech; %s' % (len(bad[f]), bad[f][0] if bad[f] else ''))
+    check(not bad_stats, '%-13s khop ca %d ca' % ('stats', len(cases)),
+          '%d ca lech; %s' % (len(bad_stats), bad_stats[0] if bad_stats else ''))
+
     print('\n===== dat %d, hong %d =====' % (n_pass, n_fail))
     return 0 if n_fail == 0 else 1
 

@@ -20,6 +20,7 @@ SUITES = [
     ('rig nhan vat',         'script', 'tools/verify.gd',         False, []),
     ('mo hinh chien dau',    'script', 'tools/verify_battle.gd',  False, []),
     ('bo cuc man hinh',     'script', 'tools/verify_layout.gd',  False, []),
+    ('trang bi (GDScript)',  'script', 'tools/verify_equipment.gd', False, []),
     ('thien vi san',         'scene',  'battle/battle.tscn',      False,
      ['--sim=300', '--mirror']),
     ('giao van mang',        'script', 'tools/verify_net.gd',     True,  []),
@@ -148,6 +149,15 @@ def main():
     print('may chu : %s  ->  %s\n'
           % (a.url, 'dang chay' if online else 'KHONG noi duoc'))
 
+    # Bo ca doi chieu trang bi la thu SINH RA duoc (cong thuc thuan, khong
+    # can bang so nao cua ban goc), ma data_ref/ thi khong commit — nen tu
+    # sinh khi thieu, thay vi de bo test bao hong tren mot ban clone moi.
+    eq_ref = os.path.join(ROOT, 'data_ref', 'equipment_ref.json')
+    if not os.path.isfile(eq_ref):
+        print('  ... sinh %s' % os.path.relpath(eq_ref, ROOT), flush=True)
+        subprocess.run([sys.executable, os.path.join(ROOT, 'sim', 'equipment.py'),
+                        '--export'], capture_output=True, text=True, timeout=120)
+
     rows = []
     failed = 0
     for name, kind, path, needs, extra in SUITES:
@@ -169,6 +179,7 @@ def main():
     # THAT — no do dung cai ma ban gia cua lupa khong do duoc: runtime cua
     # Nakama giu moi so duoi dang float64, con lupa thi co so nguyen 64 bit.
     py_steps = [('mo phong Python', os.path.join('sim', 'test_sim.py'), False),
+                ('trang bi', os.path.join('sim', 'test_equipment.py'), False),
                 ('luat may chu (Lua)', os.path.join('tools', 'test_server_lua.py'), False),
                 ('tran dan tran (may chu that)',
                  os.path.join('tools', 'verify_field_live.py'), True)]

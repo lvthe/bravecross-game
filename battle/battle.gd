@@ -91,6 +91,9 @@ var replay_equip: Dictionary = {}
 var _accum := 0.0
 
 
+var hud: Control = null
+
+
 func _ready() -> void:
 	label = $Info
 	$Backdrop.texture = Game.backdrop(Game.chapter)
@@ -109,6 +112,8 @@ func _ready() -> void:
 	if opts.has("replaycheck"):
 		await _replay_check(String(opts.get("url", "")))
 		return
+
+	_build_hud()
 
 	picks_seed = int(opts.get("seed", "1"))
 	_new_rosters(picks_seed)
@@ -652,3 +657,43 @@ func _run_headless(n: int, mirror: bool) -> void:
 			get_tree().quit(1)
 			return
 	get_tree().quit(0)
+
+## HUD lay thang bo cuc cua ban goc.
+##
+## Toa do, phan cap, diem neo va anh deu doc tu Game_UI_Control_Panel_960_640,
+## khong uom tay. Dat trong CanvasLayer de khong bi camera cua man tran keo di.
+func _build_hud() -> void:
+	var path := "res://layout_ref/Game_UI_Control_Panel_960_640.json"
+	if not FileAccess.file_exists(path):
+		# Bo cuc la noi dung dan xuat, khong nam trong repo. Thieu thi choi
+		# khong co HUD chu khong sap.
+		push_warning("chua co %s — sinh bang: " % path
+				+ "python ../brave-cross/work/layout.py --all --out layout_ref")
+		return
+	var ui := XggLayout.build(path)
+	if ui == null:
+		return
+	var layer := CanvasLayer.new()
+	layer.name = "Hud"
+	layer.layer = 10
+	layer.add_child(ui)
+	add_child(layer)
+	hud = ui
+	_show_mode_layer("lUINormal")
+
+
+## Bat dung mot lop che do choi, y nhu ban goc.
+##
+## lUITopLayer co 13 con, moi con la mot che do: lUINormal, lUIEndless,
+## lUIArena, lUIJFZY, lUICavern... Tat ca an san va Lua bat DUNG MOT cai tuy
+## tran dang danh. Tran chien dich thuong dung lUINormal.
+func _show_mode_layer(mode: String) -> void:
+	if hud == null:
+		return
+	var n := XggLayout.find_node(hud, mode)
+	if n == null:
+		push_warning("khong thay lop che do " + mode)
+		return
+	# Hien chinh no; to tien da hien san theo co cua ban goc.
+	n.visible = true
+

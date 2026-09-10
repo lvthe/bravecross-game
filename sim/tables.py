@@ -234,6 +234,45 @@ class Formations(object):
         return out
 
 
+class EquipSynthesis(object):
+    """Bang ghep do: KDBGameEquipmentSynthesisConfig.xgg — 250 ban ghi.
+
+    Khoa la (EquipmentType, EquipLevel). EquipmentType = LOAI O * 10 + NGHE:
+    vu khi 1..5, giap 21..25, giay 31..35, day chuyen 41..45, nhan 51..55
+    (Protocol.lua:322). Nghe 1..5 = Warrior/Knight/Musicians/Master/Archer.
+
+    Moi ban ghi:
+        HeroLevel   cap tuong doi hoi — VA cung la HE SO CAP dung de tinh chi
+                    so chinh (getEquipLevelCoefficient tra ve dung cot nay)
+        GoldCost    vang de ghep len cap do
+        MaterialID1..5 / Count1..5   nguyen lieu
+    """
+
+    def __init__(self, config_dir=DEFAULT_CONFIG):
+        rows = load_json(config_dir, 'KDBGameEquipmentSynthesisConfig.xgg')
+        self.by_key = {}
+        for r in rows:
+            t, lv = int(r['EquipmentType']), int(r['EquipLevel'])
+            mats = []
+            for i in (1, 2, 3, 4, 5):
+                n = int(r.get('Count%d' % i, 0) or 0)
+                if n > 0:
+                    mats.append((int(r['MaterialID%d' % i]), n))
+            self.by_key[(t, lv)] = collections.OrderedDict([
+                ('heroLevel', int(r['HeroLevel'])),
+                ('gold', int(r['GoldCost'])),
+                ('materials', mats),
+            ])
+        self.types = sorted(set(t for t, _ in self.by_key))
+        self.max_level = max(lv for _, lv in self.by_key)
+
+    def get(self, equip_type, level):
+        return self.by_key.get((int(equip_type), int(level)))
+
+    def __len__(self):
+        return len(self.by_key)
+
+
 if __name__ == '__main__':
     import sys
     sys.stdout.reconfigure(encoding='utf-8')

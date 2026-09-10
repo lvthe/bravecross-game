@@ -69,7 +69,8 @@ func _init() -> void:
 	# lech thi neu ro ca dau lech bao nhieu — du de lan ra cho sai.
 	var fields := ["increment", "propVal", "total", "cost", "costTo",
 			"qualityRange", "capacity", "capacityOrig",
-			"refinePercent", "refineCost", "mainValue"]
+			"refinePercent", "refineCost", "mainValue",
+			"jobOf", "categoryOf", "mainFormula"]
 	var bad := {}
 	var worst := {}
 	for f in fields:
@@ -97,6 +98,11 @@ func _init() -> void:
 			"capacity": e.capacity(),
 			"capacityOrig": e.capacity_as_original(),
 			"refinePercent": Equipment.refine_percent(rf),
+			"jobOf": Equipment.equip_job(int(c["equipType"])),
+			"categoryOf": Equipment.equip_category(int(c["equipType"])),
+			"mainFormula": Equipment.main_property_val(
+					Equipment.main_property_type(int(c["equipType"])),
+					base, 2.0, Equipment.equip_job(int(c["equipType"]))),
 			"refineCost": e.refine_cost_next(),
 			"mainValue": e.effective_main(),
 		}

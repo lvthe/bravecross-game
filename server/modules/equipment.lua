@@ -67,6 +67,114 @@ M.RECAST_ITEM_ID = 97          -- RecastStroeItemID — da tay luyen
 --- Moi cap cuong hoa nhan them he so nay; qua 200 cap thi gap 2.4 lan.
 M.INTENSIFY_STEP = 2.4 ^ (1.0 / 200.0)
 
+-- ------------------------------------- Chi so chinh sinh tu loai/cap/pham
+-- share_EquipmentPropertyLogic:getMainPropertyValWithCoefficient
+--
+--   Ap        : 20 * (L + 10 + Q*6)^1.45 / (60 - J*6)
+--   HpLimit   : 30 * (L + 10 + Q*5)^1.5  / (20 + J*10)
+--   DpAddtion : 5  * (L + 10 + Q*6)^1.45 / (20 + J*8)
+--
+-- L khong phai cap mon do ma la HE SO CAP: getEquipLevelCoefficient tra ve
+-- dung cot HeroLevel cua bang ghep do. Tuc bang ghep do vua la bang gia, vua
+-- la thang suc manh.
+--
+-- EquipmentType = LOAI O * 10 + NGHE (Protocol.lua:322).
+M.EQUIP_CATEGORY_WEAPON = 0
+M.EQUIP_CATEGORY_ARMOR = 20
+M.EQUIP_CATEGORY_SHOES = 30
+M.EQUIP_CATEGORY_NECKLACE = 40
+M.EQUIP_CATEGORY_RING = 50
+
+M.MAIN_PROPERTY_BY_CATEGORY = {
+	[M.EQUIP_CATEGORY_WEAPON] = M.AP,
+	[M.EQUIP_CATEGORY_ARMOR] = M.DP_ADDITION,
+	[M.EQUIP_CATEGORY_SHOES] = M.HP_LIMIT,
+	[M.EQUIP_CATEGORY_NECKLACE] = M.HP_LIMIT,
+	[M.EQUIP_CATEGORY_RING] = M.DP_ADDITION,
+}
+
+M.MAIN_PROPERTY_COEF = {
+	[M.HP_LIMIT] = 30.0,
+	[M.DP_ADDITION] = 5.0,
+	[M.CRITICAL_STRIKE] = 0.0025,
+	[M.AP] = 20.0,
+}
+
+M.JOB_COEF = { 1.0, 2.0, 3.0, 4.0, 5.0 }
+M.MAX_EQUIP_LEVEL = 10
+
+function M.equip_job(equip_type)
+	return math.floor(equip_type) % 10
+end
+
+function M.equip_category(equip_type)
+	return math.floor(equip_type) - M.equip_job(equip_type)
+end
+
+function M.main_property_type(equip_type)
+	return M.MAIN_PROPERTY_BY_CATEGORY[M.equip_category(equip_type)]
+end
+
+--- Chi so chinh goc, truoc tinh luyen va cuong hoa.
+--- CriticalStrike KHONG co nhanh nao trong ham goc (nhanh thu tu la ban sao
+--- cua DpAddtion — loi go cua tac gia), nen tra 0 chu khong bia cong thuc.
+function M.main_property_val(prop_type, level_coef, quality, job)
+	local coef = M.MAIN_PROPERTY_COEF[prop_type]
+	local j = M.JOB_COEF[math.floor(job or 0)]
+	if coef == nil or j == nil then
+		return 0.0
+	end
+	local q = quality + 0.0
+	local lc = level_coef + 0.0
+	if prop_type == M.AP then
+		return coef * ((lc + 10.0 + q * 6.0) ^ 1.45) / (60.0 - j * 6.0)
+	elseif prop_type == M.HP_LIMIT then
+		return coef * ((lc + 10.0 + q * 5.0) ^ 1.5) / (20.0 + j * 10.0)
+	elseif prop_type == M.DP_ADDITION then
+		return coef * ((lc + 10.0 + q * 6.0) ^ 1.45) / (20.0 + j * 8.0)
+	end
+	return 0.0
+end
+
+-- ------------------------------------------ Ghep do (SynthesisEquipment)
+-- Ghep do la NANG CAP MON DO len mot cap: tru vang, tru nguyen lieu, roi
+-- EquipLevel + 1. Chi so chinh tinh LAI theo cap moi.
+
+--- Mot dong bang ghep do. `table` la { ["<loai>_<cap>"] = {...} }.
+function M.synthesis_row(tbl, equip_type, level)
+	if tbl == nil then
+		return nil
+	end
+	return tbl[string.format("%d_%d", math.floor(equip_type), math.floor(level))]
+end
+
+--- He so cap de tinh chi so chinh — chinh la cot HeroLevel.
+function M.level_coefficient(tbl, equip_type, level)
+	local row = M.synthesis_row(tbl, equip_type, level)
+	return row and (row.heroLevel + 0.0) or 0.0
+end
+
+--- Co ghep len duoc khong. Tra ve (duoc, ly do).
+---
+--- Ban goc CO cot HeroLevel va co doc no, nhung cho kiem lai vo hieu:
+--- `if HeroLevel < need then if ProcessError(bRecode) ... end end`, ma bRecode
+--- luc do dang true nen than lenh khong bao gio chay. O day ta CHAN that —
+--- mot dieu kien co trong bang ma khong ai kiem thi bang do vo nghia.
+function M.synthesis_ready(tbl, equip_type, level, hero_level)
+	if math.floor(level) >= M.MAX_EQUIP_LEVEL then
+		return false, "da toi cap cao nhat"
+	end
+	local row = M.synthesis_row(tbl, equip_type, math.floor(level) + 1)
+	if row == nil then
+		return false, string.format("khong co cong thuc ghep cho loai %d cap %d",
+				math.floor(equip_type), math.floor(level) + 1)
+	end
+	if math.floor(hero_level) < math.floor(row.heroLevel) then
+		return false, string.format("can tuong cap %d", math.floor(row.heroLevel))
+	end
+	return true, ""
+end
+
 -- --------------------------------------------------- Tinh luyen (RefineLevel)
 -- Bang lay tu KDBGameCommonConfig, muc ConfigName = "EquipRefineConfig": mot
 -- mang 5 o, moi o 5 cap, moi cap { NeedConcentrate, AddPrecent }.
@@ -301,6 +409,19 @@ function M.merge_buffs(a, b)
 	return out
 end
 
+--- Dung mon do dung kieu ban goc: chi so chinh SINH RA tu loai/cap/pham.
+function M.make_equipment(tbl, equip_type, level, quality, part, opts)
+	opts = opts or {}
+	local ptype = M.main_property_type(equip_type)
+	local val = M.main_property_val(ptype,
+			M.level_coefficient(tbl, equip_type, level), quality,
+			M.equip_job(equip_type))
+	opts.level = level
+	opts.quality = quality
+	opts.equipType = equip_type
+	return M.make(part, ptype, val, opts)
+end
+
 --- Dung mot mon trang bi tu cac truong roi, dien san mac dinh.
 function M.make(part, prop_type, value, opts)
 	opts = opts or {}
@@ -310,6 +431,7 @@ function M.make(part, prop_type, value, opts)
 		intensify = opts.intensify or 0,
 		quality = opts.quality or 1,
 		refine = opts.refine or 0,
+		equipType = opts.equipType or 0,
 
 		main = { type = prop_type, value = value },
 		appends = opts.appends or {},

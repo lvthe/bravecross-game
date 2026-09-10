@@ -78,6 +78,17 @@ const CLS_ADD_NEXT := "HPnextincrease"
 const CLS_FULL_FORGE := "FullForge"
 const CLS_FULL_TIPS := "FullHPTips"
 const CLS_REFINE_PROGRESS := "RefineProgress"   # day 5 cham bac
+
+# --- tab ghep do (lEquipmentForgeUI) ---
+## Ban goc co ba bien the khung theo SO NGUYEN LIEU. Chon dung cai theo bang.
+const CLS_FORGE_CONSUME := {2: "2个消耗品的锻造", 3: "3个消耗品的锻造",
+		4: "4个消耗品的锻造"}
+const CLS_FORGE_BTN := "锻造按钮"           # nut ghep
+const CLS_FORGE_GOLD := "金币数"            # so vang trong khoi gia
+const CLS_FORGE_NAME := "装备名字"
+const CLS_FORGE_LEVEL := "装备等级"
+const CLS_FORGE_TIPS := "提示语"
+const CLS_FORGE_MAXED := "锻造到达最高级"
 const CLS_MAXED := "强化到达最高级"          # bao da toi cap cao nhat
 
 ## Man nay lam viec duoc ma khong can may chu: set_data() nhan thang du lieu.
@@ -113,6 +124,8 @@ func _ready() -> void:
 		set_data(_fake(), ["MaChao", "GanNing"])
 		if "--refine" in OS.get_cmdline_user_args():
 			_set_tab("refine")
+		elif "--forge" in OS.get_cmdline_user_args():
+			_set_tab("forge")
 		return
 	await _reload()
 
@@ -128,9 +141,12 @@ func _fake() -> Dictionary:
 			out.append({"type": a[0], "value": a[1]})
 		return {"part": part, "level": lv, "intensify": iv, "quality": 2,
 				"refine": rf, "main": {"type": prop, "value": v}, "appends": out,
-				"capacity": e.capacity(),
+				"capacity": e.capacity(), "equipType": 1,
 				"nextCost": ceili(Equipment.intensify_cost(iv + 1)),
-				"nextRefineCost": e.refine_cost_next()}
+				"nextRefineCost": e.refine_cost_next(),
+				"synthesis": {"nextLevel": lv + 1, "gold": 3700,
+					"needHeroLevel": 20, "heroLevel": 31, "ready": true,
+					"reason": "", "materials": [[25, 3], [52, 5]]}}
 	return {
 		"gold": 1240, "concentrate": 86, "maxIntensify": 200, "maxRefine": 5,
 		"equipment": {
@@ -166,7 +182,7 @@ func _build() -> void:
 	# Ban goc an gan het roi de Lua bat dung cai can. Bat ba lop ta dung, va
 	# CHI ba lop do — bat het thi 5 bang hanh dong ve chong len nhau.
 	for n in ["lEquipmentUI", "lEquipmentMainUI", "lEquipmentChildUI",
-			"lEquipmentIntensifyUI", "lEquipmentRefineUI"]:
+			"lEquipmentIntensifyUI", "lEquipmentRefineUI", "lEquipmentForgeUI"]:
 		var node := XggLayout.find_node(ui, n)
 		if node != null:
 			XggLayout.show_branch(node, ui)
@@ -199,6 +215,11 @@ func _build() -> void:
 			func(): _set_tab("intensify"))
 	_click(XggLayout.find_node(ui, "btnShowEquipmentRefineUI"),
 			func(): _set_tab("refine"))
+	_click(XggLayout.find_node(ui, "btnEquipmentUI_ShowEquipForgeUI"),
+			func(): _set_tab("forge"))
+	_click(XggLayout.find_node(ui, "snsEquipForge"), _on_synthesize)
+	_button_art(XggLayout.find_node(ui, "snsEquipForge"), "v6/ui_button01.png")
+	_backing(XggLayout.find_node(ui, "lEquipmentForgeUI"))
 	_button_art(XggLayout.find_by_cls(ui, CLS_REFINE_BTN), "v6/ui_button01.png")
 	_backing(XggLayout.find_node(ui, "lEquipmentRefineUI"))
 	# Nut "lay them tinh hoa" tro toi cua hang — chua co he do, an di.
@@ -365,10 +386,13 @@ func _set_tab(which: String) -> void:
 	tab = which
 	var it := XggLayout.find_node(ui, "lEquipmentIntensifyUI")
 	var rf := XggLayout.find_node(ui, "lEquipmentRefineUI")
+	var fg := XggLayout.find_node(ui, "lEquipmentForgeUI")
 	if it != null:
 		it.visible = which == "intensify"
 	if rf != null:
 		rf.visible = which == "refine"
+	if fg != null:
+		fg.visible = which == "forge"
 	_refresh()
 
 
@@ -487,6 +511,7 @@ func _refresh() -> void:
 	_icon(it)
 	_refresh_intensify(it, e, mt)
 	_refresh_refine(it, e, mt)
+	_refresh_forge(it)
 
 
 ## Icon mon do va nen theo pham chat, dung cach dat ten cua ban goc:
@@ -532,11 +557,25 @@ func _icon(it: Dictionary) -> void:
 ## giu o, cho anh co lai vua ben trong.
 func _slot_art(node: Control, frame: String) -> void:
 	var tex := UiFrames.get_frame(frame)
-	if tex == null or not (node is TextureRect):
+	if tex == null:
 		return
 	var box := node.get_meta("slot_size", node.size) as Vector2
 	node.set_meta("slot_size", box)
-	var tr := node as TextureRect
+	var tr: TextureRect = node as TextureRect
+	if tr == null:
+		# O nao trong bo cuc khong mang anh thi ra Control tron. Gan mot
+		# TextureRect vao lam con — dung mot lan — thay vi bo qua lang le.
+		tr = node.get_node_or_null("_slot") as TextureRect
+		if tr == null:
+			tr = TextureRect.new()
+			tr.name = "_slot"
+			tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			node.add_child(tr)
+			node.move_child(tr, 0)
+		# Con san trong o (vi du hinh "?" mac dinh) thi giau di.
+		for c in node.get_children():
+			if c is TextureRect and c.name != "_slot":
+				c.visible = false
 	tr.texture = tex
 	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
@@ -689,6 +728,120 @@ func _refresh_refine(it: Dictionary, e: Equipment, mt: int) -> void:
 		_tips.text = "" if maxed or concentrate >= cost else 				"Thieu tinh hoa: can %d, dang co %d" % [cost, concentrate]
 
 
+## Bang ghep do. Ban goc chia san ba bien the khung theo SO NGUYEN LIEU
+## (2, 3, 4 mon) — chon dung cai theo bang, y nhu no.
+##
+## Nguyen lieu hien ra de nguoi choi biet ban goc doi gi, nhung CHUA tru duoc:
+## game moi con thieu he vat pham. May chu chi tru vang va doi cap tuong.
+func _refresh_forge(it: Dictionary) -> void:
+	var syn = it.get("synthesis")
+	var maxed := syn == null
+	var panel := XggLayout.find_node(ui, "lEquipmentForgeUI")
+	if panel == null:
+		return
+
+	# Tat het cac bien the truoc, roi bat dung cai can.
+	for k in CLS_FORGE_CONSUME:
+		var box := XggLayout.find_by_cls(panel, CLS_FORGE_CONSUME[k])
+		if box != null:
+			box.visible = false
+	var note := XggLayout.find_node(ui, "lEquipForgeUI_IsMaxLevel")
+	if note != null:
+		note.visible = maxed
+		_label(note, "Da toi cap cao nhat" if maxed else "", true)
+	var gold_box := XggLayout.find_node(ui, "g_EquipForgeUIGoldCost")
+	if gold_box != null:
+		gold_box.visible = not maxed
+	var btn := XggLayout.find_node(ui, "snsEquipForge")
+	if btn != null:
+		btn.visible = not maxed
+	if maxed:
+		return
+
+	var info: Dictionary = syn
+	var mats: Array = info.get("materials", [])
+	var n := clampi(mats.size(), 2, 4)
+	var box := XggLayout.find_by_cls(panel, CLS_FORGE_CONSUME[n])
+	if box != null:
+		box.visible = true
+		# Hai nhan ten/cap cua ban goc cach nhau co 20px (chu cua no ngan
+		# kieu "Vu khi" + "Lv7"), nen chi de mot cai; phan con lai don xuong
+		# dong tips ben duoi vong 300px.
+		# Hai nhan ten/cap cua ban goc cach nhau co 20px (chu cua no ngan
+		# kieu "Vu khi" + "Lv7"), nen gop lam mot; dong tips ben duoi rong
+		# 300px thi de cho cap tuong.
+		_label(XggLayout.find_by_cls(box, CLS_FORGE_NAME),
+				"%s  cap %d -> %d" % [PART_NAME.get(part, str(part)),
+				int(it.get("level", 1)), int(info.get("nextLevel", 0))], true)
+		_label(XggLayout.find_by_cls(box, CLS_FORGE_LEVEL), "", true)
+		var need := int(info.get("needHeroLevel", 0))
+		_label(XggLayout.find_by_cls(box, CLS_FORGE_TIPS),
+				"tuong cap %d/%d" % [int(info.get("heroLevel", 1)), need], true)
+		_forge_materials(box, mats, n)
+		# O goc cua so do cay la KET QUA: chinh mon do dang ghep.
+		var root_icon := XggLayout.find_node(box, "btnEquipForgeTreeNodeRoot")
+		if root_icon == null:
+			root_icon = XggLayout.find_by_cls(box, "CCButton")
+		if root_icon != null:
+			_slot_art(root_icon, "v6/equipment_b_%d.png"
+					% clampi(int(it.get("quality", 1)), 2, 6))
+			var inner := XggLayout.find_by_cls(root_icon, "CCSprite")
+			if inner != null:
+				_slot_art(inner, "equip_%d_%d.png" % [(part - 1) % 5 + 1,
+						clampi(int(it.get("level", 1)), 0, 10)])
+
+	if gold_box != null:
+		_label(XggLayout.find_by_cls(gold_box, CLS_FORGE_GOLD),
+				str(int(info.get("gold", 0))))
+
+	var ready := bool(info.get("ready", false)) and gold >= int(info.get("gold", 0))
+	if btn != null:
+		for c in btn.get_children():
+			if c is Label:
+				_label(c, "Ghep do")
+				(c as Label).horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				(c as Label).vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+				c.size = btn.size
+				c.position = Vector2.ZERO
+		btn.modulate = Color(1, 1, 1) if ready else Color(0.55, 0.55, 0.55)
+
+	if tab == "forge":
+		if not bool(info.get("ready", false)):
+			_tips.text = "Chua ghep duoc: %s" % str(info.get("reason", ""))
+		elif gold < int(info.get("gold", 0)):
+			_tips.text = "Thieu vang: can %d, dang co %d" % [
+					int(info.get("gold", 0)), gold]
+		else:
+			_tips.text = ""
+
+
+## Icon nguyen lieu. Ban goc dat ten anh vat pham la "item_<id>.png".
+##
+## Tim theo TEN node (btnEquipForgeConsumeUI<n>_Icon<i>) chu khong quet theo
+## ten lop: trong khung con co mot o goc cua so do cay cung mang lop CCButton,
+## quet theo lop la nham no thanh o nguyen lieu.
+func _forge_materials(box: Control, mats: Array, n: int) -> void:
+	for i in range(1, 5):
+		var slot := XggLayout.find_node(box, "btnEquipForgeConsumeUI%d_Icon%d" % [n, i])
+		if slot == null:
+			continue
+		if i <= mats.size():
+			slot.visible = true
+			_slot_art(slot, "item_%d.png" % int(mats[i - 1][0]))
+			# O nay von co hai sprite con ve de len (nen trong + hinh "?" mac
+			# dinh). Anh vat pham la mot tam tron ca khung nen giau chung di,
+			# khong thi chi thay cai "?".
+			for c in slot.get_children():
+				if c is TextureRect:
+					c.visible = false
+			var lb := _ensure_label(slot)
+			lb.text = "x%d" % int(mats[i - 1][1])
+			lb.visible = true
+			lb.position = Vector2(4, slot.size.y - 22)
+		else:
+			slot.visible = false
+
+
 ## Nhan con theo ten lop, tim TRONG mot khoi.
 func _child(box: Control, cls: String) -> Control:
 	if box == null:
@@ -741,6 +894,34 @@ func _on_refine() -> void:
 			int(r.data.get("cost", 0))]
 
 
+func _on_synthesize() -> void:
+	if _busy:
+		return
+	var it := item()
+	var syn = it.get("synthesis")
+	if it.is_empty() or syn == null:
+		return
+	var info: Dictionary = syn
+	if not bool(info.get("ready", false)):
+		_tips.text = "Chua ghep duoc: %s" % str(info.get("reason", ""))
+		return
+	if gold < int(info.get("gold", 0)):
+		_tips.text = "Thieu vang: can %d, dang co %d" % [
+				int(info.get("gold", 0)), gold]
+		return
+	_busy = true
+	_tips.text = "dang ghep..."
+	var ses := await Game.ensure_session()
+	var r := await ses.synthesize(hero(), part)
+	_busy = false
+	if not r.ok:
+		_tips.text = "khong ghep duoc: %s" % str(r.get("error", ""))
+		return
+	await _reload()
+	_tips.text = "Len cap %d  (ton %d vang)" % [int(r.data.get("level", 0)),
+			int(r.data.get("cost", 0))]
+
+
 func _show_empty() -> void:
 	_label(XggLayout.find_node(ui, "bmfEquipMainUIName"), PART_NAME.get(part, str(part)))
 	_label(XggLayout.find_node(ui, "bmfEquipMainUILevel"), "")
@@ -763,6 +944,12 @@ func _show_empty() -> void:
 	if btn != null:
 		btn.visible = false
 	# Bang tinh luyen cung phai tat het theo.
+	var fbtn := XggLayout.find_node(ui, "snsEquipForge")
+	if fbtn != null:
+		fbtn.visible = false
+	var fgold := XggLayout.find_node(ui, "g_EquipForgeUIGoldCost")
+	if fgold != null:
+		fgold.visible = false
 	for cls in [CLS_REFINE_BTN, CLS_REFINE_COST, CLS_REFINE_STEP, CLS_REFINE_FULL]:
 		var n := XggLayout.find_by_cls(ui, cls)
 		if n != null:

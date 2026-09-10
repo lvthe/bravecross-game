@@ -44,9 +44,14 @@ func _item(part: int, prop: int, value: float, lv: int, intensify: int,
 	var aps: Array = []
 	for a in appends:
 		aps.append({"type": a[0], "value": a[1]})
+	var syn = null
+	if lv < Equipment.MAX_EQUIP_LEVEL:
+		syn = {"nextLevel": lv + 1, "gold": 3700, "needHeroLevel": 20,
+			"heroLevel": 31, "ready": true, "reason": "",
+			"materials": [[25, 3], [52, 5]]}
 	return {
 		"part": part, "level": lv, "intensify": intensify, "quality": 2,
-		"refine": refine,
+		"refine": refine, "equipType": 1, "synthesis": syn,
 		"main": {"type": prop, "value": value},
 		"appends": aps,
 		"capacity": e.capacity(),
@@ -112,10 +117,13 @@ func _ready() -> void:
 	var main_ui := XggLayout.find_node(scr.ui, "lEquipmentMainUI")
 	var refine := XggLayout.find_node(scr.ui, "lEquipmentRefineUI")
 	var forge := XggLayout.find_node(scr.ui, "lEquipmentForgeUI")
+	var alter := XggLayout.find_node(scr.ui, "lEquipmentAlterUI")
 	_check(main_ui != null and main_ui.visible, "panel mon do duoc bat len")
 	_check(refine != null, "co bang tinh luyen trong bo cuc")
-	# Ren (chua co luat) thi van phai an — chi bat cai da co luat.
-	_check(forge != null and not forge.visible, "bang ren (chua co luat) van an")
+	_check(forge != null, "co bang ghep do trong bo cuc")
+	# Tay luyen (chua co luat) thi van phai an — chi bat cai da co luat.
+	_check(alter != null and not alter.visible,
+			"bang tay luyen (chua co luat) van an")
 
 	print("\n=== 2. do vao thi hien dung so ===")
 	var data := {
@@ -225,6 +233,73 @@ func _ready() -> void:
 			_text_of(scr, scr._child(full, scr.CLS_ADD_NOW)))
 
 	# Tra lai trang thai cho cac muc sau.
+	scr.set_data(data, ["MaChao", "GanNing"])
+	scr._set_tab("intensify")
+	scr.part = 1
+	scr._refresh()
+
+	print("\n=== 3d. bang ghep do ===")
+	scr.set_data(data, ["MaChao", "GanNing"])
+	scr.part = 1
+	scr._set_tab("forge")
+	var pan_fg := XggLayout.find_node(scr.ui, "lEquipmentForgeUI")
+	_check(pan_fg != null and pan_fg.visible, "doi sang bang ghep do")
+	_check(pan_rf != null and not pan_rf.visible, "bang tinh luyen an di")
+
+	# Bang goc co ba bien the khung theo SO nguyen lieu — hai mon thi phai
+	# dung khung "2 nguyen lieu", con hai khung kia phai an.
+	var box2 := XggLayout.find_by_cls(pan_fg, scr.CLS_FORGE_CONSUME[2])
+	var box3 := XggLayout.find_by_cls(pan_fg, scr.CLS_FORGE_CONSUME[3])
+	_check(box2 != null and box2.visible, "hai nguyen lieu thi dung khung 2 o")
+	_check(box3 != null and not box3.visible, "khung 3 o phai an")
+
+	var nm2 := _text_of(scr, XggLayout.find_by_cls(box2, scr.CLS_FORGE_NAME))
+	_check(nm2 == "Vu khi  cap 5 -> 6", "ten va buoc cap", nm2)
+	var tip2 := _text_of(scr, XggLayout.find_by_cls(box2, scr.CLS_FORGE_TIPS))
+	_check(tip2 == "tuong cap 31/20", "cap tuong hien tai tren cap doi hoi", tip2)
+
+	var gold_box := XggLayout.find_node(scr.ui, "g_EquipForgeUIGoldCost")
+	_check(gold_box != null and gold_box.visible, "hien khoi gia vang")
+	_check(_text_of(scr, XggLayout.find_by_cls(gold_box, scr.CLS_FORGE_GOLD))
+			== "3700", "gia vang dung bang goc")
+
+	var fbtn := XggLayout.find_node(scr.ui, "snsEquipForge")
+	_check(fbtn != null and fbtn.visible, "co nut ghep do")
+	# Du lieu gia co 500 vang ma gia 3700 -> phai mo di va bao truoc.
+	_check(fbtn != null and fbtn.modulate.r < 0.9, "thieu vang thi nut mo di")
+	_check(scr._tips.text.begins_with("Thieu vang"), "bao truoc",
+			scr._tips.text)
+
+	# Hai o nguyen lieu phai duoc dien, o thu ba phai an.
+	var slot1 := XggLayout.find_node(box2, "btnEquipForgeConsumeUI2_Icon1")
+	var slot2 := XggLayout.find_node(box2, "btnEquipForgeConsumeUI2_Icon2")
+	_check(slot1 != null and slot1.visible and slot2 != null and slot2.visible,
+			"hien du hai o nguyen lieu")
+	_check(_text_of(scr, slot1) == "x3" and _text_of(scr, slot2) == "x5",
+			"so luong nguyen lieu dung bang goc",
+			"%s / %s" % [_text_of(scr, slot1), _text_of(scr, slot2)])
+
+	print("\n=== 3e. chua du cap tuong / het cap ===")
+	var low := data.duplicate(true)
+	low["equipment"]["MaChao"][0]["synthesis"]["ready"] = false
+	low["equipment"]["MaChao"][0]["synthesis"]["reason"] = "can tuong cap 20"
+	scr.set_data(low, ["MaChao"])
+	scr.part = 1
+	scr._refresh()
+	_check(scr._tips.text.begins_with("Chua ghep duoc"),
+			"chua du cap tuong thi noi ro", scr._tips.text)
+
+	var top := {
+		"gold": 9999999, "concentrate": 0, "maxIntensify": 200, "maxRefine": 5,
+		"equipment": {"MaChao": [_item(1, Equipment.AP, 100.0, 10, 0)]},
+	}
+	scr.set_data(top, ["MaChao"])
+	scr.part = 1
+	scr._refresh()
+	_check(fbtn != null and not fbtn.visible, "het cap thi giau nut ghep")
+	var maxnote := XggLayout.find_node(scr.ui, "lEquipForgeUI_IsMaxLevel")
+	_check(maxnote != null and maxnote.visible, "hien dong 'da toi cap cao nhat'")
+
 	scr.set_data(data, ["MaChao", "GanNing"])
 	scr._set_tab("intensify")
 	scr.part = 1

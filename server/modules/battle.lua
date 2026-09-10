@@ -16,6 +16,7 @@
 --   bx.equipment    {}                 trang bi dang co, luc chien, gia cuong hoa
 --   bx.intensify    {hero, part}       cuong hoa mot mon len mot cap
 --   bx.refine       {hero, part}       tinh luyen mot cap, ton tinh hoa
+--   bx.synthesize   {hero, part}       ghep do len mot cap, ton vang
 --
 -- Mo hinh chien dau la ban Lua cua sim/battle.py. Doi chieu bang RPC thu ba:
 --   bx.selftest     {}                 danh lai cac cap tham chieu roi so
@@ -27,7 +28,7 @@ local equip = require("equipment")
 local COLLECTION = "player"
 local KEY = "save"
 local TEAM_SIZE = 4
-local SAVE_VERSION = 6
+local SAVE_VERSION = 7
 --- Vang thuong khi qua MOT CHUONG MOI.
 local GOLD_PER_CHAPTER = 60
 --- Thang mot chuong DA QUA thi duoc it hon. Van phai co: neu chi thuong chuong
@@ -656,22 +657,21 @@ end
 -- Khi nao co he vat pham va kho thi thay cho nay, khong phai thay cong thuc.
 local EQUIP_PARTS = 6
 local EQUIP_PART_NAME = { "vu khi", "giap", "day chuyen", "nhan", "giay", "o phu" }
---- O nao ra chi so gi. Chi dung ba loai ma ban goc co bang cuong hoa rieng
---- (Ap, HpLimit, DpAddtion) — do la dau hieu day moi la ba loai chi so chinh;
---- chi mang chi xuat hien o thuoc tinh phu, y nhu ban goc.
-local EQUIP_MAIN = { equip.AP, equip.HP_LIMIT, equip.AP,
-		equip.DP_ADDITION, equip.DP_ADDITION, equip.HP_LIMIT }
---- Gia tri goc o chuong 1, doi chieu voi chi so nen: HpBase 1000 x Viability,
---- MinAp 30 x AttackCapability, DpBase 30. Tuc mot mon do dau chuong dang
---- chung 5-10% chi so — dang ke ma khong lat keo.
-local EQUIP_BASE = {
-	[equip.AP] = 20.0,
-	[equip.HP_LIMIT] = 200.0,
-	[equip.DP_ADDITION] = 3.0,
+--- O cua game moi -> LOAI O cua ban goc (Protocol.lua:322). Ban goc co 5 loai
+--- co bang ghep do (vu khi, giap, giay, day chuyen, nhan); o thu 6 ("o phu")
+--- chua co bang rieng nen tam dung bang cua nhan.
+local EQUIP_CATEGORY = {
+	equip.EQUIP_CATEGORY_WEAPON,     -- 1 vu khi
+	equip.EQUIP_CATEGORY_ARMOR,      -- 2 giap
+	equip.EQUIP_CATEGORY_NECKLACE,   -- 3 day chuyen
+	equip.EQUIP_CATEGORY_RING,       -- 4 nhan
+	equip.EQUIP_CATEGORY_SHOES,      -- 5 giay
+	equip.EQUIP_CATEGORY_RING,       -- 6 o phu
 }
 local EQUIP_DROP_CHANCE = 0.35
 local EQUIP_MAX_INTENSIFY = 200
-local EQUIP_MAX_LEVEL = 90
+--- Bang ghep do cua ban goc co dung 10 cap.
+local EQUIP_MAX_LEVEL = 10
 local EQUIP_MAX_QUALITY = 5
 local EQUIP_MAX_APPENDS = 3
 --- Mot diem chi mang o day la 1% — dung thang cua CriticalStrikeBase (bang so
@@ -687,16 +687,23 @@ local CONCENTRATE_PER_CAPACITY = 10.0
 
 --- Boc mot mon do. Dai ngau nhien 0,8-1,3 dung bang dai thuoc tinh phu cua
 --- ban goc — khong bia them mot con so thu hai cho cung mot viec.
-local function roll_equipment(rng, chapter, part)
-	local t = EQUIP_MAIN[part] or equip.AP
-	local scale = 1.0 + POWER_STEP * math.max(0, (chapter or 1) - 1)
-	local base = (EQUIP_BASE[t] or 1.0) * scale
-	local value = equip.roll_append(base, function() return rng:float() end)
-	local level = rng:int(6)
-	local it = equip.make(part, t, value, {
-		level = level,
-		quality = rng:int(3),
-	})
+--- Boc mot mon do cho mot tuong. Chi so chinh KHONG bia ra: no sinh tu dung
+--- cong thuc cua ban goc theo (loai do, cap do, pham chat), ma loai do lai
+--- phu thuoc NGHE cua tuong — nen do cua cung thu va cua chien binh khac nhau
+--- that, y nhu ban goc.
+local function roll_equipment(rng, chapter, part, hero_name)
+	local row = data.heroes[hero_name]
+	local job = row and math.floor(row.HeroJobType or 1) or 1
+	if job < 1 or job > 5 then
+		job = 1
+	end
+	local etype = (EQUIP_CATEGORY[part] or 0) + job
+	-- Cap mon do di theo chuong: chuong cang sau, do roi ra cang xin. Chan o
+	-- cap 5 de con duong ghep do ma len tiep.
+	local level = math.max(1, math.min(5,
+			math.floor((chapter or 1) / 3) + rng:int(2)))
+	local quality = rng:int(3)
+	local it = equip.make_equipment(data.equipSynthesis, etype, level, quality, part, {})
 	-- Thuoc tinh phu chi co tu cap 4, dung luat ban goc.
 	if level >= equip.APPEND_UNLOCK_LEVEL then
 		it.appends = { {
@@ -725,6 +732,7 @@ local function sanitize_item(v)
 		return math.max(lo, math.min(hi, n))
 	end
 	local it = equip.make(part, t, val, {
+		equipType = clamp(v.equipType, 0, 99, 0),
 		level = clamp(v.level, 1, EQUIP_MAX_LEVEL, 1),
 		intensify = clamp(v.intensify, 0, EQUIP_MAX_INTENSIFY, 0),
 		quality = clamp(v.quality, 1, EQUIP_MAX_QUALITY, 1),
@@ -783,7 +791,7 @@ local function try_drop(s, rng, chapter)
 	end
 	local name = s.roster[rng:int(#s.roster)]
 	local part = rng:int(EQUIP_PARTS)
-	local it = roll_equipment(rng, chapter, part)
+	local it = roll_equipment(rng, chapter, part, name)
 	if s.equipment[name] == nil then
 		s.equipment[name] = {}
 	end
@@ -1243,7 +1251,7 @@ local function rpc_fieldtest(context, payload)
 	for _, name in ipairs(mine) do
 		local items = {}
 		for part = 1, 3 do
-			items[#items + 1] = roll_equipment(rng0, 6, part)
+			items[#items + 1] = roll_equipment(rng0, 6, part, name)
 		end
 		eq[name] = equip.to_buffs(items)
 	end
@@ -1383,6 +1391,33 @@ local function rpc_set_placement(context, payload)
 	return nk.json_encode({ ok = true, placement = out, save = s })
 end
 
+--- Buoc ghep ke tiep cua mot mon: can cap tuong bao nhieu, ton bao nhieu
+--- vang, va co ghep duoc chua. nil neu da het cap hoac khong co cong thuc.
+local function synthesis_info(s, hero_name, it)
+	local lv = math.floor(it.level or 1)
+	if lv >= equip.MAX_EQUIP_LEVEL then
+		return nil
+	end
+	local row = equip.synthesis_row(data.equipSynthesis, it.equipType or 0, lv + 1)
+	if row == nil then
+		return nil
+	end
+	local hero_level = level_of(s, hero_name)
+	local ok, why = equip.synthesis_ready(data.equipSynthesis, it.equipType or 0,
+			lv, hero_level)
+	return {
+		nextLevel = lv + 1,
+		gold = row.gold,
+		needHeroLevel = row.heroLevel,
+		heroLevel = hero_level,
+		ready = ok,
+		reason = why,
+		-- Nguyen lieu cua ban goc: game moi chua co he vat pham nen chua tru
+		-- duoc, nhung van gui len de client thay bang goc doi gi.
+		materials = row.materials,
+	}
+end
+
 --- Trang bi dang co: tung tuong, tung o, kem luc chien va gia cuong hoa ke.
 --- Client hien theo bang nay chu khong tu tinh — con so la cua may chu.
 local function rpc_equipment(context, payload)
@@ -1410,6 +1445,8 @@ local function rpc_equipment(context, payload)
 				refine = it.refine or 0,
 				refinePercent = equip.refine_percent(it.refine or 0),
 				mainValue = equip.main_value(it),
+				equipType = it.equipType or 0,
+				synthesis = synthesis_info(s, name, it),
 				nextCost = it.intensify < EQUIP_MAX_INTENSIFY
 						and math.ceil(equip.cost_to_next(it)) or nil,
 				nextRefineCost = equip.refine_cost_next(it) > 0
@@ -1538,6 +1575,69 @@ local function rpc_refine(context, payload)
 	})
 end
 
+--- Ghep do: nang mon do len MOT cap. Ton vang, va doi cap tuong.
+---
+--- Chi so chinh duoc tinh LAI theo cap moi bang dung cong thuc cua ban goc,
+--- nen len mot cap la manh len that. Cuong hoa va tinh luyen giu nguyen —
+--- chung nhan vao chi so chinh moi, tuc cong suc cu khong mat.
+local function rpc_synthesize(context, payload)
+	if context.user_id == nil then
+		error("phai dang nhap")
+	end
+	local ok, body = pcall(nk.json_decode, payload or "{}")
+	if not ok or type(body) ~= "table" then
+		error("payload khong doc duoc")
+	end
+	local name = tostring(body.hero or "")
+	local part = math.floor(tonumber(body.part) or 0)
+	if data.heroes[name] == nil then
+		error("khong co tuong " .. name)
+	end
+	if part < 1 or part > EQUIP_PARTS then
+		error("khong co o thu " .. part)
+	end
+	local s = read_save(context.user_id)
+	local it = slot_of(s, name, part)
+	if it == nil then
+		error(name .. " chua co do o o " .. (EQUIP_PART_NAME[part] or part))
+	end
+	local lv = math.floor(it.level or 1)
+	local can, why = equip.synthesis_ready(data.equipSynthesis,
+			it.equipType or 0, lv, level_of(s, name))
+	if not can then
+		error("khong ghep duoc: " .. why)
+	end
+	local row = equip.synthesis_row(data.equipSynthesis, it.equipType or 0, lv + 1)
+	if s.gold < row.gold then
+		error("thieu vang: can " .. row.gold .. ", dang co " .. s.gold)
+	end
+
+	local before = equip.capacity(it)
+	s.gold = s.gold - row.gold
+	it.level = lv + 1
+	-- Chi so chinh tinh lai theo cap moi. Cuong hoa va tinh luyen giu nguyen
+	-- vi ca hai deu nhan VAO chi so chinh, khong phai cong roi.
+	it.main.value = equip.main_property_val(it.main.type,
+			equip.level_coefficient(data.equipSynthesis, it.equipType or 0, it.level),
+			it.quality or 1, equip.equip_job(it.equipType or 0))
+	write_save(context.user_id, s)
+	local after = equip.capacity(it)
+	return nk.json_encode({
+		ok = true,
+		hero = name,
+		part = part,
+		partName = EQUIP_PART_NAME[part],
+		level = it.level,
+		cost = row.gold,
+		capacity = after,
+		capacityGain = after - before,
+		mainValue = equip.main_value(it),
+		synthesis = synthesis_info(s, name, it),
+		item = it,
+		save = s,
+	})
+end
+
 nk.register_rpc(rpc_level_up, "bx.level_up")
 nk.register_rpc(rpc_set_roster, "bx.set_roster")
 nk.register_rpc(rpc_chapters, "bx.chapters")
@@ -1551,3 +1651,4 @@ nk.register_rpc(rpc_set_placement, "bx.set_placement")
 nk.register_rpc(rpc_equipment, "bx.equipment")
 nk.register_rpc(rpc_intensify, "bx.intensify")
 nk.register_rpc(rpc_refine, "bx.refine")
+nk.register_rpc(rpc_synthesize, "bx.synthesize")

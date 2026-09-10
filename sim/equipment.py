@@ -62,6 +62,85 @@ RECAST_ITEM_ID = 97            # RecastStroeItemID — da tay luyen
 # Moi cap cuong hoa nhan them he so nay; qua 200 cap thi gap 2.4 lan.
 INTENSIFY_STEP = math.pow(2.4, 1.0 / 200.0)
 
+# --- Chi so chinh: sinh tu LOAI DO, CAP DO va PHAM CHAT -----------------
+# share_EquipmentPropertyLogic:getMainPropertyValWithCoefficient
+#
+#   Ap        : 20    * (L + 10 + Q*6)^1.45 / (60 - J*6)
+#   HpLimit   : 30    * (L + 10 + Q*5)^1.5  / (20 + J*10)
+#   DpAddtion : 5     * (L + 10 + Q*6)^1.45 / (20 + J*8)
+#
+# L khong phai cap mon do ma la HE SO CAP: getEquipLevelCoefficient tra ve
+# dung cot HeroLevel cua bang ghep do cho (loai, cap). Tuc bang ghep do vua la
+# bang gia, vua la thang suc manh.
+#
+# EquipmentType = LOAI O * 10 + NGHE (Protocol.lua:322), nghe = type % 10.
+EQUIP_CATEGORY_WEAPON = 0
+EQUIP_CATEGORY_ARMOR = 20
+EQUIP_CATEGORY_SHOES = 30
+EQUIP_CATEGORY_NECKLACE = 40
+EQUIP_CATEGORY_RING = 50
+
+# EquipMainPropertyTypeMap — o nao cho chi so gi.
+MAIN_PROPERTY_BY_CATEGORY = {
+    EQUIP_CATEGORY_WEAPON: AP,
+    EQUIP_CATEGORY_ARMOR: DP_ADDITION,
+    EQUIP_CATEGORY_SHOES: HP_LIMIT,
+    EQUIP_CATEGORY_NECKLACE: HP_LIMIT,
+    EQUIP_CATEGORY_RING: DP_ADDITION,
+}
+
+# MainPropertyCoefficientMap
+MAIN_PROPERTY_COEF = {
+    HP_LIMIT: 30.0,
+    DP_ADDITION: 5.0,
+    CRITICAL_STRIKE: 0.0025,
+    AP: 20.0,
+}
+
+# HeroJobTypeCoefficientMap: Warrior 1, Knight 2, Musicians 3, Master 4, Archer 5
+JOB_WARRIOR, JOB_KNIGHT, JOB_MUSICIAN, JOB_MASTER, JOB_ARCHER = 1, 2, 3, 4, 5
+JOB_COEF = {1: 1.0, 2: 2.0, 3: 3.0, 4: 4.0, 5: 5.0}
+
+
+def equip_job(equip_type):
+    """Nghe cua mot loai trang bi. share_EquipmentLogic:getEquipmentJobType..."""
+    return int(equip_type) % 10
+
+
+def equip_category(equip_type):
+    """Loai o (0 vu khi, 20 giap, 30 giay, 40 day chuyen, 50 nhan)."""
+    return int(equip_type) - equip_job(equip_type)
+
+
+def main_property_type(equip_type):
+    return MAIN_PROPERTY_BY_CATEGORY.get(equip_category(equip_type))
+
+
+def main_property_val(prop_type, level_coef, quality, job):
+    """Chi so chinh goc, truoc tinh luyen va cuong hoa.
+
+    `level_coef` la cot HeroLevel cua bang ghep do, KHONG phai cap mon do.
+
+    Chi ba loai chi so co cong thuc. CriticalStrike KHONG co nhanh nao trong
+    ham goc — nhanh thu tu la mot ban sao cua DpAddtion, ro rang la loi go cua
+    tac gia — nen do (ngua, canh) khong sinh duoc chi so chinh. Trung khop voi
+    chuyen bang cuong hoa cung chi co ba loai do.
+    """
+    coef = MAIN_PROPERTY_COEF.get(prop_type)
+    j = JOB_COEF.get(int(job))
+    if coef is None or j is None:
+        return 0.0
+    q = float(quality)
+    lc = float(level_coef)
+    if prop_type == AP:
+        return coef * math.pow(lc + 10.0 + q * 6.0, 1.45) / (60.0 - j * 6.0)
+    if prop_type == HP_LIMIT:
+        return coef * math.pow(lc + 10.0 + q * 5.0, 1.5) / (20.0 + j * 10.0)
+    if prop_type == DP_ADDITION:
+        return coef * math.pow(lc + 10.0 + q * 6.0, 1.45) / (20.0 + j * 8.0)
+    return 0.0
+
+
 # --- Tinh luyen (RefineLevel) ------------------------------------------
 # Bang lay tu KDBGameCommonConfig, muc ConfigName = "EquipRefineConfig":
 # mot mang 5 o, moi o 5 cap, moi cap {NeedConcentrate, AddPrecent}.
@@ -187,15 +266,71 @@ def weight_of(prop_type):
     return CAPACITY_WEIGHT.get(prop_type, 0.0)
 
 
+# --- Ghep do (SynthesisEquipment) --------------------------------------
+# share_EquipmentLogic:SynthesisEquipment — ghep do la NANG CAP MON DO len
+# mot cap: tru vang, tru nguyen lieu, roi EquipLevel + 1. Bang gia va dieu
+# kien cap tuong nam trong KDBGameEquipmentSynthesisConfig (250 ban ghi).
+#
+# Chi so chinh duoc tinh LAI theo cap moi, vi he so cap chinh la cot HeroLevel
+# cua bang do — nen len mot cap la manh len that, khong phai chi doi icon.
+MAX_EQUIP_LEVEL = 10
+
+
+def synthesis_row(table, equip_type, level):
+    """Mot dong bang ghep do. `table` la {"<loai>_<cap>": {...}} da xuat."""
+    return (table or {}).get('%d_%d' % (int(equip_type), int(level)))
+
+
+def synthesis_ready(table, equip_type, level, hero_level):
+    """(duoc phep khong, ly do). Chua tinh vang — vang do may chu tru.
+
+    Ban goc CO cot HeroLevel va co doc no, nhung cho kiem lai vo hieu: dieu
+    kien viet la `if HeroLevel < need then if ProcessError(bRecode) ...`, ma
+    bRecode luc do dang la true nen than lenh khong bao gio chay. Tuc ban phat
+    hanh KHONG chan theo cap tuong. O day ta chan — mot dieu kien co trong
+    bang ma khong ai kiem thi bang do vo nghia.
+    """
+    if int(level) >= MAX_EQUIP_LEVEL:
+        return False, 'da toi cap cao nhat'
+    row = synthesis_row(table, equip_type, int(level) + 1)
+    if row is None:
+        return False, 'khong co cong thuc ghep cho loai %s cap %d' % (
+            equip_type, int(level) + 1)
+    if int(hero_level) < int(row['heroLevel']):
+        return False, 'can tuong cap %d' % int(row['heroLevel'])
+    return True, ''
+
+
+def level_coefficient(table, equip_type, level):
+    """He so cap dung de tinh chi so chinh — chinh la cot HeroLevel.
+
+    share_EquipmentPropertyLogic:getEquipLevelCoefficient
+    """
+    row = synthesis_row(table, equip_type, level)
+    return float(row['heroLevel']) if row else 0.0
+
+
+def make_equipment(table, equip_type, level, quality, part, **kw):
+    """Dung mon do dung kieu ban goc: chi so chinh SINH RA tu loai/cap/pham."""
+    ptype = main_property_type(equip_type)
+    val = main_property_val(ptype, level_coefficient(table, equip_type, level),
+                            quality, equip_job(equip_type))
+    return Equipment(part, (ptype, val), level=level, quality=quality,
+                     equip_type=equip_type, **kw)
+
+
 class Equipment(object):
     """Mot mon trang bi."""
 
     __slots__ = ('part', 'level', 'intensify', 'quality', 'refine',
-                 'main', 'appends')
+                 'equip_type', 'main', 'appends')
 
     def __init__(self, part, main, level=1, intensify=0, quality=1,
-                 appends=None, refine=0):
+                 appends=None, refine=0, equip_type=0):
         self.part = part
+        # LOAI trang bi cua ban goc = o * 10 + nghe. Quyet ca chi so chinh la
+        # gi lan he so nghe dung de tinh no.
+        self.equip_type = equip_type
         self.level = level
         self.intensify = intensify
         self.quality = quality
@@ -325,6 +460,9 @@ REF_TYPES = (AP, HP_LIMIT, DP_ADDITION, CRITICAL_STRIKE)
 REF_BASES = (100.0, 375.5)
 REF_INTENSIFY = (0, 1, 5, 30, 31, 60, 200)
 REF_LEVELS = (3, 4, 10)
+# 25 loai trang bi that cua ban goc: o (0/20/30/40/50) + nghe (1..5).
+REF_TYPES_EQUIP = tuple(cat + job for cat in (0, 20, 30, 40, 50)
+                        for job in (1, 2, 3, 4, 5))
 
 
 def reference_cases():
@@ -338,6 +476,8 @@ def reference_cases():
                     # nhan them mot chieu nua vao tich Descartes: 168 ca van
                     # phu het 6 cap, ma khong phinh len 1008.
                     rf = len(out) % (MAX_REFINE_LEVEL + 1)
+                    # Chay vong ca 5 o lan 5 nghe: 25 loai trang bi that.
+                    etype = REF_TYPES_EQUIP[len(out) % len(REF_TYPES_EQUIP)]
                     # O do doi theo ca de phu ca gia vu khi lan gia o khac.
                     part = 1 if len(out) % 2 == 0 else 3
                     e = Equipment(part=part, main=(ptype, base), level=lv,
@@ -357,6 +497,14 @@ def reference_cases():
                         'cost': intensify_cost(max(1, iv)),
                         'costTo': e.cost_to_level(iv + 5),
                         'qualityRange': quality_range(base, 10.0, 2.0),
+                        # Cong thuc chi so chinh: dung `base` lam HE SO CAP de
+                        # ca ba ban tinh cung mot con so ma khong can bang.
+                        'equipType': etype,
+                        'jobOf': equip_job(etype),
+                        'categoryOf': equip_category(etype),
+                        'mainFormula': main_property_val(
+                            main_property_type(etype), base, 2,
+                            equip_job(etype)),
                         'capacity': e.capacity(),
                         'capacityOrig': e.capacity_as_original(),
                         'stats': dict((str(k), v) for k, v in e.stats().items()),

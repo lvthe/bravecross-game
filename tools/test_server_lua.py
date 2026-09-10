@@ -439,7 +439,8 @@ def main():
     cases = EQ.reference_cases()
     fields = ('increment', 'propVal', 'total', 'cost', 'costTo',
               'qualityRange', 'capacity', 'capacityOrig',
-              'refinePercent', 'refineCost', 'mainValue')
+              'refinePercent', 'refineCost', 'mainValue',
+              'jobOf', 'categoryOf', 'mainFormula')
     bad = dict((f, []) for f in fields)
     bad_stats = []
     for c in cases:
@@ -458,6 +459,11 @@ def main():
             'capacity': LE.capacity(e),
             'capacityOrig': LE.capacity_as_original(e),
             'refinePercent': LE.refine_percent(c['refine']),
+            'jobOf': LE.equip_job(c['equipType']),
+            'categoryOf': LE.equip_category(c['equipType']),
+            'mainFormula': LE.main_property_val(
+                LE.main_property_type(c['equipType']), c['base'], 2,
+                LE.equip_job(c['equipType'])),
             'refineCost': LE.refine_cost_next(e),
             'mainValue': LE.main_value(e),
         }
@@ -657,6 +663,124 @@ def main():
         except lupa.LuaError:
             pass
         check(ok, 'khong co do / khong co tinh hoa thi khong tinh luyen duoc')
+
+        print('\n=== 10f. ghep do: len cap, ton vang, doi cap tuong ===')
+        eq3 = rpcs['bx.equipment'](u, None)
+        item3 = None
+        for it in dict(eq3['equipment'])[hero].values():
+            if int(it['part']) == part:
+                item3 = it
+        check(int(item3['equipType']) > 0, 'mon do co LOAI cua ban goc',
+              item3['equipType'])
+        # Loai = o * 10 + nghe, nen nghe phai khop nghe cua chinh tuong do.
+        hero_row = hero_data['heroes'][hero]
+        check(int(item3['equipType']) % 10 == int(hero_row['HeroJobType']),
+              'loai do khop nghe cua tuong',
+              '%s vs %s' % (item3['equipType'], hero_row['HeroJobType']))
+
+        syn = item3['synthesis']
+        check(syn is not None, 'co thong tin ghep buoc ke tiep')
+        if syn is not None:
+            need_lv = int(syn['needHeroLevel'])
+            gold_now = int(eq3['gold'])
+            cost = int(syn['gold'])
+            check(int(syn['nextLevel']) == int(item3['level']) + 1,
+                  'buoc ke la cap +1')
+            check(cost > 0, 'co gia vang', cost)
+            check(len(list(syn['materials'])) > 0,
+                  'gui ca nguyen lieu cua ban goc de client con thay')
+
+            if not bool(syn['ready']):
+                # Chua du cap tuong: phai TU CHOI, va noi ro can cap bao nhieu.
+                ok = True
+                try:
+                    rpcs['bx.synthesize'](u, L.table(hero=hero, part=part))
+                    ok = False
+                except lupa.LuaError:
+                    pass
+                check(ok, 'chua du cap tuong thi tu choi ghep (can cap %d)' % need_lv)
+                check('cap' in str(syn['reason']), 'noi ro ly do', syn['reason'])
+            else:
+                lv_b = int(item3['level'])
+                cap_b = float(item3['capacity'])
+                main_b = float(item3['mainValue'])
+                if gold_now >= cost:
+                    r_sy = rpcs['bx.synthesize'](u, L.table(hero=hero, part=part))
+                    check(int(r_sy['level']) == lv_b + 1, 'len dung mot cap',
+                          r_sy['level'])
+                    check(int(r_sy['save']['gold']) == gold_now - cost,
+                          'tru dung so vang')
+                    check(float(r_sy['mainValue']) > main_b,
+                          'chi so chinh tinh lai theo cap moi, manh hon',
+                          '%.2f -> %.2f' % (main_b, float(r_sy['mainValue'])))
+                    check(float(r_sy['capacity']) > cap_b, 'luc chien tang')
+                else:
+                    print('  (chua du vang de ghep — bo qua)')
+
+        for args, why in (
+                (dict(hero='KhongCoAi', part=1), 'tuong khong ton tai'),
+                (dict(hero=hero, part=0), 'o so 0')):
+            ok = True
+            try:
+                rpcs['bx.synthesize'](u, L.table(**args))
+                ok = False
+            except lupa.LuaError:
+                pass
+            check(ok, 'tu choi ghep: %s' % why)
+
+        # Ghep THAT. Cay du cap tuong bang cach danh vai tram tran thi lau va
+        # bap benh, nen dung thang mot ban luu: tuong cap 40, mot mon vu khi
+        # cap 1 loai 1 (chien binh), va thua vang. Day la duong ma nguoi choi
+        # se di, chi la ta dat san diem xuat phat.
+        rich = 'u-ghep-do'
+        env['store'][rich + '/player/save'] = L.table(
+            version=7, gold=1000000, concentrate=0,
+            levels=L.table(MaChao=40),
+            roster=L.table('MaChao', 'LvBu', 'GanNing', 'GuYong'),
+            equipment=L.table(MaChao=L.table(
+                L.table(part=1, level=1, intensify=3, quality=2, refine=1,
+                        equipType=1, main=L.table(type=20, value=22.5)))))
+        rc = L.table(user_id=rich)
+        eq4 = rpcs['bx.equipment'](rc, None)
+        it4 = list(dict(eq4['equipment'])['MaChao'].values())[0]
+        syn4 = it4['synthesis']
+        check(bool(syn4['ready']), 'tuong cap 40 thi ghep duoc cap 2',
+              syn4['reason'])
+        check(int(syn4['gold']) == 110, 'gia ghep cap 2 dung bang goc',
+              syn4['gold'])
+        lv_b = int(it4['level'])
+        main_b = float(it4['mainValue'])
+        cap_b = float(it4['capacity'])
+        gold_b = int(eq4['gold'])
+        r4 = rpcs['bx.synthesize'](rc, L.table(hero='MaChao', part=1))
+        check(int(r4['level']) == lv_b + 1, 'len dung mot cap', r4['level'])
+        check(int(r4['save']['gold']) == gold_b - 110, 'tru dung 110 vang',
+              r4['save']['gold'])
+        check(float(r4['mainValue']) > main_b,
+              'chi so chinh tinh lai theo cap moi',
+              '%.2f -> %.2f' % (main_b, float(r4['mainValue'])))
+        check(float(r4['capacity']) > cap_b, 'luc chien tang theo')
+        # Cuong hoa va tinh luyen KHONG mat khi ghep — ca hai nhan vao chi so
+        # chinh moi, do la ca cai loi cua viec ghep.
+        check(int(r4['item']['intensify']) == 3, 'giu nguyen cap cuong hoa',
+              r4['item']['intensify'])
+        check(int(r4['item']['refine']) == 1, 'giu nguyen cap tinh luyen',
+              r4['item']['refine'])
+
+        # Thieu vang thi tu choi, du du cap tuong.
+        env['store']['u-ngheo-ghep/player/save'] = L.table(
+            version=7, gold=5, levels=L.table(MaChao=40),
+            equipment=L.table(MaChao=L.table(
+                L.table(part=1, level=1, intensify=0, quality=2, refine=0,
+                        equipType=1, main=L.table(type=20, value=22.5)))))
+        ok = True
+        try:
+            rpcs['bx.synthesize'](L.table(user_id='u-ngheo-ghep'),
+                                  L.table(hero='MaChao', part=1))
+            ok = False
+        except lupa.LuaError:
+            pass
+        check(ok, 'du cap tuong ma thieu vang thi van tu choi')
 
 
     print('\n=== 10d. ban luu ban thi bo mon do, khong sua cho lanh ===')

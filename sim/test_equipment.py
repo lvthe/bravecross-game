@@ -157,6 +157,72 @@ w3.refine = 5
 check(w3.refine_cost_next() == 0, 'het cap thi khong con gia',
       w3.refine_cost_next())
 
+print('\n=== 6c. chi so chinh sinh tu loai/cap/pham ===')
+# share_EquipmentPropertyLogic:getMainPropertyValWithCoefficient
+check(E.equip_job(1) == 1 and E.equip_job(25) == 5 and E.equip_job(53) == 3,
+      'nghe = loai chia lay du 10')
+check(E.equip_category(1) == 0 and E.equip_category(25) == 20
+      and E.equip_category(53) == 50, 'o = loai - nghe')
+check(E.main_property_type(1) == E.AP, 'vu khi cho Cong')
+check(E.main_property_type(21) == E.DP_ADDITION, 'giap cho Giap')
+check(E.main_property_type(31) == E.HP_LIMIT, 'giay cho Mau')
+check(E.main_property_type(41) == E.HP_LIMIT, 'day chuyen cho Mau')
+check(E.main_property_type(51) == E.DP_ADDITION, 'nhan cho Giap')
+
+# Tinh tay: Ap = 20 * (L + 10 + Q*6)^1.45 / (60 - J*6)
+want = 20.0 * math.pow(1 + 10 + 1 * 6, 1.45) / (60.0 - 1 * 6)
+check(close(E.main_property_val(E.AP, 1, 1, 1), want),
+      'cong thuc Cong khop tinh tay', E.main_property_val(E.AP, 1, 1, 1))
+want = 30.0 * math.pow(20 + 10 + 3 * 5, 1.5) / (20.0 + 4 * 10)
+check(close(E.main_property_val(E.HP_LIMIT, 20, 3, 4), want),
+      'cong thuc Mau khop tinh tay')
+want = 5.0 * math.pow(20 + 10 + 2 * 6, 1.45) / (20.0 + 2 * 8)
+check(close(E.main_property_val(E.DP_ADDITION, 20, 2, 2), want),
+      'cong thuc Giap khop tinh tay')
+# Chi mang khong co nhanh nao trong ham goc — nhanh thu tu la ban sao cua
+# DpAddtion, ro rang la loi go. Ta tra 0 chu khong bia mot cong thuc.
+check(E.main_property_val(E.CRITICAL_STRIKE, 20, 2, 2) == 0.0,
+      'chi mang khong sinh duoc chi so chinh (ban goc thieu nhanh)')
+
+# He so cap va pham deu lam manh len; nghe khac nhau cho so khac nhau.
+check(E.main_property_val(E.AP, 40, 1, 1) > E.main_property_val(E.AP, 20, 1, 1),
+      'he so cap cao hon thi manh hon')
+check(E.main_property_val(E.AP, 20, 3, 1) > E.main_property_val(E.AP, 20, 1, 1),
+      'pham chat cao hon thi manh hon')
+check(E.main_property_val(E.AP, 20, 1, 5) > E.main_property_val(E.AP, 20, 1, 1),
+      'cung ngan may thi cung thu manh hon chien binh ve Cong')
+
+print('\n=== 6d. ghep do ===')
+TAB = {
+    '1_1': {'heroLevel': 1, 'gold': 10, 'materials': [[24, 1], [51, 2]]},
+    '1_2': {'heroLevel': 10, 'gold': 110, 'materials': [[24, 1], [51, 2]]},
+    '1_3': {'heroLevel': 20, 'gold': 3700, 'materials': [[25, 3], [52, 5]]},
+}
+check(E.synthesis_row(TAB, 1, 2)['gold'] == 110, 'tra dung dong bang')
+check(E.synthesis_row(TAB, 1, 9) is None, 'khong co dong thi tra None')
+check(E.level_coefficient(TAB, 1, 3) == 20.0,
+      'he so cap chinh la cot HeroLevel', E.level_coefficient(TAB, 1, 3))
+
+ok, why = E.synthesis_ready(TAB, 1, 1, 10)
+check(ok, 'du cap tuong thi ghep duoc', why)
+ok, why = E.synthesis_ready(TAB, 1, 2, 5)
+check(not ok and 'cap 20' in why, 'thieu cap tuong thi tu choi, va noi can bao nhieu', why)
+ok, why = E.synthesis_ready(TAB, 1, 10, 999)
+check(not ok and 'cao nhat' in why, 'het cap thi tu choi', why)
+ok, why = E.synthesis_ready(TAB, 99, 1, 999)
+check(not ok, 'loai khong co trong bang thi tu choi')
+
+# Len cap la manh len THAT, khong phai chi doi icon.
+e1 = E.make_equipment(TAB, 1, 1, 1, 1)
+e2 = E.make_equipment(TAB, 1, 2, 1, 1)
+e3 = E.make_equipment(TAB, 1, 3, 1, 1)
+check(e1.main[0] == E.AP, 'vu khi ra chi so Cong')
+check(e2.main[1] > e1.main[1] and e3.main[1] > e2.main[1],
+      'moi cap ghep la chi so chinh tang',
+      '%.1f -> %.1f -> %.1f' % (e1.main[1], e2.main[1], e3.main[1]))
+check(e3.capacity() > e1.capacity(), 'luc chien tang theo')
+check(e1.equip_type == 1, 'mon do nho loai cua no')
+
 print('\n=== 7. chi phi cong don ===')
 w2 = E.Equipment(1, (E.AP, 100.0), intensify=0)
 step = sum(E.intensify_cost(i) for i in range(1, 11))

@@ -62,6 +62,70 @@ const RECAST_ITEM_ID := 97          ## RecastStroeItemID — da tay luyen
 ## lang le, ma sai o day thi lech het thang cuong hoa.
 static var INTENSIFY_STEP: float = pow(2.4, 1.0 / 200.0)
 
+## Chi so chinh sinh tu LOAI DO, CAP DO va PHAM CHAT.
+## share_EquipmentPropertyLogic:getMainPropertyValWithCoefficient
+##
+##   Ap        : 20 * (L + 10 + Q*6)^1.45 / (60 - J*6)
+##   HpLimit   : 30 * (L + 10 + Q*5)^1.5  / (20 + J*10)
+##   DpAddtion : 5  * (L + 10 + Q*6)^1.45 / (20 + J*8)
+##
+## L la HE SO CAP — cot HeroLevel cua bang ghep do, khong phai cap mon do.
+## EquipmentType = LOAI O * 10 + NGHE (Protocol.lua:322).
+const EQUIP_CATEGORY_WEAPON := 0
+const EQUIP_CATEGORY_ARMOR := 20
+const EQUIP_CATEGORY_SHOES := 30
+const EQUIP_CATEGORY_NECKLACE := 40
+const EQUIP_CATEGORY_RING := 50
+const MAX_EQUIP_LEVEL := 10
+
+const MAIN_PROPERTY_BY_CATEGORY := {
+	EQUIP_CATEGORY_WEAPON: AP,
+	EQUIP_CATEGORY_ARMOR: DP_ADDITION,
+	EQUIP_CATEGORY_SHOES: HP_LIMIT,
+	EQUIP_CATEGORY_NECKLACE: HP_LIMIT,
+	EQUIP_CATEGORY_RING: DP_ADDITION,
+}
+
+const MAIN_PROPERTY_COEF := {
+	HP_LIMIT: 30.0,
+	DP_ADDITION: 5.0,
+	CRITICAL_STRIKE: 0.0025,
+	AP: 20.0,
+}
+
+const JOB_COEF := {1: 1.0, 2: 2.0, 3: 3.0, 4: 4.0, 5: 5.0}
+
+
+static func equip_job(equip_type: int) -> int:
+	return equip_type % 10
+
+
+static func equip_category(equip_type: int) -> int:
+	return equip_type - equip_job(equip_type)
+
+
+static func main_property_type(equip_type: int) -> int:
+	return int(MAIN_PROPERTY_BY_CATEGORY.get(equip_category(equip_type), 0))
+
+
+## Chi so chinh goc, truoc tinh luyen va cuong hoa.
+## CriticalStrike KHONG co nhanh nao trong ham goc (nhanh thu tu la ban sao
+## cua DpAddtion — loi go cua tac gia), nen tra 0 chu khong bia cong thuc.
+static func main_property_val(prop_type: int, level_coef: float,
+		quality: float, job: int) -> float:
+	if not MAIN_PROPERTY_COEF.has(prop_type) or not JOB_COEF.has(job):
+		return 0.0
+	var coef: float = MAIN_PROPERTY_COEF[prop_type]
+	var j: float = JOB_COEF[job]
+	if prop_type == AP:
+		return coef * pow(level_coef + 10.0 + quality * 6.0, 1.45) / (60.0 - j * 6.0)
+	if prop_type == HP_LIMIT:
+		return coef * pow(level_coef + 10.0 + quality * 5.0, 1.5) / (20.0 + j * 10.0)
+	if prop_type == DP_ADDITION:
+		return coef * pow(level_coef + 10.0 + quality * 6.0, 1.45) / (20.0 + j * 8.0)
+	return 0.0
+
+
 ## Tinh luyen (RefineLevel). Bang lay tu KDBGameCommonConfig, muc
 ## ConfigName = "EquipRefineConfig": 5 o, moi o 5 cap, moi cap
 ## { NeedConcentrate, AddPrecent }.
@@ -92,6 +156,7 @@ var level: int = 1         ## cap mon do — tu 4 tro len moi co thuoc tinh phu
 var intensify: int = 0     ## cap cuong hoa
 var quality: int = 1       ## pham chat
 var refine: int = 0        ## cap tinh luyen 0..5, moi cap cong % chi so chinh
+var equip_type: int = 0    ## LOAI do cua ban goc = o * 10 + nghe
 var main_type: int = AP    ## loai chi so chinh
 var main_value: float = 0.0
 var appends: Array = []    ## [[loai, gia tri], ...]

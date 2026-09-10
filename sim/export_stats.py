@@ -21,8 +21,8 @@ import os, re, sys, json, argparse, collections
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from tables import (Heroes, Talents, Armies, Formations, TableError,
-                    DEFAULT_CONFIG)
+from tables import (Heroes, Talents, Armies, Formations, EquipSynthesis,
+                    TableError, DEFAULT_CONFIG)
 from battle import Rules, match
 
 DEFAULT_OUT = os.path.normpath(os.path.join(HERE, '..', 'data_ref', 'battle_data.json'))
@@ -196,6 +196,7 @@ def write_lua(path, doc):
         ('formationOrder', doc['formationOrder']),
         ('formations', doc['formations']),
         ('reference', doc['reference']),
+        ('equipSynthesis', doc['equipSynthesis']),
     ])
     d = os.path.dirname(path)
     if d:
@@ -253,7 +254,11 @@ def main():
         name = x.get('SpriteName', '')
         if not name or int(x.get('MaxUnit', 0)) <= 0:
             continue
-        if art and name not in art:
+        # --all nghia la ca nhung thu CHUA CO ART, ke ca quan chung. Truoc
+        # day cai co nay chi ap cho tuong, con quan chung van bi loc — nen
+        # sinh lai bang so tren mot may thieu art la doi ca thanh phan quan
+        # cua tung chuong, va doi hinh dang thang bong thua sach. Da dinh.
+        if art and not a.all and name not in art:
             continue
         cur = best.get(name)
         if cur is None or int(x['HpBase']) < int(cur['HpBase']):
@@ -262,6 +267,13 @@ def main():
                  for n in sorted(best)]
 
     form_order, form_map = formation_doc(forms)
+
+    # Bang ghep do. Khoa "<loai>_<cap>" vi qua JSON thi khoa nao cung thanh
+    # chuoi — de nguyen dang do cho ca ba ban doc giong nhau.
+    syn = EquipSynthesis(a.config)
+    syn_out = collections.OrderedDict()
+    for (t, lv) in sorted(syn.by_key):
+        syn_out['%d_%d' % (t, lv)] = syn.by_key[(t, lv)]
 
     rules = Rules()
     by_name = {r['HeroSprite']: r for r in rows}
@@ -299,6 +311,10 @@ def main():
         ('formationOrder', form_order),
         ('formations', form_map),
         ('reference', ref),
+        # Bang ghep do: khoa "<loai>_<cap>" vi qua JSON thi khoa phai la
+        # chuoi. Cot heroLevel vua la dieu kien cap tuong, vua la HE SO CAP
+        # dung de tinh chi so chinh — xem sim/equipment.py.
+        ('equipSynthesis', syn_out),
     ])
 
     out_dir = os.path.dirname(a.out)
@@ -314,7 +330,8 @@ def main():
     print('  %d tuong%s' % (len(rows),
           '' if not skipped else ' (bo %d tuong chua co art: %s)'
           % (len(skipped), ', '.join(skipped[:5]))))
-    print('  %d quan chung co art' % len(army_rows))
+    print('  %d quan chung%s' % (len(army_rows),
+          '' if a.all else ' co art'))
     print('  %d the tran (%s...)' % (len(form_order), ', '.join(form_order[:3])))
     print('  %d cap doi chieu, %d tran moi cap' % (len(ref), a.battles))
     for e in ref:

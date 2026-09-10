@@ -384,6 +384,45 @@ check(E.weapon_skill(WTAB, 'GuYong') == (None, {}, False),
 check(E.weapon_skill(None, 'XiaoQiao') == (None, {}, False),
       'khong co bang thi cung khong no')
 
+print('\n=== 6h. vat pham va kho ===')
+ITAB = {
+    '86': {'name': 'lam bao thach', 'type': 2, 'maxCount': 99999,
+           'price': 10000, 'concentrate': 2, 'quality': 3, 'value': 0},
+    '24': {'name': 'cuon vu khi bac 1', 'type': 2, 'maxCount': 5,
+           'price': 20, 'concentrate': 1, 'quality': 2, 'value': 0},
+    '14': {'name': 'pham chat dan', 'type': 3, 'maxCount': 99999,
+           'price': 0, 'concentrate': 0, 'quality': 6, 'value': 0},
+}
+bag = {}
+check(E.bag_add(bag, ITAB, 86, 3) == 3, 'cong vao tui', bag)
+check(E.bag_count(bag, 86) == 3, 'dem dung')
+check(E.bag_count(bag, 99) == 0, 'thu khong co thi la 0')
+# AddItem cua ban goc CAT o MaxCount.
+check(E.bag_add(bag, ITAB, 24, 100) == 5,
+      'cat o MaxCount (5), chi cong duoc 5', bag)
+check(E.bag_count(bag, 24) == 5, 'va dung o tran')
+check(E.bag_add(bag, ITAB, 24, 10) == 0, 'day roi thi khong cong them duoc')
+
+check(E.has_materials(bag, [[86, 2], [24, 5]]), 'du nguyen lieu')
+check(not E.has_materials(bag, [[86, 2], [24, 6]]),
+      'thieu MOT thu la hong ca')
+check(E.missing_materials(bag, [[86, 9], [24, 1]]) == [(86, 3, 9)],
+      'noi ro thieu cai nao, co bao nhieu tren can bao nhieu',
+      E.missing_materials(bag, [[86, 9], [24, 1]]))
+
+check(not E.use_materials(bag, [[86, 99]]), 'thieu thi khong tru gi')
+check(E.bag_count(bag, 86) == 3, 'va tui khong bi dong vao')
+check(E.use_materials(bag, [[86, 3], [24, 2]]), 'du thi tru duoc')
+check('86' not in bag, 'het sach thi bo khoi tui, khong de so 0', bag)
+check(E.bag_count(bag, 24) == 3, 'con lai dung so')
+
+check(E.item_sale_price(ITAB, 86) == 10000, 'gia ban lay tu bang')
+check(E.item_concentrate(ITAB, 86) == 2, 'gia tri phan giai lay tu bang')
+check(E.item_concentrate(ITAB, 14) == 0, 'thu khong phan giai duoc thi 0')
+check(E.item_sale_price(ITAB, 999) == 0, 'thu khong co trong bang thi 0')
+check(E.bag_size(bag) == 3, 'so o kho dem TONG SO LUONG', E.bag_size(bag))
+check(E.bag_size({}) == 0 and E.bag_size(None) == 0, 'tui rong thi 0')
+
 print('\n=== 7. chi phi cong don ===')
 w2 = E.Equipment(1, (E.AP, 100.0), intensify=0)
 step = sum(E.intensify_cost(i) for i in range(1, 11))

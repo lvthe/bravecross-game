@@ -175,6 +175,98 @@ function M.synthesis_ready(tbl, equip_type, level, hero_level)
 	return true, ""
 end
 
+-- --------------------------------------- Vat pham va kho (ItemLogic)
+-- Tui do la mot bang don gian: id vat pham -> so luong. AddItem cua ban goc
+-- cong vao roi CAT o MaxCount cua tung loai.
+--
+-- Ba cho tieu nguyen lieu — ghep do, nang pham, ren chuyen thuoc — deu goi
+-- chung mot cap ham cua ban goc: IsEnoughResourceForSynthesis roi
+-- UseMaterialResourceForSynthesis.
+
+function M.item_row(tbl, item_id)
+	if tbl == nil then
+		return nil
+	end
+	return tbl[tostring(math.floor(item_id))]
+end
+
+function M.item_max(tbl, item_id)
+	local row = M.item_row(tbl, item_id)
+	return row and math.floor(row.maxCount) or 0
+end
+
+function M.bag_count(bag, item_id)
+	return math.floor((bag or {})[tostring(math.floor(item_id))] or 0)
+end
+
+--- Cong vat pham vao tui, CAT o MaxCount. Tra ve so thuc su cong duoc.
+function M.bag_add(bag, tbl, item_id, count)
+	local have = M.bag_count(bag, item_id)
+	local cap = M.item_max(tbl, item_id)
+	local want = have + math.floor(count)
+	if cap > 0 and want > cap then
+		want = cap
+	end
+	bag[tostring(math.floor(item_id))] = want
+	return want - have
+end
+
+--- Du nguyen lieu khong. Thieu MOT thu la hong ca.
+function M.has_materials(bag, materials)
+	for _, m in ipairs(materials or {}) do
+		if M.bag_count(bag, m[1]) < math.floor(m[2]) then
+			return false
+		end
+	end
+	return true
+end
+
+--- Danh sach thu con thieu: { { id, dang co, can }, ... }
+function M.missing_materials(bag, materials)
+	local out = {}
+	for _, m in ipairs(materials or {}) do
+		local have = M.bag_count(bag, m[1])
+		if have < math.floor(m[2]) then
+			out[#out + 1] = { math.floor(m[1]), have, math.floor(m[2]) }
+		end
+	end
+	return out
+end
+
+--- Tru nguyen lieu. Duoc ca hoac khong gi.
+function M.use_materials(bag, materials)
+	if not M.has_materials(bag, materials) then
+		return false
+	end
+	for _, m in ipairs(materials or {}) do
+		local key = tostring(math.floor(m[1]))
+		local left = M.bag_count(bag, m[1]) - math.floor(m[2])
+		bag[key] = left > 0 and left or nil
+	end
+	return true
+end
+
+--- Gia ban ra vang (GetItemSalePrice: chinh la cot Price).
+function M.item_sale_price(tbl, item_id)
+	local row = M.item_row(tbl, item_id)
+	return row and math.floor(row.price) or 0
+end
+
+--- Phan giai mot don vi ra bao nhieu tinh hoa.
+function M.item_concentrate(tbl, item_id)
+	local row = M.item_row(tbl, item_id)
+	return row and math.floor(row.concentrate) or 0
+end
+
+--- So o kho dang dung: TONG SO LUONG, khong phai so loai.
+function M.bag_size(bag)
+	local n = 0
+	for _, v in pairs(bag or {}) do
+		n = n + math.floor(v)
+	end
+	return n
+end
+
 -- ---------------------- Nang pham chat (PromoteQualityEquipment)
 -- Bang: KDBGameCommonConfig / GameEquipQualityPromotionConfig, khoa la PHAM
 -- DICH (2..6). Pham chat an vao HAI cho — chi so chinh va thuoc tinh phu —

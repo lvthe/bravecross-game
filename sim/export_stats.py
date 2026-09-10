@@ -22,7 +22,7 @@ import os, re, sys, json, argparse, collections
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from tables import (Heroes, Talents, Armies, Formations, EquipSynthesis,
-                    ExclusiveEquip, EquipQuality, WeaponSkills,
+                    ExclusiveEquip, EquipQuality, WeaponSkills, Items,
                     TableError, DEFAULT_CONFIG)
 from battle import Rules, match
 
@@ -201,6 +201,7 @@ def write_lua(path, doc):
         ('exclusiveEquip', doc['exclusiveEquip']),
         ('equipQuality', doc['equipQuality']),
         ('weaponSkills', doc['weaponSkills']),
+        ('items', doc['items']),
     ])
     d = os.path.dirname(path)
     if d:
@@ -296,6 +297,29 @@ def main():
     qual_out = collections.OrderedDict(
         (str(k), qual.by_quality[k]) for k in sorted(qual.by_quality))
 
+    # Bang vat pham. Chi xuat nhung loai thuc su duoc nhac toi o dau do —
+    # nguyen lieu ghep do / nang pham / ren chuyen thuoc, da tay luyen — cong
+    # them loai co the roi ra. Xuat ca 619 dong thi phan lon la thu game moi
+    # chua co cho dung.
+    items = Items(a.config)
+    used = set()
+    for row in syn.by_key.values():
+        for mid, _n in row['materials']:
+            used.add(int(mid))
+    for row in qual.by_quality.values():
+        for mid, _n in row['materials']:
+            used.add(int(mid))
+    for hid in exc.forge:
+        for part in exc.forge[hid]:
+            for m in exc.forge[hid][part].get('ItemList', []):
+                used.add(int(m['ItemID']))
+    used.add(97)          # da tay luyen
+    item_out = collections.OrderedDict()
+    for i in sorted(used):
+        row = items.get(i)
+        if row is not None:
+            item_out[str(i)] = row
+
     # Ky nang VU KHI chuyen thuoc, theo tung tuong. Ban goc goi mot bang
     # khong ton tai (ExclusiveWeaponSkillConfig), anh xa that nam trong engine
     # o map/heroex_config.xml + map/quality_config.xml.
@@ -359,6 +383,7 @@ def main():
         ('exclusiveEquip', exc_out),
         ('equipQuality', qual_out),
         ('weaponSkills', wsk_out),
+        ('items', item_out),
     ])
 
     out_dir = os.path.dirname(a.out)

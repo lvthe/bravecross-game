@@ -21,7 +21,7 @@ extends Node
 
 ## Doi so nay khi cau truc ban luu thay doi, de con biet duong nang cap.
 ## Phai khop SAVE_VERSION ben server/modules/battle.lua.
-const SAVE_VERSION := 9
+const SAVE_VERSION := 10
 
 var client: NakamaClient = null
 var data: Dictionary = {}
@@ -50,6 +50,7 @@ static func blank() -> Dictionary:
 		"cleared": 0,                 # chuong cao nhat da qua
 		"gold": 0,
 		"concentrate": 0,             # tinh hoa, dung de tinh luyen
+		"items": {},                  # tui do: id vat pham -> so luong
 		"levels": {},                 # ten tuong -> cap
 		# The tran (KDBGameFormationConfig cua ban goc). `placement` la cho dung
 		# cua tung tuong: 1 truoc, 2 giua, 3 sau. Cho dung quyet ca vi tri tren
@@ -153,6 +154,15 @@ func _upgrade(raw: Variant) -> Dictionary:
 			if not items.is_empty():
 				eq[str(name)] = items
 	out["equipment"] = eq
+	# Tui do. Van ly do nhu cac truong tren: khong liet ke o day thi no bien
+	# mat lang le, may chu van giu ma client doc ra khong thay.
+	var bag := {}
+	if typeof(d.get("items")) == TYPE_DICTIONARY:
+		for k in d["items"]:
+			var n := int(d["items"][k])
+			if n > 0:
+				bag[str(k)] = n
+	out["items"] = bag
 	return out
 
 
@@ -358,6 +368,37 @@ func promote_quality(hero_name: String, part: int) -> Dictionary:
 		return {"ok": false, "error": "chua noi duoc may chu"}
 	var r := await client.call_rpc("bx.promote_quality",
 			{"hero": hero_name, "part": part})
+	if r.ok:
+		data = _upgrade(r.data.get("save", {}))
+	return r
+
+
+## Tui do: id vat pham -> so luong. May chu giu; day chi la ban sao doc.
+func items() -> Dictionary:
+	return data.get("items", {})
+
+
+func item_count(item_id: int) -> int:
+	return int(items().get(str(item_id), 0))
+
+
+## Ban vat pham lay vang.
+func sell_item(item_id: int, count: int) -> Dictionary:
+	if not online:
+		return {"ok": false, "error": "chua noi duoc may chu"}
+	var r := await client.call_rpc("bx.sell_item",
+			{"item": item_id, "count": count})
+	if r.ok:
+		data = _upgrade(r.data.get("save", {}))
+	return r
+
+
+## Phan giai vat pham thanh tinh hoa — nguon tinh hoa THAT cua ban goc.
+func dismantle_item(item_id: int, count: int) -> Dictionary:
+	if not online:
+		return {"ok": false, "error": "chua noi duoc may chu"}
+	var r := await client.call_rpc("bx.dismantle_item",
+			{"item": item_id, "count": count})
 	if r.ok:
 		data = _upgrade(r.data.get("save", {}))
 	return r

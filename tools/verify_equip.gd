@@ -150,6 +150,9 @@ func _ready() -> void:
 	var data := {
 		"gold": 500,
 		"concentrate": 100,
+		# Tui do co san nguyen lieu: nhung muc duoi day do dieu kien VANG va
+		# cap tuong, khong phai dieu kien nguyen lieu (muc 3l lo phan do).
+		"save": {"items": {"25": 5, "52": 9, "86": 3, "87": 3}},
 		"maxIntensify": 200,
 		"maxRefine": 5,
 		"equipment": {
@@ -299,8 +302,8 @@ func _ready() -> void:
 	var slot2 := XggLayout.find_node(box2, "btnEquipForgeConsumeUI2_Icon2")
 	_check(slot1 != null and slot1.visible and slot2 != null and slot2.visible,
 			"hien du hai o nguyen lieu")
-	_check(_text_of(scr, slot1) == "x3" and _text_of(scr, slot2) == "x5",
-			"so luong nguyen lieu dung bang goc",
+	_check(_text_of(scr, slot1) == "5/3" and _text_of(scr, slot2) == "9/5",
+			"hien so dang co tren so can",
 			"%s / %s" % [_text_of(scr, slot1), _text_of(scr, slot2)])
 
 	print("\n=== 3e. chua du cap tuong / het cap ===")
@@ -497,7 +500,7 @@ func _ready() -> void:
 	_check(qbtn != null and qbtn.visible, "co nut nang pham")
 	_check(qbtn != null and qbtn.modulate.r > 0.9, "du vang thi nut sang")
 	var qmat := XggLayout.find_node(pan_q, "g_UpgradeQualityActionMaterialItem")
-	_check(qmat != null and qmat.visible and _text_of(scr, qmat) == "x1",
+	_check(qmat != null and qmat.visible and _text_of(scr, qmat) == "3/1",
 			"hien nguyen lieu ban goc doi", _text_of(scr, qmat))
 
 	print("\n=== 3j. het pham / chua du cap tuong ===")
@@ -566,6 +569,44 @@ func _ready() -> void:
 	scr._refresh()
 	_check(_text(scr, "ttfHeroEquipmentUITips") == "",
 			"chi hien o o vu khi", _text(scr, "ttfHeroEquipmentUITips"))
+
+	scr.set_data(data, ["MaChao", "GanNing"])
+	scr._set_tab("intensify")
+	scr.part = 1
+	scr._refresh()
+
+	print("\n=== 3l. nguyen lieu: co/can ===")
+	var mdata := data.duplicate(true)
+	mdata["save"] = {"items": {"25": 1, "52": 9}}
+	scr.set_data(mdata, ["MaChao"])
+	scr.part = 1
+	scr._set_tab("forge")
+	var pan_fg2 := XggLayout.find_node(scr.ui, "lEquipmentForgeUI")
+	var box_m := XggLayout.find_by_cls(pan_fg2, scr.CLS_FORGE_CONSUME[2])
+	var s1 := XggLayout.find_node(box_m, "btnEquipForgeConsumeUI2_Icon1")
+	var s2 := XggLayout.find_node(box_m, "btnEquipForgeConsumeUI2_Icon2")
+	# Bang gia doi 25 x3 va 52 x5; tui co 1 va 9.
+	_check(_text_of(scr, s1) == "1/3", "o thieu hien co/can", _text_of(scr, s1))
+	_check(_text_of(scr, s2) == "9/5", "o du cung hien co/can", _text_of(scr, s2))
+	var lb1: Label = scr._ensure_label(s1)
+	var lb2: Label = scr._ensure_label(s2)
+	_check(lb1.modulate.g < 0.9, "thieu thi to do")
+	_check(lb2.modulate.g > 0.9, "du thi de mau thuong")
+	var fbtn2 := XggLayout.find_node(scr.ui, "snsEquipForge")
+	_check(fbtn2 != null and fbtn2.modulate.r < 0.9,
+			"thieu nguyen lieu thi nut mo di")
+	_check(scr._tips.text == "Thieu nguyen lieu", "va noi ro la thieu gi",
+			scr._tips.text)
+
+	# Du ca hai thi nut sang lai (van con dieu kien vang).
+	var mdata2 := data.duplicate(true)
+	mdata2["gold"] = 999999
+	mdata2["save"] = {"items": {"25": 5, "52": 9}}
+	scr.set_data(mdata2, ["MaChao"])
+	scr.part = 1
+	scr._refresh()
+	_check(fbtn2 != null and fbtn2.modulate.r > 0.9,
+			"du ca nguyen lieu lan vang thi nut sang")
 
 	scr.set_data(data, ["MaChao", "GanNing"])
 	scr._set_tab("intensify")

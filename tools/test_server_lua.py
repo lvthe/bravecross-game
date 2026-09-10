@@ -514,6 +514,33 @@ def main():
     check(not bad_w, 'ky nang vu khi: Lua khop Python',
           bad_w[0] if bad_w else '')
 
+    # Tui do: ba ban phai xu ly giong nhau tung buoc.
+    itab = L.eval('(require("hero_data"))')['items']
+    py_items = _j2.load(io.open(os.path.join(ROOT, 'data_ref', 'battle_data.json'),
+                                encoding='utf-8'))['items']
+    lbag, pbag = L.table(), {}
+    steps, bad_bag = [], []
+    for iid, n in ((86, 3), (24, 100), (24, 10), (86, 2)):
+        la = LE.bag_add(lbag, itab, iid, n)
+        pa = EQ.bag_add(pbag, py_items, iid, n)
+        steps.append((iid, n, int(la), int(pa)))
+        if int(la) != int(pa):
+            bad_bag.append('bag_add(%d,%d): Lua %s vs Python %s' % (iid, n, la, pa))
+    for mats in ([[86, 2]], [[24, 999]], [[86, 5], [24, 1]]):
+        lm = LE.has_materials(lbag, L.table(*[L.table(m[0], m[1]) for m in mats]))
+        pm = EQ.has_materials(pbag, mats)
+        if bool(lm) != bool(pm):
+            bad_bag.append('has_materials(%s): Lua %s vs Python %s' % (mats, lm, pm))
+    lu = LE.use_materials(lbag, L.table(L.table(86, 2)))
+    pu = EQ.use_materials(pbag, [[86, 2]])
+    if bool(lu) != bool(pu):
+        bad_bag.append('use_materials: Lua %s vs Python %s' % (lu, pu))
+    if int(LE.bag_size(lbag)) != EQ.bag_size(pbag):
+        bad_bag.append('bag_size: Lua %s vs Python %s'
+                       % (LE.bag_size(lbag), EQ.bag_size(pbag)))
+    check(not bad_bag, 'tui do: Lua khop Python (%d buoc)' % len(steps),
+          bad_bag[0] if bad_bag else '')
+
     print('\n=== 10. TRANG BI: ban luu va RPC ===')
     u = L.table(user_id='u-trangbi')
     e0 = rpcs['bx.equipment'](u, None)
@@ -762,7 +789,10 @@ def main():
         # se di, chi la ta dat san diem xuat phat.
         rich = 'u-ghep-do'
         env['store'][rich + '/player/save'] = L.table(
-            version=7, gold=1000000, concentrate=0,
+            version=9, gold=1000000, concentrate=0,
+            # Nguyen lieu ghep do bac 1: vat pham 24 va 51 (bang goc).
+            items=L.table(**{'24': 10, '51': 10, '86': 5, '87': 5, '88': 5,
+                             '89': 5, '212': 5, '213': 5, '214': 5}),
             levels=L.table(MaChao=40),
             roster=L.table('MaChao', 'LvBu', 'GanNing', 'GuYong'),
             equipment=L.table(MaChao=L.table(
@@ -797,7 +827,8 @@ def main():
 
         # Thieu vang thi tu choi, du du cap tuong.
         env['store']['u-ngheo-ghep/player/save'] = L.table(
-            version=7, gold=5, levels=L.table(MaChao=40),
+            version=9, gold=5, levels=L.table(MaChao=40),
+            items=L.table(**{'24': 10, '51': 10}),
             equipment=L.table(MaChao=L.table(
                 L.table(part=1, level=1, intensify=0, quality=2, refine=0,
                         equipType=1, main=L.table(type=20, value=22.5)))))
@@ -815,7 +846,9 @@ def main():
         exc_u = 'u-chuyen-thuoc'
         def mk_save(refine, exclusive=False, purify=0):
             return L.table(
-                version=8, gold=100000, concentrate=100000,
+                version=9, gold=100000, concentrate=100000,
+                # Nguyen lieu ren cua ZhaoYun o 4: vat pham 137 va 89.
+                items=L.table(**{'137': 10, '89': 10}),
                 levels=L.table(ZhaoYun=40),
                 roster=L.table('ZhaoYun', 'MaChao', 'LvBu', 'GanNing'),
                 equipment=L.table(ZhaoYun=L.table(
@@ -845,7 +878,8 @@ def main():
 
         # Tuong KHONG co trong danh sach thi khong bao gio ren duoc.
         env['store']['u-khong-chuyen/player/save'] = L.table(
-            version=8, gold=100000, concentrate=100000,
+            version=9, gold=100000, concentrate=100000,
+            items=L.table(**{'137': 10, '89': 10}),
             levels=L.table(GuYong=40),
             equipment=L.table(GuYong=L.table(
                 L.table(part=4, level=3, intensify=0, quality=2, refine=5,
@@ -997,6 +1031,7 @@ def main():
         qu = 'u-nang-pham'
         env['store'][qu + '/player/save'] = L.table(
             version=9, gold=200000, concentrate=0,
+            items=L.table(**{'86': 5, '87': 5, '88': 5, '89': 5}),
             levels=L.table(MaChao=40),
             equipment=L.table(MaChao=L.table(
                 L.table(part=1, level=5, intensify=0, quality=3, refine=0,
@@ -1049,6 +1084,7 @@ def main():
         # Tuong cap thap: pham 5 doi cap 35 nen phai tu choi.
         env['store']['u-pham-thap/player/save'] = L.table(
             version=9, gold=200000, levels=L.table(MaChao=10),
+            items=L.table(**{'86': 5, '87': 5, '88': 5, '89': 5}),
             equipment=L.table(MaChao=L.table(
                 L.table(part=1, level=5, intensify=0, quality=4, refine=0,
                         equipType=1, main=L.table(type=20, value=100.0)))))
@@ -1075,6 +1111,7 @@ def main():
         def wsave(exclusive):
             return L.table(
                 version=9, gold=100000, concentrate=100000,
+                items=L.table(**{'129': 10, '89': 10}),
                 levels=L.table(XiaoQiao=40),
                 roster=L.table('XiaoQiao', 'MaChao', 'LvBu', 'GanNing'),
                 equipment=L.table(XiaoQiao=L.table(
@@ -1130,6 +1167,105 @@ def main():
         e16 = rpcs['bx.equipment'](L.table(user_id='u-khong-ky-nang'), None)
         check(len(dict(e16['weaponSkills'])) == 0,
               'tuong ngoai 13 tuong thi khong co ky nang vu khi')
+
+        print('\n=== 10k. vat pham va kho ===')
+        bg = 'u-tui-do'
+        env['store'][bg + '/player/save'] = L.table(
+            version=10, gold=1000, concentrate=0,
+            levels=L.table(MaChao=40),
+            items=L.table(**{'86': 3, '24': 2, '9999': 5}))
+        bc = L.table(user_id=bg)
+        e17 = rpcs['bx.items'](bc, None)
+        got = [e17['items'][i] for i in range(1, len(e17['items']) + 1)]
+        ids = sorted(int(x['id']) for x in got)
+        check(ids == [24, 86], 'bo id khong co trong bang', ids)
+        check(int(e17['used']) == 5, 'so o kho dem TONG SO LUONG (3+2)',
+              e17['used'])
+        row86 = [x for x in got if int(x['id']) == 86][0]
+        check(int(row86['price']) == 10000, 'gia ban lay tu bang goc',
+              row86['price'])
+        check(int(row86['concentrate']) == 2, 'phan giai ra 2 tinh hoa',
+              row86['concentrate'])
+
+        # Ban: cong dung vang, tru dung so luong.
+        r17 = rpcs['bx.sell_item'](bc, L.table(item=86, count=2))
+        check(int(r17['gold']) == 20000, 'ban 2 vien duoc 20 000 vang',
+              r17['gold'])
+        check(int(r17['save']['gold']) == 1000 + 20000, 'vang cong dung')
+        check(int(r17['left']) == 1, 'con lai 1 vien', r17['left'])
+
+        # Phan giai: ra tinh hoa, khong ra vang.
+        gold_before = int(r17['save']['gold'])
+        r18 = rpcs['bx.dismantle_item'](bc, L.table(item=86, count=1))
+        check(int(r18['concentrate']) == 2, 'phan giai 1 vien ra 2 tinh hoa',
+              r18['concentrate'])
+        check(int(r18['save']['gold']) == gold_before, 'KHONG dong den vang')
+        check(int(r18['left']) == 0, 'het sach thi bo khoi tui', r18['left'])
+
+        for args, why in (
+                (dict(item=86, count=1), 'ban thu khong con'),
+                (dict(item=9999, count=1), 'vat pham khong co trong bang'),
+                (dict(item=24, count=0), 'so luong 0')):
+            ok = True
+            try:
+                rpcs['bx.sell_item'](bc, L.table(**args))
+                ok = False
+            except lupa.LuaError:
+                pass
+            check(ok, 'tu choi ban: %s' % why)
+
+        # Vat pham khong co gia tri tinh hoa thi khong phan giai duoc.
+        ok = True
+        try:
+            rpcs['bx.dismantle_item'](bc, L.table(item=14, count=1))
+            ok = False
+        except lupa.LuaError:
+            pass
+        check(ok, 'vat pham khong phan giai duoc thi tu choi')
+
+        print('\n=== 10l. nguyen lieu bi TRU THAT khi ghep/nang/ren ===')
+        mt = 'u-nguyen-lieu'
+        env['store'][mt + '/player/save'] = L.table(
+            version=10, gold=1000000, concentrate=0,
+            levels=L.table(MaChao=40),
+            items=L.table(**{'24': 1, '51': 2}),
+            equipment=L.table(MaChao=L.table(
+                L.table(part=1, level=1, intensify=0, quality=2, refine=0,
+                        equipType=1, main=L.table(type=20, value=22.5)))))
+        mc = L.table(user_id=mt)
+        r19 = rpcs['bx.synthesize'](mc, L.table(hero='MaChao', part=1))
+        check(int(r19['level']) == 2, 'ghep duoc khi du nguyen lieu')
+        left = dict(r19['save']['items'])
+        check('24' not in left and '51' not in left,
+              'nguyen lieu bi tru HET, khong con lai gi', left)
+
+        # Lan hai: het nguyen lieu thi phai tu choi, va noi RO thieu gi.
+        err = ''
+        try:
+            rpcs['bx.synthesize'](mc, L.table(hero='MaChao', part=1))
+        except lupa.LuaError as e:
+            err = str(e)
+        check('nguyen lieu' in err, 'thieu nguyen lieu thi tu choi', err[:80])
+        check('0/' in err, 'va noi ro dang co bao nhieu tren can bao nhieu',
+              err[:80])
+
+        # Danh tran thi co nguyen lieu roi ra.
+        fresh = L.table(user_id='u-roi-nguyen-lieu')
+        rpcs['bx.set_roster'](fresh, L.table(roster=L.table(
+            'LvBuGod', 'MaChao', 'LvBu', 'GanNing')))
+        found_mat = None
+        for _ in range(80):
+            rr = rpcs['bx.fight'](fresh, L.table(chapter=1))
+            if rr['materials'] is not None:
+                found_mat = rr['materials']
+                break
+        check(found_mat is not None, 'thang chuong thi roi nguyen lieu')
+        if found_mat is not None:
+            check(int(found_mat['count']) >= 1, 'roi it nhat mot cai',
+                  found_mat['count'])
+            bag_now = rpcs['bx.items'](fresh, None)
+            check(int(bag_now['used']) > 0, 'va no vao tui that',
+                  bag_now['used'])
 
 
     print('\n=== 10d. ban luu ban thi bo mon do, khong sua cho lanh ===')

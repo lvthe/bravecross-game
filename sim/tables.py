@@ -273,6 +273,45 @@ class EquipSynthesis(object):
         return len(self.by_key)
 
 
+class Items(object):
+    """Bang vat pham: KDBGameItemConfig.xgg — 619 dong.
+
+    Cot dung toi:
+        ItemID, ItemName        ten con la tieng Trung; giao dien dung ICON
+        ItemType                1 tieu hao, 2 nguyen lieu, 3 dan duoc,
+                                4 goi qua, 5 ruong, 6 nguyen lieu than binh,
+                                8 goi chon, 9 anh dai dien  (Protocol.lua)
+        MaxCount                gioi han moi loai trong tui (AddItem cat o day)
+        Price                   gia BAN ra vang (GetItemSalePrice)
+        Concentrate             phan giai ra bao nhieu tinh hoa (CUIRefineItem)
+        Quality                 pham chat, dung de to mau icon
+    """
+
+    FIELDS = ('ItemID', 'ItemName', 'ItemType', 'MaxCount', 'Price',
+              'Concentrate', 'Quality', 'Value')
+
+    def __init__(self, config_dir=DEFAULT_CONFIG):
+        rows = load_json(config_dir, 'KDBGameItemConfig.xgg')
+        self.by_id = {}
+        for r in rows:
+            i = int(r['ItemID'])
+            self.by_id[i] = collections.OrderedDict([
+                ('name', str(r.get('ItemName', ''))),
+                ('type', int(r.get('ItemType', 0))),
+                ('maxCount', int(r.get('MaxCount', 0))),
+                ('price', int(r.get('Price', 0))),
+                ('concentrate', int(r.get('Concentrate', 0))),
+                ('quality', int(r.get('Quality', 1))),
+                ('value', int(r.get('Value', 0))),
+            ])
+
+    def get(self, item_id):
+        return self.by_id.get(int(item_id))
+
+    def __len__(self):
+        return len(self.by_id)
+
+
 class WeaponSkills(object):
     """Ky nang VU KHI chuyen thuoc, theo tung tuong.
 

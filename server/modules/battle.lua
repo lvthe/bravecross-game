@@ -20,6 +20,9 @@
 --   bx.forge_exclusive {hero, part}    ren thanh do chuyen thuoc (can tay bac 5)
 --   bx.recast       {hero, part}       tay luyen: boc lai thuoc tinh phu
 --   bx.promote_quality {hero, part}    nang pham chat mot bac, ton vang
+--   bx.items        {}                 tui do dang co
+--   bx.sell_item    {item, count}      ban vat pham lay vang
+--   bx.dismantle_item {item, count}    phan giai vat pham thanh tinh hoa
 --
 -- Mo hinh chien dau la ban Lua cua sim/battle.py. Doi chieu bang RPC thu ba:
 --   bx.selftest     {}                 danh lai cac cap tham chieu roi so
@@ -31,7 +34,7 @@ local equip = require("equipment")
 local COLLECTION = "player"
 local KEY = "save"
 local TEAM_SIZE = 4
-local SAVE_VERSION = 9
+local SAVE_VERSION = 10
 --- Vang thuong khi qua MOT CHUONG MOI.
 local GOLD_PER_CHAPTER = 60
 --- Thang mot chuong DA QUA thi duoc it hon. Van phai co: neu chi thuong chuong
@@ -840,6 +843,43 @@ local function equip_buffs(s)
 	return out
 end
 
+--- Mo ta nhung nguyen lieu con thieu, de bao loi noi ro thieu gi bao nhieu
+--- chu khong chi noi "thieu nguyen lieu".
+local function missing_text(materials, bag)
+	local parts = {}
+	for _, m in ipairs(equip.missing_materials(bag, materials)) do
+		local row = equip.item_row(data.items, m[1])
+		parts[#parts + 1] = string.format("%s %d/%d",
+				row and row.name or ("#" .. m[1]), m[2], m[3])
+	end
+	return table.concat(parts, ", ")
+end
+
+--- Nguyen lieu roi ra khi thang chuong.
+---
+--- Ban goc cho nguyen lieu tu roi quai, thuong chuong va cua hang — chua he
+--- nao trong so do ton tai ben nay. Tam thoi: thang mot chuong thi roi mot
+--- loai nguyen lieu hop VOI BAC cua chuong do, so luong 1-2. Bang duoi day
+--- lay tu chinh bang ghep do: bac 1 can vat pham 24/51, bac 2 can 25/52...
+local MATERIAL_TIERS = {
+	{ 24, 51 }, { 25, 52 }, { 26, 53 }, { 27, 54 }, { 28, 55 },
+}
+--- Da quy nang pham: xanh/tim/cam/do, cang ve sau chuong cang xin.
+local GEM_TIERS = { 86, 86, 87, 87, 88 }
+
+--- Tra ve (id, so luong) hoac nil.
+local function roll_material(rng, chapter)
+	local tier = math.max(1, math.min(#MATERIAL_TIERS,
+			math.floor((chapter or 1) / 2) + 1))
+	local pool = MATERIAL_TIERS[tier]
+	local id = pool[rng:int(#pool)]
+	-- Mot phan sau la da nang pham thay vi nguyen lieu ghep.
+	if rng:int(6) == 1 then
+		id = GEM_TIERS[tier]
+	end
+	return id, rng:int(2)
+end
+
 --- Phan giai mot mon do thanh tinh hoa. Tra ve so tinh hoa duoc them.
 --- Quy ra tu LUC CHIEN cua mon do, nen mon cang xin thi phan giai cang duoc
 --- nhieu — khoi phai bia them mot bang gia thu hai.
@@ -905,6 +945,8 @@ local function blank_save()
 		placement = { 1, 1, 2, 3 },
 		-- Tinh hoa: tai nguyen rieng de tinh luyen, khong phai vang.
 		concentrate = 0,
+		-- Tui do: id vat pham -> so luong. Cat o MaxCount cua tung loai.
+		items = {},
 		-- So lan da tay luyen. Chi dung de lam seed khac nhau giua cac lan.
 		recasts = 0,
 		-- Trang bi: ten tuong -> mang toi da 6 mon, moi mon mot o khac nhau.
@@ -967,6 +1009,17 @@ local function read_save(user_id)
 	end
 	s.formation = fname
 	s.formationLevel = s.formations[fname] or 0
+	-- Tui do: chi nhan id co trong bang, so luong duong va trong tran.
+	if type(v.items) == "table" then
+		for id, n in pairs(v.items) do
+			local iid = math.floor(tonumber(id) or 0)
+			local cnt = math.floor(tonumber(n) or 0)
+			local row = equip.item_row(data.items, iid)
+			if row ~= nil and cnt > 0 then
+				s.items[tostring(iid)] = math.min(cnt, math.floor(row.maxCount))
+			end
+		end
+	end
 	-- Trang bi: chi nhan tuong co that, moi o nhieu nhat mot mon.
 	if type(v.equipment) == "table" then
 		for name, items in pairs(v.equipment) do
@@ -1174,6 +1227,7 @@ local function rpc_fight(context, payload)
 	local unlocked = false
 	local reward = 0
 	local drop = nil
+	local materials = nil
 	if out == 0 then
 		s.wins = s.wins + 1
 		s.lastResult = "thang"
@@ -1190,6 +1244,14 @@ local function rpc_fight(context, payload)
 		-- Boc do SAU khi da xu xong tran: mon vua roi khong duoc anh huong
 		-- chinh tran vua danh.
 		drop = try_drop(s, rng, chapter)
+		-- Va mot it nguyen lieu — thu ma ghep do / nang pham / ren doi.
+		local mid, mn = roll_material(rng, chapter)
+		local added = equip.bag_add(s.items, data.items, mid, mn)
+		if added > 0 then
+			local irow = equip.item_row(data.items, mid)
+			materials = { id = mid, count = added,
+					name = irow and irow.name or nil }
+		end
 	elseif out == 1 then
 		s.losses = s.losses + 1
 		s.lastResult = "thua"
@@ -1208,6 +1270,7 @@ local function rpc_fight(context, payload)
 		unlockedNext = unlocked,
 		goldGained = reward,
 		drop = drop,
+		materials = materials,
 		opponent = theirs,
 		seconds = secs,
 		survivors = { mine = alive_a, theirs = alive_b },
@@ -1776,9 +1839,13 @@ local function rpc_synthesize(context, payload)
 	if s.gold < row.gold then
 		error("thieu vang: can " .. row.gold .. ", dang co " .. s.gold)
 	end
+	if not equip.has_materials(s.items, row.materials) then
+		error("thieu nguyen lieu: " .. missing_text(row.materials, s.items))
+	end
 
 	local before = equip.capacity(it)
 	s.gold = s.gold - row.gold
+	equip.use_materials(s.items, row.materials)
 	it.level = lv + 1
 	-- Chi so chinh tinh lai theo cap moi. Cuong hoa va tinh luyen giu nguyen
 	-- vi ca hai deu nhan VAO chi so chinh, khong phai cong roi.
@@ -1842,8 +1909,15 @@ local function rpc_forge_exclusive(context, payload)
 	if not can then
 		error("khong ren duoc: " .. why)
 	end
+	local forge = equip.exclusive_forge_row(data.exclusiveEquip,
+			math.floor(row.HeroID or 0), part)
+	local mats = forge and forge.materials or {}
+	if not equip.has_materials(s.items, mats) then
+		error("thieu nguyen lieu: " .. missing_text(mats, s.items))
+	end
 
 	local before = equip.capacity(it)
+	equip.use_materials(s.items, mats)
 	it.exclusive = true
 	it.purify = 0
 	it.purifyPercent = equip.exclusive_percent(data.exclusiveEquip, part, 0)
@@ -1982,9 +2056,13 @@ local function rpc_promote_quality(context, payload)
 	if s.gold < row.gold then
 		error("thieu vang: can " .. row.gold .. ", dang co " .. s.gold)
 	end
+	if not equip.has_materials(s.items, row.materials) then
+		error("thieu nguyen lieu: " .. missing_text(row.materials, s.items))
+	end
 
 	local before = equip.capacity(it)
 	s.gold = s.gold - row.gold
+	equip.use_materials(s.items, row.materials)
 	it.quality = q + 1
 
 	-- Ca hai duong deu phu thuoc pham chat, nen tinh lai ca hai.
@@ -2014,6 +2092,111 @@ local function rpc_promote_quality(context, payload)
 	})
 end
 
+--- Tui do: cai gi, bao nhieu, ban duoc bao nhieu vang, phan giai duoc bao
+--- nhieu tinh hoa. So o kho dem TONG SO LUONG, dung y
+--- CWareHouseLogic:GetWareHouseCurrentCount cua ban goc.
+local function rpc_items(context, payload)
+	if context.user_id == nil then
+		error("phai dang nhap")
+	end
+	local s = read_save(context.user_id)
+	local out = {}
+	for id, n in pairs(s.items or {}) do
+		local row = equip.item_row(data.items, id)
+		if row ~= nil then
+			out[#out + 1] = {
+				id = math.floor(tonumber(id)),
+				count = n,
+				name = row.name,
+				type = row.type,
+				quality = row.quality,
+				maxCount = row.maxCount,
+				price = row.price,
+				concentrate = row.concentrate,
+			}
+		end
+	end
+	table.sort(out, function(a, b) return a.id < b.id end)
+	return nk.json_encode({
+		ok = true,
+		items = out,
+		used = equip.bag_size(s.items),
+		gold = s.gold,
+		concentrate = s.concentrate or 0,
+		save = s,
+	})
+end
+
+--- Ban vat pham lay vang. Gia la cot Price cua bang goc.
+local function rpc_sell_item(context, payload)
+	if context.user_id == nil then
+		error("phai dang nhap")
+	end
+	local ok, body = pcall(nk.json_decode, payload or "{}")
+	if not ok or type(body) ~= "table" then
+		error("payload khong doc duoc")
+	end
+	local id = math.floor(tonumber(body.item) or 0)
+	local n = math.floor(tonumber(body.count) or 1)
+	local row = equip.item_row(data.items, id)
+	if row == nil then
+		error("khong co vat pham " .. id)
+	end
+	if n < 1 then
+		error("so luong phai tu 1 tro len")
+	end
+	local s = read_save(context.user_id)
+	local have = equip.bag_count(s.items, id)
+	if have < n then
+		error("khong du: co " .. have .. ", ban " .. n)
+	end
+	local price = equip.item_sale_price(data.items, id) * n
+	equip.use_materials(s.items, { { id, n } })
+	s.gold = s.gold + price
+	write_save(context.user_id, s)
+	return nk.json_encode({
+		ok = true, item = id, count = n, gold = price,
+		left = equip.bag_count(s.items, id), save = s,
+	})
+end
+
+--- Phan giai vat pham thanh TINH HOA. Day la nguon tinh hoa THAT cua ban
+--- goc (RPC ClientRefineItem; moi vat pham mot gia tri Concentrate).
+local function rpc_dismantle_item(context, payload)
+	if context.user_id == nil then
+		error("phai dang nhap")
+	end
+	local ok, body = pcall(nk.json_decode, payload or "{}")
+	if not ok or type(body) ~= "table" then
+		error("payload khong doc duoc")
+	end
+	local id = math.floor(tonumber(body.item) or 0)
+	local n = math.floor(tonumber(body.count) or 1)
+	local row = equip.item_row(data.items, id)
+	if row == nil then
+		error("khong co vat pham " .. id)
+	end
+	local per = equip.item_concentrate(data.items, id)
+	if per <= 0 then
+		error("vat pham nay khong phan giai duoc")
+	end
+	if n < 1 then
+		error("so luong phai tu 1 tro len")
+	end
+	local s = read_save(context.user_id)
+	local have = equip.bag_count(s.items, id)
+	if have < n then
+		error("khong du: co " .. have .. ", phan giai " .. n)
+	end
+	equip.use_materials(s.items, { { id, n } })
+	s.concentrate = (s.concentrate or 0) + per * n
+	write_save(context.user_id, s)
+	return nk.json_encode({
+		ok = true, item = id, count = n, concentrate = per * n,
+		total = s.concentrate, left = equip.bag_count(s.items, id), save = s,
+	})
+end
+
 nk.register_rpc(rpc_level_up, "bx.level_up")
 nk.register_rpc(rpc_set_roster, "bx.set_roster")
 nk.register_rpc(rpc_chapters, "bx.chapters")
@@ -2031,3 +2214,6 @@ nk.register_rpc(rpc_synthesize, "bx.synthesize")
 nk.register_rpc(rpc_forge_exclusive, "bx.forge_exclusive")
 nk.register_rpc(rpc_recast, "bx.recast")
 nk.register_rpc(rpc_promote_quality, "bx.promote_quality")
+nk.register_rpc(rpc_items, "bx.items")
+nk.register_rpc(rpc_sell_item, "bx.sell_item")
+nk.register_rpc(rpc_dismantle_item, "bx.dismantle_item")

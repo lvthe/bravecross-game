@@ -112,6 +112,9 @@ var max_refine := 5
 var max_purify := 20
 ## Ky nang vu khi chuyen thuoc theo tung tuong, may chu gui ve.
 var weapon_skills: Dictionary = {}
+## Tui do: id vat pham -> so luong. Dung de hien "dang co / can" tren tung o
+## nguyen lieu, va lam mo nut khi thieu.
+var bag: Dictionary = {}
 ## "intensify" hoac "refine" — dung hai nut cua ban goc de doi.
 var tab := "intensify"
 
@@ -174,6 +177,8 @@ func _fake() -> Dictionary:
 	return {
 		"gold": 1240, "concentrate": 860, "maxIntensify": 200, "maxRefine": 5,
 		"maxPurify": 20,
+		# Tui do: co 1 cuon (can 3) va 9 dong (can 5) — de thay ca hai mau.
+		"save": {"items": {"25": 1, "52": 9}},
 		"equipment": {
 			"MaChao": [
 				mk.call(1, Equipment.AP, 118.4, 7, 12,
@@ -501,6 +506,8 @@ func set_data(p: Dictionary, hero_list: Array = []) -> void:
 	max_refine = int(p.get("maxRefine", 5))
 	max_purify = int(p.get("maxPurify", 20))
 	weapon_skills = p.get("weaponSkills", {})
+	var sv = p.get("save")
+	bag = (sv.get("items", {}) if sv != null else {})
 	var owned: Dictionary = p.get("equipment", {})
 	# Duyet theo doi hinh truoc (do la nhung tuong nguoi choi dang dung), roi
 	# them tuong nao co do ma khong trong doi hinh.
@@ -888,6 +895,14 @@ func _refresh_refine(it: Dictionary, e: Equipment, mt: int) -> void:
 			_tips.text = ""
 
 
+## Du nguyen lieu trong tui khong. `mats` la [[id, so luong], ...].
+func _has_materials(mats: Array) -> bool:
+	for m in mats:
+		if int(bag.get(str(int(m[0])), 0)) < int(m[1]):
+			return false
+	return true
+
+
 ## Nhan con theo ten lop, tim TRONG mot khoi.
 ## Bang ghep do. Ban goc chia san ba bien the khung theo SO NGUYEN LIEU
 ## (2, 3, 4 mon) — chon dung cai theo bang, y nhu no.
@@ -950,7 +965,8 @@ func _refresh_forge(it: Dictionary) -> void:
 		_label(XggLayout.find_by_cls(gold_box, CLS_FORGE_GOLD),
 				str(int(info.get("gold", 0))))
 
-	var ready := bool(info.get("ready", false)) and gold >= int(info.get("gold", 0))
+	var enough_mats := _has_materials(mats)
+	var ready := bool(info.get("ready", false)) 			and gold >= int(info.get("gold", 0)) and enough_mats
 	if btn != null:
 		for c in btn.get_children():
 			if c is Label:
@@ -964,6 +980,8 @@ func _refresh_forge(it: Dictionary) -> void:
 	if tab == "forge":
 		if not bool(info.get("ready", false)):
 			_tips.text = "Chua ghep duoc: %s" % str(info.get("reason", ""))
+		elif not enough_mats:
+			_tips.text = "Thieu nguyen lieu"
 		elif gold < int(info.get("gold", 0)):
 			_tips.text = "Thieu vang: can %d, dang co %d" % [
 					int(info.get("gold", 0)), gold]
@@ -990,7 +1008,11 @@ func _forge_materials(box: Control, mats: Array, n: int) -> void:
 				if c is TextureRect:
 					c.visible = false
 			var lb := _ensure_label(slot)
-			lb.text = "x%d" % int(mats[i - 1][1])
+			var need := int(mats[i - 1][1])
+			var have := int(bag.get(str(int(mats[i - 1][0])), 0))
+			lb.text = "%d/%d" % [have, need]
+			# Thieu thi to do — nhin phat la biet thieu cai nao.
+			lb.modulate = Color(1, 1, 1) if have >= need else Color(1, 0.45, 0.4)
 			lb.visible = true
 			lb.position = Vector2(4, slot.size.y - 22)
 		else:
@@ -1190,12 +1212,15 @@ func _refresh_quality(it: Dictionary, e: Equipment, mt: int) -> void:
 				if c is TextureRect:
 					c.visible = false
 			var lb := _ensure_label(mat)
-			lb.text = "x%d" % int(mats[0][1])
+			var need := int(mats[0][1])
+			var have := int(bag.get(str(int(mats[0][0])), 0))
+			lb.text = "%d/%d" % [have, need]
+			lb.modulate = Color(1, 1, 1) if have >= need else Color(1, 0.45, 0.4)
 			lb.visible = true
 			lb.position = Vector2(4, mat.size.y - 22)
 
 	var need := int(d.get("needHeroLevel", 1))
-	var ready := bool(d.get("ready", false)) and gold >= int(d.get("gold", 0))
+	var ready := bool(d.get("ready", false)) and gold >= int(d.get("gold", 0)) 			and _has_materials(mats)
 	if btn != null:
 		for c in btn.get_children():
 			if c is Label:
@@ -1210,6 +1235,8 @@ func _refresh_quality(it: Dictionary, e: Equipment, mt: int) -> void:
 		if not bool(d.get("ready", false)):
 			_tips.text = "Chua nang duoc: %s (tuong cap %d/%d)" % [
 					str(d.get("reason", "")), int(d.get("heroLevel", 1)), need]
+		elif not _has_materials(mats):
+			_tips.text = "Thieu nguyen lieu"
 		elif gold < int(d.get("gold", 0)):
 			_tips.text = "Thieu vang: can %d, dang co %d" % [
 					int(d.get("gold", 0)), gold]

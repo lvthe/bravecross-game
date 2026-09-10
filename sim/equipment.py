@@ -160,6 +160,98 @@ VIP_REFINE_DISCOUNT_LEVEL = 10      # HeroLogic:GetUpgradeRefineCost
 VIP_REFINE_DISCOUNT = 0.2
 
 
+# --- Vat pham va kho (ItemLogic) --------------------------------------
+# Tui do la mot bang don gian: id vat pham -> so luong. AddItem cua ban goc
+# cong vao roi CAT o MaxCount cua tung loai (share_ItemDataManager:182).
+#
+# Ba cho tieu nguyen lieu — ghep do, nang pham, ren chuyen thuoc — deu goi
+# chung mot cap ham: IsEnoughResourceForSynthesis roi
+# UseMaterialResourceForSynthesis. Giu dung cap do o day.
+
+
+def item_row(table, item_id):
+    return (table or {}).get(str(int(item_id)))
+
+
+def item_max(table, item_id):
+    row = item_row(table, item_id)
+    return int(row['maxCount']) if row else 0
+
+
+def bag_count(bag, item_id):
+    return int((bag or {}).get(str(int(item_id)), 0))
+
+
+def bag_add(bag, table, item_id, count):
+    """Cong vat pham vao tui, CAT o MaxCount. Tra ve so thuc su cong duoc."""
+    have = bag_count(bag, item_id)
+    cap = item_max(table, item_id)
+    want = have + int(count)
+    if cap > 0 and want > cap:
+        want = cap
+    bag[str(int(item_id))] = want
+    return want - have
+
+
+def has_materials(bag, materials):
+    """Du nguyen lieu khong. `materials` la [[id, so luong], ...].
+
+    ItemLogic:IsEnoughResourceForSynthesis — thieu MOT thu la hong ca.
+    """
+    for m in materials or []:
+        if bag_count(bag, m[0]) < int(m[1]):
+            return False
+    return True
+
+
+def missing_materials(bag, materials):
+    """[(id, dang co, can)] cho nhung thu con thieu — de bao cho nguoi choi."""
+    out = []
+    for m in materials or []:
+        have = bag_count(bag, m[0])
+        if have < int(m[1]):
+            out.append((int(m[0]), have, int(m[1])))
+    return out
+
+
+def use_materials(bag, materials):
+    """Tru nguyen lieu. Tra ve True neu tru duoc HET.
+
+    Ban goc tru tung mon roi CUON LAI neu giua chung that bai
+    (UseMaterialResourceForSynthesis). O day kiem truoc roi moi tru, nen
+    khong bao gio phai cuon — nhung van giu dung tinh chat "duoc ca hoac
+    khong gi".
+    """
+    if not has_materials(bag, materials):
+        return False
+    for m in materials or []:
+        key = str(int(m[0]))
+        left = bag_count(bag, m[0]) - int(m[1])
+        if left > 0:
+            bag[key] = left
+        else:
+            bag.pop(key, None)
+    return True
+
+
+def item_sale_price(table, item_id):
+    """Gia ban ra vang. ItemLogic:GetItemSalePrice — chinh la cot Price."""
+    row = item_row(table, item_id)
+    return int(row['price']) if row else 0
+
+
+def item_concentrate(table, item_id):
+    """Phan giai mot don vi ra bao nhieu tinh hoa (CUIRefineItem)."""
+    row = item_row(table, item_id)
+    return int(row['concentrate']) if row else 0
+
+
+def bag_size(bag):
+    """So o kho dang dung. CWareHouseLogic:GetWareHouseCurrentCount dem
+    TONG SO LUONG chu khong phai so loai."""
+    return sum(int(v) for v in (bag or {}).values())
+
+
 # --- Nang pham chat (PromoteQualityEquipment) --------------------------
 # Bang: KDBGameCommonConfig / GameEquipQualityPromotionConfig, khoa la PHAM
 # DICH (2..6). Moi dong co UnlockLevel (cap tuong doi hoi), GoldCost va

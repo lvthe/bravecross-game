@@ -88,6 +88,10 @@ static func build(json_path: String) -> Control:
 		var n := _make(r, design)
 		if n != null:
 			root.add_child(n)
+	var idx := {}
+	_index(root, idx)
+	root.set_meta("index", idx)
+	root.set_meta("source", json_path)
 	return root
 
 
@@ -106,6 +110,15 @@ static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 			var lb := Label.new()
 			lb.text = String(nd.get("res", ""))
 			node = lb
+		"scale9":
+			var np := NinePatchRect.new()
+			np.draw_center = true
+			node = np
+		"sprite":
+			var tr := TextureRect.new()
+			tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			tr.stretch_mode = TextureRect.STRETCH_SCALE
+			node = tr
 		_:
 			node = Control.new()
 
@@ -123,6 +136,10 @@ static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 	node.set_meta("cls", nd.get("cls", ""))
 	node.set_meta("res", nd.get("res", ""))
 	node.set_meta("kind", kind)
+	# Giu nguyen toa do Cocos de set_frame() tinh lai duoc vi tri khi anh moi
+	# co kich thuoc khac — ban goc doi anh thi giu DIEM NEO, khong giu goc o.
+	node.set_meta("cocos", Vector4(x, y, ax, ay))
+	node.set_meta("parent_h", parent_size.y)
 
 	if debug_boxes and w > 0.0 and h > 0.0:
 		var box := ColorRect.new()
@@ -142,7 +159,15 @@ static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 ## Tim node theo ten instance, di sau xuong ca cay.
 ## Tim theo ten GOC truoc (meta "xgg_name"), roi moi den ten da lam sach — de
 ## tra cuu bang dung cai ten nhin thay trong file .xgg.
+##
+## Dung bang chi muc gan o root neu co (build() luon gan), khong thi duyet cay.
 static func find_node(root: Node, wanted: String) -> Control:
+	if root.has_meta("index"):
+		var idx: Dictionary = root.get_meta("index")
+		if idx.has(wanted):
+			var n = idx[wanted]
+			if is_instance_valid(n):
+				return n
 	if root is Control and (String(root.get_meta("xgg_name", "")) == wanted
 			or root.name == wanted):
 		return root
@@ -151,6 +176,31 @@ static func find_node(root: Node, wanted: String) -> Control:
 		if hit != null:
 			return hit
 	return null
+
+
+## Bang ten -> node, dung y cach ban goc lam.
+##
+## Engine goc nap .xgg xong thi BOM moi node vao bang toan cuc _G theo ten
+## instance — xem CUIPublic:GetRootUI(), no chi lam `_G[self.RootUIName]`.
+## Nho vay ma Lua goi thang `g_btnAutoCombat:setVisible(...)`. O day khong bom
+## vao khong gian toan cuc (de tranh dam nhau giua cac man), ma gan bang chi
+## muc len chinh node goc.
+static func index_of(root: Node) -> Dictionary:
+	return root.get_meta("index", {})
+
+
+static func _index(node: Node, into: Dictionary) -> void:
+	if node is Control and node.has_meta("xgg_name"):
+		var nm := String(node.get_meta("xgg_name"))
+		# Trung ten thi cai SAU ghi de cai truoc, dung nhu `_G[ten] = node`
+		# ben Lua. Rat nhieu node trung ten (CCSprite, ttfContent, Board...)
+		# nen so ten it hon han so node — 207 ten tren 629 node o HUD man tran.
+		# Nhung ten ma Lua thuc su goi den (g_btnAutoCombat, spBattleStartTime)
+		# thi deu la duy nhat.
+		if nm != "":
+			into[nm] = node
+	for c in node.get_children():
+		_index(c, into)
 
 
 ## Toa do man hinh cua mot node, cong don qua ca duong tu goc xuong.

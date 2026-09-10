@@ -107,6 +107,59 @@ func _init() -> void:
 		_check(deep.get_child_count() > 0,
 				"node long sau co con (%d)" % deep.get_child_count())
 
+	# --- 4. bang ten, dung vai tro cua _G ben ban goc
+	print("\n=== 4. bang ten node (thay cho _G) ===")
+	var idx := XggLayout.index_of(hud)
+	# It hon so node la DUNG: rat nhieu node trung ten (CCSprite, ttfContent),
+	# va cai sau ghi de cai truoc y nhu `_G[ten] = node` ben Lua.
+	_check(idx.size() > 150, "co bang chi muc (%d ten / 629 node)" % idx.size())
+	_check(idx.has("g_btnAutoCombat"),
+			"tra duoc nut tu dong chien dau bang dung ten cua ban goc")
+	var by_index := XggLayout.find_node(hud, "spBattleStartTime")
+	_check(by_index != null and by_index == idx.get("spBattleStartTime"),
+			"find_node tra ve dung node trong chi muc")
+
+	# --- 5. tra anh theo ten, y het spriteFrameByName
+	print("\n=== 5. tra anh theo ten ===")
+	var st := UiFrames.stats()
+	_check(int(st.get("indexed", 0)) > 5000,
+			"chi muc anh co %d muc" % st.get("indexed", 0))
+	var tex := UiFrames.get_frame("item_55.png")
+	_check(tex != null, "nap duoc mot anh cu the (item_55.png)")
+	if tex != null:
+		_check(tex.get_size() == Vector2(79, 79),
+				"anh dung kich thuoc 79x79", str(tex.get_size()))
+	_check(UiFrames.get_frame("v6/ui_background204.png") != null,
+			"ten co thu muc dang truoc van tra duoc")
+	_check(UiFrames.get_frame("@v6/ui_background204.png") != null,
+			"ten co tien to @ van tra duoc")
+
+	# set_frame phai GIU DIEM NEO: node 96x96 neo giua o (200,300) trong cha
+	# cao 640 -> goc o (152, 640-300-48=292). Thay anh 79x79 thi tam van o
+	# (200,300), goc o thanh (160.5, 640-300-39.5=300.5).
+	var probe := TextureRect.new()
+	probe.set_meta("cocos", Vector4(200, 300, 0.5, 0.5))
+	probe.set_meta("parent_h", 640.0)
+	probe.size = Vector2(96, 96)
+	if UiFrames.set_frame(probe, "item_55.png"):
+		_check(probe.position.is_equal_approx(Vector2(160.5, 300.5)),
+				"doi anh thi giu diem neo", str(probe.position))
+	else:
+		_check(false, "set_frame chay duoc")
+	probe.free()
+
+	# Bao nhieu anh cua HUD tra duoc — con so nay noi len do phu that su.
+	var doc = JSON.parse_string(FileAccess.get_file_as_string(hud_path))
+	var want := 0
+	var got := 0
+	for s in doc.get("sprites", []):
+		if String(s.get("name", "")) == "":
+			continue
+		want += 1
+		if UiFrames.has_frame(String(s["name"])):
+			got += 1
+	_check(got >= want - 2, "HUD tra duoc %d/%d anh" % [got, want])
+
 	hud.free()
 	print("\n===== dat %d, hong %d =====" % [n_pass, n_fail])
 	quit(0 if n_fail == 0 else 1)

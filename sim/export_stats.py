@@ -23,7 +23,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from tables import (Heroes, Talents, Armies, Formations, EquipSynthesis,
                     ExclusiveEquip, EquipQuality, WeaponSkills, Items,
-                    TableError, DEFAULT_CONFIG)
+                    Achievements, TableError, DEFAULT_CONFIG)
 from battle import Rules, match
 
 DEFAULT_OUT = os.path.normpath(os.path.join(HERE, '..', 'data_ref', 'battle_data.json'))
@@ -72,6 +72,221 @@ REFERENCE_PAIRS = [
 # van giu nguyen TI LE giua cac the tran: jichu (100 vang moi cap dau) la cai
 # de vao nhat, yanyue (7500) la cai phai danh lau moi voi toi.
 FORMATION_GOLD_DIV = 1000.0
+
+# ------------------------------------------------- thanh tuu va nhiem vu ngay
+# Chi dua vao nhung loai ma game moi DO DUOC tien do. Ban goc co 50 loai; phan
+# lon can he thong game moi chua co (dau truong, hang dong, bang hoi, cap tai
+# khoan, thu tuong). Dua vao ma khong do duoc thi no nam mai o "dang lam".
+#
+# loai -> (ho, cach do). `cach do` la nhanh trong task_progress() cua
+# server/modules/battle.lua, moi nhanh ung voi mot ham kiem cua ban goc
+# (AchieveCheckLogic.lua).
+TASK_KINDS = collections.OrderedDict([
+    (6, ('achieve', 'chapter')),            # getChapterPassProgress: qua man L_N_<chuong>_<man>
+    (9, ('achieve', 'heroLevelCount')),     # getHeroLevelCountProgress: N tuong dat cap L
+    (11, ('achieve', 'maxEquipQuality')),   # getEquipQualityProgress: pham chat cao nhat tung dat
+    (14, ('achieve', 'heroLevelTo')),       # getSomeHeroLevelToProgress: 5 tuong dat cap X
+    (16, ('achieve', 'equipLevelCount')),   # getWeaponLevelCountProgress
+    (17, ('achieve', 'equipLevelCount')),   # getDefenderLevelCountProgress
+    (18, ('achieve', 'equipLevelCount')),   # getJewelryLevelCountProgress
+    (103, ('daily', 'counter')),            # thang 10 tran bat ky trong ngay
+    (113, ('daily', 'counter')),            # luyen tuong 1 lan trong ngay
+])
+# O trang bi ma moi loai dem — dung HeroEquipPart ma ham kiem cua ban goc doc.
+TASK_PARTS = {16: [1], 17: [2, 3], 18: [4, 5]}
+# Ten bien dem cua ban goc. Loai 103 ghi ten ngay trong dieu kien; loai 113
+# thi ten nam trong ham kiem (getPracticeHeroProgress).
+TASK_COUNTER = {113: 'PracticeHeroCountDaily'}
+
+# Nhiem vu ngay CUA GAME MOI — khong co trong bang goc. Ban goc co 13 loai nhiem
+# vu ngay nhung 11 loai can he thong chua co (dau truong, hang dong, bang hoi...);
+# con lai 2 loai thi ruong nang dong (5 diem) khong bao gio voi toi. Nguoi dung
+# chon them nhiem vu dua tren he thong da co.
+#
+# Dat o khoang 151.. de khong dung loai nao cua ban goc: sau nay lam dung loai
+# 106 (hang dong) thi khong vuong.
+#
+# Co can cu: loai 151 dung ten bien dem THAT cua ban goc
+# (IntensifyEquipmentCountDaily, trong Statistics.lua) va ham kiem that
+# (getIntensifyEquipmentCountProgress) — ban goc tung gan ham nay cho loai 106
+# roi bo khoi bang. Phan thuong lay dung PrizeID cua nhiem vu ngay goc.
+# Con so lan phai lam (3, 1, 1, 1) la cua ta.
+GAME_DAILY = [
+    # (loai, bien dem, so lan, PrizeID goc)
+    (151, 'IntensifyEquipmentCountDaily', 3, 10601),   # cuong hoa — PrizeID cua loai 106
+    (152, 'RefineEquipmentCountDaily', 1, 11301),      # tinh luyen
+    (153, 'DismantleItemCountDaily', 1, 11301),        # phan giai vat pham
+    (154, 'SynthesizeEquipmentCountDaily', 1, 11301),  # ghep do
+]
+# Game moi co 12 chuong (CHAPTERS trong battle.lua) va tuong toi da cap 40.
+# Buoc nao doi hon the thi khong bao gio dat duoc — bo di, khong de no treo.
+MAX_CHAPTER = 12
+MAX_HERO_LEVEL = 40
+
+# Ma loai phan thuong cua ban goc (Protocol.lua: PrizeResType, ResourceType).
+PRIZE_ITEM, PRIZE_RESOURCE, PRIZE_USER, PRIZE_MATERIAL = 2, 3, 4, 8
+CURRENCY_GOLD, CURRENCY_CONCENTRATE, CURRENCY_DIAMOND = 1, 8, 20
+ITEM_DIAMOND = 3        # vat pham "钻石" — kim cuong duoi dang vat pham
+
+
+def convert_prize(parts):
+    """Doi phan thuong ban goc sang thu game moi co.
+
+    Vang va tinh hoa giu NGUYEN so: he trang bi ben game moi dung dung thang
+    vang cua ban goc (ghep do 10 -> 10 000 000), nen phan thuong cung phai o
+    cung thang do moi mua duoc gi.
+
+    Vat pham vao tui y nguyen, ke ca loai game moi chua co cho dung (dan kinh
+    nghiem, dan pham chat) — do la phan thuong that cua ban goc, va se co
+    cong dung khi co he thong tuong ung.
+
+    Thu KHONG co cho chua (kim cuong, kinh nghiem tai khoan, the luc) thi ghi
+    vao `notGranted` chu khong doi bua sang thu khac.
+    """
+    out = collections.OrderedDict([
+        ('gold', 0), ('goldPerLevel', 0), ('concentrate', 0),
+        ('items', []), ('notGranted', []),
+    ])
+    items = collections.OrderedDict()
+    for x in parts:
+        kind = int(x.get('PrizeResType', 0))
+        count = int(x.get('PrizeResCount', 0))
+        if kind in (PRIZE_ITEM, PRIZE_MATERIAL):
+            pid = int(x.get('PropID', 0))
+            if pid == ITEM_DIAMOND:
+                out['notGranted'].append('kim cuong x%d' % count)
+            elif count > 0:
+                items[pid] = items.get(pid, 0) + count
+        elif kind == PRIZE_RESOURCE:
+            cur = int(x.get('CurrencyType', 0))
+            if cur == CURRENCY_GOLD:
+                out['gold'] += count
+            elif cur == CURRENCY_CONCENTRATE:
+                out['concentrate'] += count
+            elif cur == CURRENCY_DIAMOND:
+                out['notGranted'].append('kim cuong x%d' % count)
+            else:
+                out['notGranted'].append('tai nguyen %d x%d' % (cur, count))
+        elif kind == PRIZE_USER:
+            prop = str(x.get('UserProperty', ''))
+            val = int(x.get('PrizeProperty', 0))
+            if prop == 'AddGoldInLevel':
+                # "Vang theo cap": PrizeProperty x cap nguoi choi, tinh luc trao.
+                out['goldPerLevel'] += val
+            elif prop == 'UserEx':
+                out['notGranted'].append('kinh nghiem tai khoan x%d' % val)
+            elif prop == 'AddFatigue':
+                out['notGranted'].append('the luc x%d' % val)
+            else:
+                out['notGranted'].append('%s x%d' % (prop, val))
+        else:
+            out['notGranted'].append('loai thuong %d' % kind)
+    out['items'] = [[k, v] for k, v in items.items()]
+    return out
+
+
+def task_step(achieve_type, kind, step):
+    """Mot buoc cua chuoi, doi sang dang may chu doc. None = bo (khong dat duoc)."""
+    c = step['condition']
+    arg = c.get('ConditionArg') or []
+    out = collections.OrderedDict([('index', step['index'])])
+    if kind == 'chapter':
+        m = re.match(r'L_N_(\d+)_(\d+)$', str(arg[0] if arg else ''))
+        if m is None:
+            raise TableError('loai %d buoc %d: khoa chuong la %r'
+                             % (achieve_type, step['index'], arg))
+        chapter, stage = int(m.group(1)), int(m.group(2))
+        if chapter > MAX_CHAPTER:
+            return None
+        # Mot "chuong" ben game moi la mot tran; qua no nghia la qua het cac
+        # man cua chuong do ben ban goc — ca bon moc cua chuong cung dat.
+        out['target'] = chapter
+        out['arg'] = stage
+    elif kind == 'heroLevelCount':
+        out['target'] = int(c['HeroCount'])
+        out['arg'] = int(c['Level'])
+    elif kind == 'heroLevelTo':
+        lv = int(arg[0])
+        if lv > MAX_HERO_LEVEL:
+            return None
+        out['target'] = int(c['ConditionVal'])
+        out['arg'] = lv
+    elif kind == 'equipLevelCount':
+        out['target'] = int(c['ConditionVal'])
+        out['arg'] = int(arg[0])
+    elif kind in ('maxEquipQuality', 'counter'):
+        out['target'] = int(c['ConditionVal'])
+    else:
+        raise TableError('khong biet cach do %r' % kind)
+    return out
+
+
+def task_doc(ach):
+    """Khoi `achieve` cho ca hai file so lieu, kem tap id vat pham phan thuong can."""
+    types = collections.OrderedDict()
+    order = []
+    dropped = collections.OrderedDict()
+    item_ids = set()
+    for t, (family, kind) in TASK_KINDS.items():
+        chain = ach.chain(t)
+        steps = []
+        for step in chain:
+            s = task_step(t, kind, step)
+            if s is None:
+                continue
+            s['prize'] = convert_prize(ach.prize_parts(step['award']))
+            item_ids.update(i for i, _n in s['prize']['items'])
+            steps.append(s)
+        if not steps:
+            raise TableError('loai %d: khong con buoc nao' % t)
+        # Buoc bi bo phai nam o DUOI chuoi: may chu dung so buoc lam chi so
+        # mang, bo mot buoc o giua la moi buoc sau do lech het.
+        if [s['index'] for s in steps] != list(range(1, len(steps) + 1)):
+            raise TableError('loai %d: buoc bi bo khong nam o cuoi chuoi' % t)
+        if len(chain) > len(steps):
+            dropped[str(t)] = len(chain) - len(steps)
+        d = collections.OrderedDict([('type', t), ('family', family), ('kind', kind)])
+        if t in TASK_PARTS:
+            d['parts'] = TASK_PARTS[t]
+        if kind == 'counter':
+            arg = chain[0]['condition'].get('ConditionArg') or []
+            d['counter'] = str(arg[0]) if arg else TASK_COUNTER[t]
+        if family == 'daily':
+            d['liveness'] = ach.liveness(t)
+        d['steps'] = steps
+        types[str(t)] = d
+        order.append(t)
+
+    # Nhiem vu ngay cua game moi: cung dang voi nhiem vu ngay goc, them co
+    # `origin` de noi ro la cua ta.
+    for t, counter, target, pid in GAME_DAILY:
+        if ach.chain(t):
+            raise TableError('loai %d cua game moi trung mot loai cua ban goc' % t)
+        prize = convert_prize(ach.prize_parts([pid]))
+        item_ids.update(i for i, _n in prize['items'])
+        types[str(t)] = collections.OrderedDict([
+            ('type', t), ('family', 'daily'), ('kind', 'counter'),
+            ('origin', 'game'), ('counter', counter),
+            ('liveness', ach.liveness(t)),
+            ('steps', [collections.OrderedDict([
+                ('index', 1), ('target', target), ('prize', prize)])]),
+        ])
+        order.append(t)
+
+    chest = []
+    for band in ach.chest():
+        lst = []
+        for e in band.get('LivenessList', []):
+            p = convert_prize(ach.prize_parts([e['PrizeID']]))
+            item_ids.update(i for i, _n in p['items'])
+            lst.append(collections.OrderedDict([('need', int(e['Liveness'])),
+                                                ('prize', p)]))
+        chest.append(collections.OrderedDict([('beginLevel', int(band['BeginLevel'])),
+                                              ('list', lst)]))
+    doc = collections.OrderedDict([('order', order), ('types', types),
+                                   ('chest', chest), ('dropped', dropped)])
+    return doc, item_ids
+
 
 # Ky tu PHAI thoat trong chuoi Lua nhay kep. Ngoai ba cai nay va cac ky tu
 # dieu khien, moi thu khac di thang qua duoc — ke ca dau ngoac va chu Han.
@@ -202,6 +417,7 @@ def write_lua(path, doc):
         ('equipQuality', doc['equipQuality']),
         ('weaponSkills', doc['weaponSkills']),
         ('items', doc['items']),
+        ('achieve', doc['achieve']),
     ])
     d = os.path.dirname(path)
     if d:
@@ -301,6 +517,11 @@ def main():
     # nguyen lieu ghep do / nang pham / ren chuyen thuoc, da tay luyen — cong
     # them loai co the roi ra. Xuat ca 619 dong thi phan lon la thu game moi
     # chua co cho dung.
+    # Thanh tuu va nhiem vu ngay. Lam TRUOC bang vat pham: phan thuong co vat
+    # pham, ma vat pham nao khong xuat ra thi may chu khong nhan vao tui duoc.
+    ach = Achievements(a.config)
+    task_out, task_items = task_doc(ach)
+
     items = Items(a.config)
     used = set()
     for row in syn.by_key.values():
@@ -314,6 +535,11 @@ def main():
             for m in exc.forge[hid][part].get('ItemList', []):
                 used.add(int(m['ItemID']))
     used.add(97)          # da tay luyen
+    missing = sorted(i for i in task_items if items.get(i) is None)
+    if missing:
+        sys.exit('phan thuong thanh tuu tro toi vat pham khong co trong bang: %s'
+                 % missing)
+    used |= task_items
     item_out = collections.OrderedDict()
     for i in sorted(used):
         row = items.get(i)
@@ -369,7 +595,7 @@ def main():
             ('maxSeconds', rules.max_seconds),
             ('useSkills', rules.use_skills),
             # Cap toi da o pham chat 1, lay tu GameHeroMaxLevelConfig.
-            ('maxLevel', 40),
+            ('maxLevel', MAX_HERO_LEVEL),
         ])),
         ('heroes', rows),
         ('armies', army_rows),
@@ -384,6 +610,7 @@ def main():
         ('equipQuality', qual_out),
         ('weaponSkills', wsk_out),
         ('items', item_out),
+        ('achieve', task_out),
     ])
 
     out_dir = os.path.dirname(a.out)
@@ -402,6 +629,13 @@ def main():
     print('  %d quan chung%s' % (len(army_rows),
           '' if a.all else ' co art'))
     print('  %d the tran (%s...)' % (len(form_order), ', '.join(form_order[:3])))
+    fam = collections.Counter(d['family'] for d in task_out['types'].values())
+    print('  %d chuoi thanh tuu (%d buoc), %d nhiem vu ngay; bo buoc khong dat duoc: %s'
+          % (fam['achieve'],
+             sum(len(d['steps']) for d in task_out['types'].values()
+                 if d['family'] == 'achieve'),
+             fam['daily'],
+             ', '.join('loai %s: %d' % kv for kv in task_out['dropped'].items()) or '0'))
     print('  %d cap doi chieu, %d tran moi cap' % (len(ref), a.battles))
     for e in ref:
         print('     %-20s vs %-20s  %5.1f%% thang, %4.1f%% hoa'

@@ -197,6 +197,49 @@ func _init() -> void:
 	_check(f_after.ok, "van danh duoc tran sau khi doi cho dung",
 			str(f_after.get("error", "")))
 	
+	print("\n=== 3e. thanh tuu va nhiem vu ngay ===")
+	# Luat o may chu (AchieveLogic cua ban goc). O day kiem tren Nakama THAT:
+	# du RPC, may chu tu choi nhan khi chua dat, va nhiem vu ngay dem dung.
+	var tk := await ses.tasks()
+	_check(tk.ok, "goi duoc bx.tasks", str(tk.get("error", "")))
+	var ach_list: Array = tk.data.get("achievements", []) if tk.ok else []
+	var daily_list: Array = tk.data.get("daily", []) if tk.ok else []
+	_check(ach_list.size() == 7, "co 7 chuoi thanh tuu", str(ach_list.size()))
+	_check(daily_list.size() == 6, "co 6 nhiem vu ngay (2 goc, 4 cua game moi)",
+			str(daily_list.size()))
+	var early := await ses.client.call_rpc("bx.claim_task", {"type": 9})
+	_check(not early.ok, "chua dat thi may chu tu choi nhan",
+			str(early.get("error", "")))
+	var bogus := await ses.client.call_rpc("bx.claim_task", {"type": 999})
+	_check(not bogus.ok, "tu choi loai nhiem vu khong co")
+
+	# Nhiem vu ngay 113: nang cap mot tuong la "luyen tuong".
+	var roster: Array = ses.data.get("roster", [])
+	var hero: String = str(roster[0]) if roster.size() > 0 else "MaChao"
+	var state113 := 0
+	for tv in daily_list:
+		if int(tv.get("type", 0)) == 113:
+			state113 = int(tv.get("state", 0))
+	var up := await ses.level_up(hero)
+	if not up.ok and String(up.get("error", "")).contains("thieu vang"):
+		print("  (bo qua luyen tuong: tai khoan thu chua du vang)")
+	elif state113 == 3:
+		print("  (bo qua luyen tuong: hom nay tai khoan nay da nhan roi)")
+	else:
+		_check(up.ok, "nang cap tuong duoc", str(up.get("error", "")))
+		var tk2 := await ses.tasks()
+		var now113 := 0
+		for tv in (tk2.data.get("daily", []) if tk2.ok else []):
+			if int(tv.get("type", 0)) == 113:
+				now113 = int(tv.get("state", 0))
+		_check(now113 == 2, "nang cap tuong thi nhiem vu luyen tuong dat", str(now113))
+		var cl := await ses.claim_task(113)
+		_check(cl.ok, "nhan duoc nhiem vu ngay", str(cl.get("error", "")))
+		_check(cl.ok and int(cl.data.get("liveness", 0)) == 1,
+				"nhan nhiem vu ngay thi cong 1 diem nang dong")
+		var again := await ses.client.call_rpc("bx.claim_task", {"type": 113})
+		_check(not again.ok, "nhan lan hai trong ngay bi tu choi")
+
 	print("\n=== 4. CLIENT KHONG DUOC GHI BAN LUU ===")
 	# Day moi la phan cuong che. Khong co no thi moi thu tren chi la hinh thuc.
 	# Doc lai ngay truoc khi thu: cac muc tren vua danh them tran, nen con so

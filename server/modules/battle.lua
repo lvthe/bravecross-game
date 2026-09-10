@@ -23,6 +23,9 @@
 --   bx.items        {}                 tui do dang co
 --   bx.sell_item    {item, count}      ban vat pham lay vang
 --   bx.dismantle_item {item, count}    phan giai vat pham thanh tinh hoa
+--   bx.tasks        {}                 thanh tuu + nhiem vu ngay + ruong nang dong
+--   bx.claim_task   {type}             nhan thuong mot buoc (may chu kiem lai)
+--   bx.claim_liveness {}               mo ruong nang dong trong ngay
 --
 -- Mo hinh chien dau la ban Lua cua sim/battle.py. Doi chieu bang RPC thu ba:
 --   bx.selftest     {}                 danh lai cac cap tham chieu roi so
@@ -34,7 +37,7 @@ local equip = require("equipment")
 local COLLECTION = "player"
 local KEY = "save"
 local TEAM_SIZE = 4
-local SAVE_VERSION = 10
+local SAVE_VERSION = 11
 --- Vang thuong khi qua MOT CHUONG MOI.
 local GOLD_PER_CHAPTER = 60
 --- Thang mot chuong DA QUA thi duoc it hon. Van phai co: neu chi thuong chuong
@@ -928,6 +931,244 @@ local function try_drop(s, rng, chapter)
 	return drop
 end
 
+-- ------------------------------------------- thanh tuu va nhiem vu ngay
+-- Luat cua AchieveLogic.lua + AchieveCheckLogic.lua ban goc.
+--
+-- Moi LOAI la mot chuoi buoc 1..n. Nguoi choi giu mot ban ghi cho moi loai:
+-- { i = buoc dang lam, s = trang thai }. Trang thai dung so cua ban goc
+-- (Protocol.lua, AchieveState):
+--
+--   1 Doing    dang lam
+--   2 Done     da dat, cho nhan
+--   3 Cleared  da nhan het chuoi (nhiem vu ngay: da nhan hom nay)
+--
+-- Ban goc tach hai RPC: ReachAchieve (kiem dieu kien -> Done) roi AwardAchieve
+-- (trao thuong -> buoc sau hoac Cleared). O day gop lam mot (bx.claim_task) va
+-- may chu KIEM LAI dieu kien ngay tai cho — client bao "da dat" cung khong tin.
+--
+-- Nhiem vu ngay (loai 100..999) nhan xong con cong DIEM NANG DONG
+-- (DailyTaskLiveness); du diem thi mo duoc ruong (LivenessPrizeConfig). Ca hai
+-- xoa sach moi ngay.
+local ACHIEVE_DOING = 1
+local ACHIEVE_DONE = 2
+local ACHIEVE_CLEARED = 3
+--- Cat ngay theo gio Viet Nam (UTC+7). Ban goc la ban VN, con Nakama chay
+--- theo UTC — cat theo UTC thi nhiem vu ngay xoa luc 7 gio sang.
+local DAY_OFFSET = 7 * 3600
+local DAY_SECONDS = 86400
+
+--- Gio hien tai, giay. nk.time() cua Nakama tra mili giay; bo test cai dong ho
+--- gia vao day de thu qua ngay ma khong phai doi.
+local function now()
+	if nk.time ~= nil then
+		return math.floor(nk.time() / 1000)
+	end
+	return os.time()
+end
+
+local function day_key(t)
+	return math.floor(((t or now()) + DAY_OFFSET) / DAY_SECONDS)
+end
+
+local function task_def(t)
+	local a = data.achieve
+	if a == nil or a.types == nil then
+		return nil
+	end
+	return a.types[tostring(t)]
+end
+
+--- "Cap nguoi choi". Ban goc co cap tai khoan (UserLogic), dung cho phan
+--- thuong "vang theo cap" va de chon bac ruong nang dong. Game moi chua co cap
+--- tai khoan, nen lay cap cua tuong cao nhat — thu gan nhat voi tien do.
+local function player_level(s)
+	local best = 1
+	for _, name in ipairs(data.order) do
+		best = math.max(best, level_of(s, name))
+	end
+	return best
+end
+
+local function heroes_at_level(s, lv)
+	local n = 0
+	for _, name in ipairs(data.order) do
+		if level_of(s, name) >= lv then
+			n = n + 1
+		end
+	end
+	return n
+end
+
+--- So mon dang deo o cac o `parts` co cap >= lv (getWeaponLevelCountProgress
+--- va hai ham anh em cua ban goc).
+local function equip_at_level(s, parts, lv)
+	local want = {}
+	for _, p in ipairs(parts or {}) do
+		want[math.floor(p)] = true
+	end
+	local n = 0
+	for _, items in pairs(s.equipment or {}) do
+		for _, it in ipairs(items) do
+			if want[it.part] and (it.level or 1) >= lv then
+				n = n + 1
+			end
+		end
+	end
+	return n
+end
+
+--- Pham chat trang bi cao nhat TUNG DAT. Ban goc giu no thanh mot thong ke
+--- (MaxEquipQuality) chu khong dem lai tu do dang co: thay hay phan giai mon do
+--- thi thanh tuu da dat khong duoc mat.
+local function max_equip_quality(s)
+	local q = 0
+	for _, items in pairs(s.equipment or {}) do
+		for _, it in ipairs(items) do
+			q = math.max(q, it.quality or 1)
+		end
+	end
+	s.stats.maxEquipQuality = math.max(s.stats.maxEquipQuality or 0, q)
+	return s.stats.maxEquipQuality
+end
+
+--- Tien do cua mot buoc: (dang co, can). Cach do nam trong bang so, do
+--- sim/export_stats.py dat theo ham kiem tuong ung cua ban goc.
+local function task_progress(s, def, step)
+	local k = def.kind
+	if k == "chapter" then
+		return (s.cleared >= step.target) and 1 or 0, 1
+	elseif k == "heroLevelCount" or k == "heroLevelTo" then
+		return heroes_at_level(s, step.arg), step.target
+	elseif k == "equipLevelCount" then
+		return equip_at_level(s, def.parts, step.arg), step.target
+	elseif k == "maxEquipQuality" then
+		return (max_equip_quality(s) >= step.target) and 1 or 0, 1
+	elseif k == "counter" then
+		return tonumber(s.daily.counts[def.counter]) or 0, step.target
+	end
+	return 0, 1
+end
+
+local function blank_daily(day)
+	return { day = day or 0, counts = {}, tasks = {}, liveness = 0, chest = 0 }
+end
+
+--- Sang ngay moi thi xoa sach nhiem vu ngay, bien dem, diem nang dong, ruong.
+local function daily_roll(s)
+	local today = day_key()
+	if s.daily == nil or s.daily.day ~= today then
+		s.daily = blank_daily(today)
+	end
+end
+
+--- Cong mot bien dem trong ngay (ten bien dem cua ban goc, vd
+--- AnyChapterPassCountDaily).
+local function daily_add(s, counter, n)
+	daily_roll(s)
+	s.daily.counts[counter] = (tonumber(s.daily.counts[counter]) or 0) + (n or 1)
+end
+
+--- Ban ghi cua mot loai; chua co thi tao (buoc 1, dang lam) — addTask cua ban goc.
+local function task_record(s, t, def)
+	local box = (def.family == "daily") and s.daily.tasks or s.achieve
+	local key = tostring(t)
+	local r = box[key]
+	if r == nil then
+		r = { i = 1, s = ACHIEVE_DOING }
+		box[key] = r
+	end
+	return r
+end
+
+--- Trao mot phan thuong. Tra ve cai THUC SU vao tay nguoi choi.
+local function grant_prize(s, prize)
+	local got = { gold = 0, concentrate = 0, items = {}, lost = {}, notGranted = {} }
+	if prize == nil then
+		return got
+	end
+	local g = math.floor((tonumber(prize.gold) or 0)
+			+ (tonumber(prize.goldPerLevel) or 0) * player_level(s))
+	s.gold = s.gold + g
+	got.gold = g
+	local c = math.floor(tonumber(prize.concentrate) or 0)
+	s.concentrate = (s.concentrate or 0) + c
+	got.concentrate = c
+	for _, pair in ipairs(prize.items or {}) do
+		local id, n = math.floor(pair[1]), math.floor(pair[2])
+		local added = equip.bag_add(s.items, data.items, id, n)
+		got.items[#got.items + 1] = { id = id, count = added }
+		-- Tui cat o MaxCount cua tung loai (AddItem cua ban goc). Phan tran ra
+		-- thi mat — bao ra cho nguoi choi biet chu khong nuot im.
+		if added < n then
+			got.lost[#got.lost + 1] = { id = id, count = n - added }
+		end
+	end
+	for _, txt in ipairs(prize.notGranted or {}) do
+		got.notGranted[#got.notGranted + 1] = txt
+	end
+	return got
+end
+
+--- Loc phan nhiem vu cua ban luu doc tu kho.
+---
+--- Khong xoa ban ghi hong ve buoc 1: lam the thi nguoi choi nhan lai duoc
+--- nhung buoc da nhan roi. Buoc vuot chuoi thi keo ve buoc cuoi, "da nhan het".
+--- Va lam dung nhu AchieveLogic:Init() cua ban goc: chuoi "da nhan het" ma bang
+--- so nay co them buoc moi thi mo tiep buoc do.
+local function sanitize_tasks(v, s)
+	if type(v.achieve) == "table" then
+		for key, r in pairs(v.achieve) do
+			local def = task_def(key)
+			if def ~= nil and def.family ~= "daily" and type(r) == "table" then
+				local i = math.floor(tonumber(r.i) or 0)
+				local st = math.floor(tonumber(r.s) or ACHIEVE_DOING)
+				if i >= 1 then
+					if i > #def.steps then
+						i, st = #def.steps, ACHIEVE_CLEARED
+					end
+					if st ~= ACHIEVE_CLEARED then
+						-- Done khong luu lau dai: doc lai thanh Doing, may chu
+						-- se kiem lai luc nhan.
+						st = ACHIEVE_DOING
+					elseif def.steps[i + 1] ~= nil then
+						i, st = i + 1, ACHIEVE_DOING
+					end
+					s.achieve[tostring(key)] = { i = i, s = st }
+				end
+			end
+		end
+	end
+	if type(v.daily) == "table" then
+		local d = blank_daily(math.floor(tonumber(v.daily.day) or 0))
+		d.liveness = math.max(0, math.floor(tonumber(v.daily.liveness) or 0))
+		d.chest = math.max(0, math.floor(tonumber(v.daily.chest) or 0))
+		if type(v.daily.counts) == "table" then
+			for k, n in pairs(v.daily.counts) do
+				local x = math.floor(tonumber(n) or 0)
+				if type(k) == "string" and x > 0 then
+					d.counts[k] = x
+				end
+			end
+		end
+		if type(v.daily.tasks) == "table" then
+			for key, r in pairs(v.daily.tasks) do
+				local def = task_def(key)
+				if def ~= nil and def.family == "daily" and type(r) == "table" then
+					local st = math.floor(tonumber(r.s) or 0)
+					if st == ACHIEVE_CLEARED then
+						d.tasks[tostring(key)] = { i = 1, s = ACHIEVE_CLEARED }
+					end
+				end
+			end
+		end
+		s.daily = d
+	end
+	if type(v.stats) == "table" then
+		s.stats.maxEquipQuality = math.max(0, math.min(EQUIP_MAX_QUALITY,
+				math.floor(tonumber(v.stats.maxEquipQuality) or 0)))
+	end
+end
+
 local function blank_save()
 	return {
 		version = SAVE_VERSION,
@@ -953,6 +1194,12 @@ local function blank_save()
 		-- Luu thang thanh mang chu khong phai bang khoa so, vi qua JSON thi
 		-- khoa so bien thanh chuoi — mang thi con nguyen la mang.
 		equipment = {},
+		-- Thanh tuu: "<loai>" -> { i = buoc dang lam, s = trang thai }.
+		achieve = {},
+		-- Nhiem vu ngay: xoa sach khi sang ngay moi (xem daily_roll).
+		daily = blank_daily(0),
+		-- Thong ke giu MUC CAO NHAT TUNG DAT, khong tinh lai tu do dang co.
+		stats = { maxEquipQuality = 0 },
 		lastResult = "",
 		updatedAt = 0,
 	}
@@ -1048,6 +1295,7 @@ local function read_save(user_id)
 		end
 		s.placement = out
 	end
+	sanitize_tasks(v, s)
 	return s
 end
 
@@ -1231,6 +1479,9 @@ local function rpc_fight(context, payload)
 	if out == 0 then
 		s.wins = s.wins + 1
 		s.lastResult = "thang"
+		-- Nhiem vu ngay 103 dem so tran QUA (thang) trong ngay — dung ten bien
+		-- dem cua ban goc.
+		daily_add(s, "AnyChapterPassCountDaily", 1)
 		if chapter == s.cleared + 1 then
 			s.cleared = chapter
 			unlocked = true
@@ -1354,6 +1605,10 @@ local function rpc_level_up(context, payload)
 	end
 	s.gold = s.gold - price
 	s.levels[name] = lv + 1
+	-- Nhiem vu ngay 113 "luyen tuong": ban goc dem PracticeHeroCountDaily khi
+	-- luyen tuong (HeroPracticeLogic). Game moi chua co khu luyen tuong; nang
+	-- cap tuong la viec gan nhat, nen dem o day.
+	daily_add(s, "PracticeHeroCountDaily", 1)
 	write_save(context.user_id, s)
 	return nk.json_encode({ ok = true, hero = name, level = lv + 1,
 			cost = price, save = s })
@@ -1710,6 +1965,8 @@ local function rpc_intensify(context, payload)
 	local before = equip.capacity(it)
 	s.gold = s.gold - cost
 	it.intensify = it.intensify + 1
+	-- Nhiem vu ngay 151. Ten bien dem la cua ban goc (Statistics.lua).
+	daily_add(s, "IntensifyEquipmentCountDaily", 1)
 	write_save(context.user_id, s)
 	local after = equip.capacity(it)
 	return nk.json_encode({
@@ -1778,6 +2035,8 @@ local function rpc_refine(context, payload)
 	else
 		it.refine = cur + 1
 	end
+	-- Nhiem vu ngay 152 (cua game moi, xem GAME_DAILY trong export_stats.py).
+	daily_add(s, "RefineEquipmentCountDaily", 1)
 	write_save(context.user_id, s)
 	local after = equip.capacity(it)
 	return nk.json_encode({
@@ -1852,6 +2111,8 @@ local function rpc_synthesize(context, payload)
 	it.main.value = equip.main_property_val(it.main.type,
 			equip.level_coefficient(data.equipSynthesis, it.equipType or 0, it.level),
 			it.quality or 1, equip.equip_job(it.equipType or 0))
+	-- Nhiem vu ngay 154 (cua game moi).
+	daily_add(s, "SynthesizeEquipmentCountDaily", 1)
 	write_save(context.user_id, s)
 	local after = equip.capacity(it)
 	return nk.json_encode({
@@ -2190,11 +2451,170 @@ local function rpc_dismantle_item(context, payload)
 	end
 	equip.use_materials(s.items, { { id, n } })
 	s.concentrate = (s.concentrate or 0) + per * n
+	-- Nhiem vu ngay 153 (cua game moi): dem so LAN phan giai, khong phai so mon.
+	daily_add(s, "DismantleItemCountDaily", 1)
 	write_save(context.user_id, s)
 	return nk.json_encode({
 		ok = true, item = id, count = n, concentrate = per * n,
 		total = s.concentrate, left = equip.bag_count(s.items, id), save = s,
 	})
+end
+
+-- ----------------------------------------- RPC thanh tuu va nhiem vu ngay
+--- Mot loai nhiem vu nhin tu phia nguoi choi: buoc dang lam, tien do, thuong.
+local function task_view(s, t, def)
+	local r = task_record(s, t, def)
+	local step = def.steps[r.i]
+	local cur, total = 0, 1
+	if step ~= nil and r.s ~= ACHIEVE_CLEARED then
+		cur, total = task_progress(s, def, step)
+	end
+	-- Ban ghi chi luu Doing / Cleared; "Done" tinh ngay luc xem. May chu kiem
+	-- lai lan nua khi nhan.
+	local state = r.s
+	if state == ACHIEVE_DOING and step ~= nil and cur >= total then
+		state = ACHIEVE_DONE
+	end
+	return {
+		type = t, family = def.family, kind = def.kind,
+		index = r.i, steps = #def.steps, state = state,
+		current = math.min(cur, total), total = total,
+		target = step and step.target or nil,
+		arg = step and step.arg or nil,
+		parts = def.parts, counter = def.counter, liveness = def.liveness,
+		prize = (r.s ~= ACHIEVE_CLEARED and step) and step.prize or nil,
+	}
+end
+
+--- Bac ruong theo cap nguoi choi: LivenessPrizeConfig chia bac theo
+--- BeginLevel, lay bac cao nhat da toi — dung vong lap cua GetLivenessPrize.
+local function chest_band(s)
+	local band = nil
+	local lv = player_level(s)
+	for _, b in ipairs(data.achieve.chest or {}) do
+		if band == nil or lv >= b.beginLevel then
+			band = b
+		else
+			break
+		end
+	end
+	return band
+end
+
+local function chest_view(s)
+	local band = chest_band(s)
+	local claimed = s.daily.chest or 0
+	local entry = band and band.list[claimed + 1] or nil
+	return {
+		liveness = s.daily.liveness or 0,
+		claimed = claimed,
+		need = entry and entry.need or nil,
+		prize = entry and entry.prize or nil,
+		ready = entry ~= nil and (s.daily.liveness or 0) >= entry.need,
+		done = entry == nil,
+	}
+end
+
+local function rpc_tasks(context, payload)
+	if context.user_id == nil then
+		error("phai dang nhap")
+	end
+	if data.achieve == nil then
+		error("bang so chua co thanh tuu — chay lai sim/export_stats.py")
+	end
+	local s = read_save(context.user_id)
+	daily_roll(s)
+	local ach, daily = {}, {}
+	for _, t in ipairs(data.achieve.order) do
+		local def = task_def(t)
+		local v = task_view(s, t, def)
+		if def.family == "daily" then
+			daily[#daily + 1] = v
+		else
+			ach[#ach + 1] = v
+		end
+	end
+	-- Ghi lai: sang ngay moi thi daily_roll vua xoa nhiem vu ngay, va thong ke
+	-- pham chat cao nhat co the vua tang.
+	write_save(context.user_id, s)
+	local t = now()
+	return nk.json_encode({
+		ok = true,
+		achievements = ach,
+		daily = daily,
+		chest = chest_view(s),
+		playerLevel = player_level(s),
+		resetIn = (day_key(t) + 1) * DAY_SECONDS - DAY_OFFSET - t,
+		save = s,
+	})
+end
+
+local function rpc_claim_task(context, payload)
+	if context.user_id == nil then
+		error("phai dang nhap")
+	end
+	local ok, body = pcall(nk.json_decode, payload or "{}")
+	if not ok or type(body) ~= "table" then
+		error("payload khong doc duoc")
+	end
+	local t = math.floor(tonumber(body.type) or -1)
+	local def = task_def(t)
+	if def == nil then
+		error("khong co nhiem vu loai " .. t)
+	end
+	local s = read_save(context.user_id)
+	daily_roll(s)
+	local r = task_record(s, t, def)
+	if r.s == ACHIEVE_CLEARED then
+		if def.family == "daily" then
+			error("nhiem vu ngay nay da nhan roi, mai lai co")
+		end
+		error("da nhan het chuoi thanh tuu nay")
+	end
+	local step = def.steps[r.i]
+	local cur, total = task_progress(s, def, step)
+	if cur < total then
+		error("chua dat: " .. math.floor(cur) .. "/" .. total)
+	end
+	r.s = ACHIEVE_DONE                          -- ReachAchieve
+	local got = grant_prize(s, step.prize)      -- AwardAchieve
+	local live = 0
+	if def.family == "daily" then
+		live = math.floor(tonumber(def.liveness) or 0)
+		s.daily.liveness = (s.daily.liveness or 0) + live
+	end
+	if def.steps[r.i + 1] ~= nil then
+		r.i = r.i + 1
+		r.s = ACHIEVE_DOING
+	else
+		r.s = ACHIEVE_CLEARED
+	end
+	write_save(context.user_id, s)
+	return nk.json_encode({
+		ok = true, type = t, granted = got, liveness = live,
+		task = task_view(s, t, def), chest = chest_view(s), save = s,
+	})
+end
+
+local function rpc_claim_liveness(context, payload)
+	if context.user_id == nil then
+		error("phai dang nhap")
+	end
+	local s = read_save(context.user_id)
+	daily_roll(s)
+	local band = chest_band(s)
+	local claimed = s.daily.chest or 0
+	local entry = band and band.list[claimed + 1] or nil
+	if entry == nil then
+		error("hom nay da nhan het ruong nang dong")
+	end
+	if (s.daily.liveness or 0) < entry.need then
+		error("chua du nang dong: " .. (s.daily.liveness or 0) .. "/" .. entry.need)
+	end
+	local got = grant_prize(s, entry.prize)
+	s.daily.chest = claimed + 1
+	write_save(context.user_id, s)
+	return nk.json_encode({ ok = true, granted = got, chest = chest_view(s), save = s })
 end
 
 nk.register_rpc(rpc_level_up, "bx.level_up")
@@ -2217,3 +2637,6 @@ nk.register_rpc(rpc_promote_quality, "bx.promote_quality")
 nk.register_rpc(rpc_items, "bx.items")
 nk.register_rpc(rpc_sell_item, "bx.sell_item")
 nk.register_rpc(rpc_dismantle_item, "bx.dismantle_item")
+nk.register_rpc(rpc_tasks, "bx.tasks")
+nk.register_rpc(rpc_claim_task, "bx.claim_task")
+nk.register_rpc(rpc_claim_liveness, "bx.claim_liveness")

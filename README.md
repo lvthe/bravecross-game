@@ -9,24 +9,43 @@ Phần đã xong ở đây là **bộ nạp nhân vật**: đọc thẳng dữ l
 
 ## Lần đầu trên một máy mới
 
-Ba bước, làm đúng một lần. Bỏ bước nào cũng ra lỗi khó đoán.
+Bốn bước, làm đúng một lần. Bỏ bước nào cũng ra lỗi khó đoán.
 
 ```bash
-# 1. Art tham chiếu — gitignore vì có bản quyền, phải tự sinh từ repo brave-cross
+# 1. Art nhân vật — gitignore vì có bản quyền, phải tự sinh từ repo brave-cross
 python ../brave-cross/work/export.py --all --out assets_ref
 
-# 2. Bảng số liệu cho máy chủ — cũng gitignore, cùng lý do
-python sim/export_stats.py
+# 2. Ảnh giao diện và bố cục màn hình — cũng gitignore, cùng lý do
+python ../brave-cross/work/uiart.py --out ui_ref
+python ../brave-cross/work/layout.py --all --out layout_ref
 
-# 3. Nạp project một lần để Godot sinh .godot/
+# 3. Bảng số liệu cho máy chủ — cũng gitignore, cùng lý do
+python sim/export_stats.py --all
+
+# 4. Nạp project một lần để Godot sinh .godot/
 godot --headless --path . --import
 ```
 
-Bước 3 là bước dễ quên nhất. Tên lớp toàn cục (`class_name`) nằm trong
+**Bước 3 phải có `--all`.** Không có cờ này, `export_stats.py` chỉ giữ tướng và
+quân chủng có art trong `assets_ref/` — nên bảng số đổi theo máy: thiếu art là
+thiếu tướng (`XiaoQiao` biến mất), và thành phần quân của từng chương đổi theo,
+đội hình đang thắng thành thua sạch. Có `--all` thì bảng số giống nhau trên mọi
+máy (92 tướng, 80 quân chủng) — đó là bảng mà bộ test viết theo. Đã gặp cả hai:
+không có cờ thì `test_server_lua.py` hỏng 3 và bỏ qua gần nửa số kiểm; có cờ thì
+270 kiểm, không hỏng.
+
+Các script bên `brave-cross/work` trước đây tìm dữ liệu gốc **theo thư mục đang
+đứng**, nên gọi từ `bravecross-game/` là không thấy gì — và `export.py` còn báo
+"cho tên nhân vật", nghe như gõ sai lệnh. Nay chúng tìm theo chỗ đặt script, gọi
+từ đâu cũng được.
+
+Bước 4 là bước dễ quên nhất. Tên lớp toàn cục (`class_name`) nằm trong
 `.godot/global_script_class_cache.cfg`, mà `.godot/` thì gitignore. Chưa import
 thì `SngRig`, `UiTheme`, `PlayerSession` đều báo **"not declared in the current
 scope"** và không script nào biên dịch nổi — nhìn y như code hỏng nặng, trong
-khi thật ra chỉ thiếu cache.
+khi thật ra chỉ thiếu cache. Và phải nạp lại **sau mỗi lần pull** có lớp mới
+(`Equipment`, `XggLayout`...). `tools/check.py` giờ tự làm bước này trước khi
+chạy các bộ Godot.
 
 Nếu `godot` gọi không được sau khi `winget install`: winget **không tạo được
 alias khi cài không có quyền admin** — nó vẫn báo cài thành công. File exe nằm ở
@@ -774,6 +793,49 @@ Nay mô phỏng chạy trên `BattleUnit.sx` / `sy` kiểu float 64 bit, còn `p
 Thứ tự phép tính cũng phải khớp, không chỉ công thức. `d / dist * (BODY - dist) * 0.5` và
 `d * ((BODY - dist) * 0.5 / dist)` bằng nhau trên giấy nhưng làm tròn khác nhau, và sai khác đó cũng dồn lên.
 Cả ba bản nay đều tính hệ số trước rồi mới nhân vào toạ độ.
+
+## Thành tựu và nhiệm vụ ngày (`bx.tasks`)
+
+Luật lấy từ `AchieveLogic.lua` / `AchieveCheckLogic.lua` của bản gốc — đọc và
+ghi lại ở `brave-cross/work/GAMEPLAY.md`, mục "Thành tựu và nhiệm vụ ngày".
+
+Mỗi loại là một chuỗi bước. Người chơi giữ `{bước đang làm, trạng thái}` cho mỗi
+loại, trạng thái đúng số của bản gốc: 1 đang làm, 2 đã đạt, 3 đã nhận hết. Nhận
+xong thì sang bước sau. Nhiệm vụ ngày nhận xong còn cộng điểm năng động; đủ điểm
+mở rương. Cả hai xoá sạch mỗi ngày, cắt theo giờ Việt Nam (UTC+7).
+
+| RPC | |
+|---|---|
+| `bx.tasks` | thành tựu + nhiệm vụ ngày + rương, kèm tiến độ |
+| `bx.claim_task {type}` | nhận thưởng một bước — máy chủ **kiểm lại** điều kiện |
+| `bx.claim_liveness` | mở rương năng động trong ngày |
+
+**7 chuỗi thành tựu (93 bước)** — những loại game mới đo được tiến độ: qua
+chương, cấp tướng, phẩm chất và cấp trang bị theo ô. Loại cần đấu trường, hang
+động, bang hội, cấp tài khoản… chưa đưa vào: đưa vào mà không đo được thì nó nằm
+mãi ở "đang làm".
+
+**6 nhiệm vụ ngày**: 2 của bản gốc (thắng 10 trận, luyện tướng) và 4 của game mới
+(cường hoá ×3, tinh luyện, phân giải, ghép đồ — loại 151–154). Mười một loại gốc
+còn lại cần hệ thống chưa có, và chỉ với 2 loại thì rương 5 điểm không bao giờ mở
+được. Loại 151 dùng biến đếm thật của bản gốc (`IntensifyEquipmentCountDaily`);
+phần thưởng cả bốn là đúng `PrizeID` nhiệm vụ ngày gốc — chỉ số lần là tự đặt.
+
+Phần thưởng giữ nguyên số của bản gốc. Vàng không chia: hệ trang bị đã dùng
+thẳng thang vàng gốc. Thứ không có chỗ chứa (kim cương, kinh nghiệm tài khoản,
+thể lực) hiện là "chưa trao" — không đổi bừa sang thứ khác. "Cấp người chơi"
+(vàng theo cấp, bậc rương) dùng cấp tướng cao nhất, vì game mới chưa có cấp tài
+khoản.
+
+Màn hình `ui/tasks.tscn` (nút **Nhiem vu** ở màn chính) dựng theo đúng kích thước
+và ảnh của dòng mẫu gốc (`lAchieveTemplate`, `lDailyTaskTemplate`), nhưng
+**không** nhân bản dòng mẫu bằng `XggLayout`: cây cha–con của hai file `.xgg` này
+dựng lại sai — cả khung màn hình lọt vào bên trong dòng mẫu.
+
+```bash
+python tools/test_server_lua.py                     # mục 11: luật, không cần Docker
+godot --headless --path . tools/verify_tasks.tscn   # màn hình, dữ liệu giả
+```
 
 ## Bản quyền
 

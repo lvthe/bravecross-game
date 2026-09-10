@@ -22,6 +22,7 @@ SUITES = [
     ('bo cuc man hinh',     'script', 'tools/verify_layout.gd',  False, []),
     ('trang bi (GDScript)',  'script', 'tools/verify_equipment.gd', False, []),
     ('man trang bi',         'scene',  'tools/verify_equip.tscn', False, []),
+    ('man nhiem vu',         'scene',  'tools/verify_tasks.tscn', False, []),
     ('thien vi san',         'scene',  'battle/battle.tscn',      False,
      ['--sim=300', '--mirror']),
     ('giao van mang',        'script', 'tools/verify_net.gd',     True,  []),
@@ -161,6 +162,18 @@ def main():
 
     rows = []
     failed = 0
+    # Nap project mot lan truoc khi chay bo Godot nao. Ten lop toan cuc
+    # (class_name) nam trong .godot/global_script_class_cache.cfg — gitignore,
+    # nen pull code co lop moi ve ma chua import thi moi script tro toi lop
+    # do bao "not declared", nhin y nhu code hong nang. Da gap: bon bo hong
+    # mot luc chi vi thieu buoc nay (README, "Lan dau tren mot may moi").
+    print('  ... nap project (godot --import)', flush=True)
+    try:
+        subprocess.run([godot, '--headless', '--path', ROOT, '--import'],
+                       capture_output=True, timeout=900)
+    except subprocess.TimeoutExpired:
+        print('  (godot --import qua gio — van chay tiep)')
+
     for name, kind, path, needs, extra in SUITES:
         # Thieu Godot thi BO QUA cac bo can Godot, khong thoat han: hai bo
         # Python o duoi (96 kiem tra) chay duoc ma khong can Godot, va tren

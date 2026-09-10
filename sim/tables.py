@@ -442,6 +442,93 @@ class ExclusiveEquip(object):
         return (self.forge.get(str(int(hero_id))) or {}).get(str(int(part)))
 
 
+def _json_field(v, strict=True):
+    """Cot kieu JSON-nam-trong-chuoi cua ban goc. Chuoi rong nghia la khong co."""
+    if not isinstance(v, str):
+        return v
+    if not v.strip():
+        return None
+    try:
+        return json.loads(v)
+    except ValueError:
+        if strict:
+            raise
+        return v
+
+
+class Achievements(object):
+    """Thanh tuu va nhiem vu ngay: KDBGameAchieveConfig.xgg (357 dong).
+
+    Mot bang cho NAM ho nhiem vu, phan biet bang khoang AchieveType
+    (AchieveLogic.lua cua ban goc, ham ctor):
+
+        0          diem danh — Award la 12 phan thuong, moi thang mot cai
+        1..99      thanh tuu
+        100..999   nhiem vu ngay
+        1000..1999 nhiem vu huong dan
+        2000..2999 nhiem vu bay ngay
+
+    Moi loai la mot CHUOI buoc AchieveIndex 1..n.
+
+    Cot AchieveCondition KHONG co o cac dong diem danh. Doc ten cot tu dong
+    dau tien (la mot dong diem danh) se tuong bang nay khong co dieu kien —
+    da nham dung the mot lan.
+
+    Award la danh sach PrizeID tro sang KDBGamePrizeConfig.xgg (2341 dong).
+    Diem nang dong va ruong nam trong KDBGameCommonConfig.xgg
+    (DailyTaskLiveness, LivenessPrizeConfig).
+    """
+
+    def __init__(self, config_dir=DEFAULT_CONFIG):
+        self.by_type = collections.OrderedDict()
+        for r in load_json(config_dir, 'KDBGameAchieveConfig.xgg'):
+            t = int(r['AchieveType'])
+            self.by_type.setdefault(t, []).append(collections.OrderedDict([
+                ('index', int(r['AchieveIndex'])),
+                ('condition', _json_field(r.get('AchieveCondition')) or {}),
+                ('award', [int(x) for x in (_json_field(r.get('Award')) or [])]),
+            ]))
+        for steps in self.by_type.values():
+            steps.sort(key=lambda s: s['index'])
+
+        self.prize = {}
+        for p in load_json(config_dir, 'KDBGamePrizeConfig.xgg'):
+            self.prize[int(p['PrizeID'])] = _json_field(p.get('PrizeContent')) or []
+
+        # Bang chung co ca nhung dong khong phai JSON — doc long tay.
+        self.common = {}
+        for e in load_json(config_dir, 'KDBGameCommonConfig.xgg'):
+            self.common[e.get('ConfigName')] = _json_field(
+                e.get('ConfigContent'), strict=False)
+
+    def chain(self, achieve_type):
+        return self.by_type.get(int(achieve_type), [])
+
+    def prize_parts(self, prize_ids):
+        """Gop noi dung cua nhieu PrizeID thanh mot danh sach."""
+        out = []
+        for pid in prize_ids:
+            if int(pid) not in self.prize:
+                raise TableError('PrizeID %s khong co trong KDBGamePrizeConfig' % pid)
+            out.extend(self.prize[int(pid)])
+        return out
+
+    def liveness(self, achieve_type):
+        """Diem nang dong khi nhan mot nhiem vu ngay (DailyTaskLiveness).
+
+        Loai khong co trong bang thi ban goc mac dinh 1. Loai 107 (the luc mien
+        phi luc an trua / toi) khong cong diem nao — AwardAchieve bo qua han no.
+        """
+        if int(achieve_type) == 107:
+            return 0
+        table = self.common.get('DailyTaskLiveness') or {}
+        return int(table.get(str(int(achieve_type)), 1))
+
+    def chest(self):
+        """LivenessPrizeConfig: [{BeginLevel, LivenessList: [{Liveness, PrizeID}]}]."""
+        return self.common.get('LivenessPrizeConfig') or []
+
+
 if __name__ == '__main__':
     import sys
     sys.stdout.reconfigure(encoding='utf-8')

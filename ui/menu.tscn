@@ -55,6 +55,10 @@ text = "The tran"
 custom_minimum_size = Vector2(170, 50)
 text = "Trang bi"
 
+[node name="Tasks" type="Button" parent="Buttons"]
+custom_minimum_size = Vector2(170, 50)
+text = "Nhiem vu"
+
 [node name="Practice" type="Button" parent="Buttons"]
 custom_minimum_size = Vector2(170, 50)
 text = "Danh tap"

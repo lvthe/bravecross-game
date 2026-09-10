@@ -18,6 +18,7 @@ func _ready() -> void:
 	$Buttons/Roster.pressed.connect(_on_roster)
 	$Buttons/Formation.pressed.connect(func(): Game.goto(Game.FORMATION))
 	$Buttons/Equip.pressed.connect(func(): Game.goto(Game.EQUIP))
+	$Buttons/Tasks.pressed.connect(func(): Game.goto(Game.TASKS))
 	$Buttons/Practice.pressed.connect(_on_practice)
 	_title.text = "BraveCross"
 	_status.text = "dang dang nhap..."

@@ -56,8 +56,12 @@ function nk.storage_write(writes)
 	return {}
 end
 
+-- Dong ho gia: bo test dat clock.now de thu qua ngay ma khong phai doi.
+local clock = {}
+function nk.time() return (clock.now or os.time()) * 1000 end
+
 package.preload["nakama"] = function() return nk end
-return { rpcs = rpcs, hooks = hooks, store = store }
+return { rpcs = rpcs, hooks = hooks, store = store, clock = clock }
 '''
 
 PRELOAD_EQUIP = """
@@ -1303,6 +1307,233 @@ def main():
           kept[1]['main']['value'])
     check(int(kept[3]['intensify']) == 200,
           'cuong hoa vo ly bi keo ve tran 200', kept[3]['intensify'])
+
+    print('\n=== 11. thanh tuu va nhiem vu ngay ===')
+    # Luat lay tu AchieveLogic.lua ban goc: moi loai la mot chuoi buoc; nhan
+    # xong thi sang buoc sau, het buoc thi "da nhan het". May chu kiem lai dieu
+    # kien NGAY LUC NHAN.
+    for name in ('bx.tasks', 'bx.claim_task', 'bx.claim_liveness'):
+        check(rpcs[name] is not None, 'co %s' % name)
+
+    def arr(t):
+        return [t[i] for i in range(1, len(t) + 1)] if t is not None else []
+
+    def lua_err(fn):
+        try:
+            fn()
+        except lupa.LuaError as e:
+            return str(e)
+        return None
+
+    hd = L.eval('require("hero_data")')
+    hero_names = arr(hd['order'])
+    tu_id = 'u-thanh-tuu'
+    tu = L.table(user_id=tu_id)
+    env['hooks']['AuthenticateDevice'](tu, None, None)   # tao ban luu nhu Nakama
+
+    def save():
+        return env['store'][tu_id + '/player/save']
+
+    def tasks():
+        t = rpcs['bx.tasks'](tu, None)
+        return ({int(v['type']): v for v in arr(t['achievements'])},
+                {int(v['type']): v for v in arr(t['daily'])}, t)
+
+    def claim_all(t, limit=100):
+        n = 0
+        while n < limit and lua_err(
+                lambda: rpcs['bx.claim_task'](tu, L.table(type=t))) is None:
+            n += 1
+        return n
+
+    def bag():
+        return {int(k): int(v) for k, v in save()['items'].items()}
+
+    ach, daily, tk = tasks()
+    check(sorted(ach) == [6, 9, 11, 14, 16, 17, 18], 'du 7 chuoi thanh tuu',
+          sorted(ach))
+    check(sorted(daily) == [103, 113, 151, 152, 153, 154],
+          'du 6 nhiem vu ngay (2 cua ban goc, 4 cua game moi)', sorted(daily))
+    check(int(ach[6]['steps']) == 48,
+          'thanh tuu chuong chi giu 12 chuong game moi co (48 buoc)',
+          ach[6]['steps'])
+    check(int(ach[14]['steps']) == 8,
+          'thanh tuu cap tuong chi giu cap <= 40 (8 buoc)', ach[14]['steps'])
+    check(all(int(v['state']) == 1 for v in ach.values()),
+          'nguoi choi moi: moi chuoi deu dang lam')
+
+    # Chua dat thi may chu tu choi, du client co goi.
+    e = lua_err(lambda: rpcs['bx.claim_task'](tu, L.table(type=6)))
+    check(e is not None and 'chua dat' in e, 'chua qua chuong thi khong nhan duoc', e)
+    e = lua_err(lambda: rpcs['bx.claim_task'](tu, L.table(type=999)))
+    check(e is not None, 'tu choi loai khong co', e)
+
+    # Qua chuong 1: ca bon moc cua chuong 1 (L_N_01_03/06/09/12) deu dat.
+    save()['cleared'] = 1
+    ach, daily, tk = tasks()
+    check(int(ach[6]['state']) == 2, 'qua chuong 1 thi chuoi chuong bao "da dat"',
+          ach[6]['state'])
+    want = {int(pr[1]): int(pr[2]) for pr in arr(ach[6]['prize']['items'])}
+    b0 = bag()
+    r = rpcs['bx.claim_task'](tu, L.table(type=6))
+    b1 = bag()
+    check(bool(want) and all(b1.get(i, 0) - b0.get(i, 0) == n for i, n in want.items()),
+          'nhan thi vat pham vao tui dung so', (want, b0, b1))
+    check(int(r['task']['index']) == 2, 'nhan xong thi sang buoc 2', r['task']['index'])
+    check(claim_all(6) == 3, 'ba moc con lai cua chuong 1 nhan tiep duoc')
+    ach, daily, tk = tasks()
+    check(int(ach[6]['index']) == 5 and int(ach[6]['state']) == 1,
+          'het bon moc chuong 1 thi dung o buoc 5, cho chuong 2',
+          (ach[6]['index'], ach[6]['state']))
+
+    # N tuong dat cap 10 (buoc 1, 2, 3 tuong).
+    lv = L.table()
+    for n in hero_names[:3]:
+        lv[n] = 10
+    save()['levels'] = lv
+    check(claim_all(9) == 3, 'ba tuong cap 10: nhan du 3 buoc')
+    ach, daily, tk = tasks()
+    check(int(ach[9]['state']) == 3, 'het chuoi thi trang thai "da nhan het" (3)',
+          ach[9]['state'])
+    e = lua_err(lambda: rpcs['bx.claim_task'](tu, L.table(type=9)))
+    check(e is not None and 'het' in e, 'het chuoi thi khong nhan them duoc', e)
+
+    # Pham chat cao nhat TUNG DAT: thay het do cung khong mat.
+    eq = L.table()
+    eq[hero_names[0]] = L.table(L.table(part=1, level=1, intensify=0, quality=4,
+                                        main=L.table(type=20, value=10.0)))
+    save()['equipment'] = eq
+    check(claim_all(11) == 2, 'do pham chat 4: nhan 2 buoc (>=3, >=4)')
+    save()['equipment'] = L.table()
+    ach, daily, tk = tasks()
+    check(int(save()['stats']['maxEquipQuality']) == 4,
+          'thay het do van giu pham chat cao nhat tung dat',
+          save()['stats']['maxEquipQuality'])
+
+    # Cap do theo o: vu khi dem rieng, giap/giay dem rieng.
+    eq = L.table()
+    for n in hero_names[:5]:
+        eq[n] = L.table(L.table(part=1, level=2, intensify=0, quality=1,
+                                main=L.table(type=20, value=10.0)))
+    save()['equipment'] = eq
+    check(claim_all(16) == 2, 'nam vu khi cap 2: nhan 2 buoc chuoi vu khi')
+    ach, daily, tk = tasks()
+    check(int(ach[17]['current']) == 0,
+          'giap/giay dem o rieng, khong an theo vu khi', ach[17]['current'])
+
+    # Thu khong co cho chua (kinh nghiem tai khoan, kim cuong...) ghi vao
+    # "chua trao", khong doi bua sang vang. Nhiem vu ngay goc kem kinh nghiem tai
+    # khoan — game moi chua co cap tai khoan. (Kim cuong cua loai 14 chi nam o
+    # cac buoc doi cap 45-90, ma nhung buoc do da bo vi tuong toi da cap 40.)
+    p103 = hd['achieve']['types']['103']['steps'][1]['prize']
+    ng = ' '.join(arr(p103['notGranted']))
+    check('kinh nghiem tai khoan' in ng and int(p103['gold']) == 0
+          and int(p103['goldPerLevel']) == 200,
+          'kinh nghiem tai khoan ghi vao "chua trao", vang giu dung 200 x cap', ng)
+
+    # Nhiem vu ngay 113: nang cap tuong la "luyen tuong".
+    save()['gold'] = 100000
+    _a, daily, tk = tasks()
+    check(int(daily[113]['current']) == 0, 'dau ngay chua luyen tuong',
+          daily[113]['current'])
+    rpcs['bx.level_up'](tu, L.table(hero=hero_names[5]))
+    _a, daily, tk = tasks()
+    check(int(daily[113]['state']) == 2, 'nang cap mot tuong: nhiem vu luyen tuong dat',
+          daily[113]['state'])
+    lvl = int(tk['playerLevel'])
+    check(lvl == 10, 'cap nguoi choi = cap tuong cao nhat', lvl)
+    pz = daily[113]['prize']
+    g0 = int(save()['gold'])
+    r = rpcs['bx.claim_task'](tu, L.table(type=113))
+    wg = int(pz['gold']) + int(pz['goldPerLevel']) * lvl
+    check(int(r['granted']['gold']) == wg and int(save()['gold']) - g0 == wg,
+          'vang theo cap = PrizeProperty x cap nguoi choi',
+          (r['granted']['gold'], wg))
+    check(int(r['liveness']) == 1 and int(r['chest']['liveness']) == 1,
+          'nhan nhiem vu ngay thi cong 1 diem nang dong',
+          (r['liveness'], r['chest']['liveness']))
+    e = lua_err(lambda: rpcs['bx.claim_task'](tu, L.table(type=113)))
+    check(e is not None and 'mai' in e, 'nhan roi thi hen mai', e)
+
+    # Nhiem vu ngay 103: bien dem tran thang trong ngay.
+    c0 = int(save()['daily']['counts']['AnyChapterPassCountDaily'] or 0)
+    rf = rpcs['bx.fight'](tu, L.table(chapter=1))
+    c1 = int(save()['daily']['counts']['AnyChapterPassCountDaily'] or 0)
+    if int(rf['result']) == 0:
+        check(c1 == c0 + 1, 'thang mot tran thi dem +1', (c0, c1))
+    else:
+        check(c1 == c0, 'khong thang thi khong dem', (c0, c1))
+    save()['daily']['counts']['AnyChapterPassCountDaily'] = 10
+    _a, daily, tk = tasks()
+    check(int(daily[103]['state']) == 2, 'thang du 10 tran trong ngay thi dat',
+          daily[103]['state'])
+
+    # Nhiem vu ngay cua game moi: moi viec tang dung bien dem cua no.
+    check(str(daily[151]['counter']) == 'IntensifyEquipmentCountDaily',
+          'loai 151 dung ten bien dem that cua ban goc', daily[151]['counter'])
+    bagt = L.table()
+    bagt['24'] = 3
+    save()['items'] = bagt
+    rpcs['bx.dismantle_item'](tu, L.table(item=24, count=2))
+    _a, daily, tk = tasks()
+    check(int(daily[153]['state']) == 2, 'phan giai mot lan: nhiem vu phan giai dat',
+          (daily[153]['state'], daily[153]['current']))
+    eqi = L.table()
+    eqi[hero_names[0]] = L.table(L.table(part=1, level=1, intensify=0, quality=1,
+                                          main=L.table(type=20, value=10.0)))
+    save()['equipment'] = eqi
+    save()['gold'] = 10 ** 7
+    for _ in range(3):
+        rpcs['bx.intensify'](tu, L.table(hero=hero_names[0], part=1))
+    _a, daily, tk = tasks()
+    check(int(daily[151]['current']) == 3 and int(daily[151]['state']) == 2,
+          'cuong hoa ba lan: nhiem vu cuong hoa dat',
+          (daily[151]['current'], daily[151]['state']))
+    live0 = int(tk['chest']['liveness'])
+    rpcs['bx.claim_task'](tu, L.table(type=151))
+    rpcs['bx.claim_task'](tu, L.table(type=153))
+    _a, daily, tk = tasks()
+    check(int(tk['chest']['liveness']) == live0 + 2,
+          'hai nhiem vu moi cong 2 diem nang dong', (live0, tk['chest']['liveness']))
+
+    # Qua ngay moi: nhiem vu ngay lam lai, thanh tuu thi khong.
+    import time as _time
+    env['clock']['now'] = int(_time.time()) + 86400
+    ach, daily, tk = tasks()
+    check(int(daily[113]['state']) == 1 and int(daily[113]['current']) == 0,
+          'sang ngay moi thi nhiem vu ngay lam lai tu dau',
+          (daily[113]['state'], daily[113]['current']))
+    check(int(tk['chest']['liveness']) == 0, 'sang ngay moi diem nang dong ve 0',
+          tk['chest']['liveness'])
+    check(int(ach[9]['state']) == 3, 'thanh tuu khong bi xoa khi qua ngay',
+          ach[9]['state'])
+
+    # Ruong nang dong: can 5 diem o bac cap duoi 34 (LivenessPrizeConfig).
+    need = int(tk['chest']['need'])
+    check(need == 5, 'ruong nang dong can 5 diem', need)
+    save()['daily']['liveness'] = need - 1
+    e = lua_err(lambda: rpcs['bx.claim_liveness'](tu, None))
+    check(e is not None and 'chua du' in e, 'thieu diem thi khong mo duoc ruong', e)
+    save()['daily']['liveness'] = need
+    r = rpcs['bx.claim_liveness'](tu, None)
+    check(bool(r['ok']) and int(r['chest']['claimed']) == 1, 'du diem thi mo duoc ruong')
+    e = lua_err(lambda: rpcs['bx.claim_liveness'](tu, None))
+    check(e is not None and 'het' in e, 'moi ngay mot ruong', e)
+
+    # Ban luu hong: khong xoa ve buoc 1 (se nhan lai duoc thuong da nhan).
+    bad = L.table()
+    bad['999'] = L.table(i=1, s=1)          # loai khong co
+    bad['6'] = L.table(i=999, s=1)          # buoc vuot chuoi
+    bad['9'] = L.table(i=2, s=7)            # trang thai la
+    save()['achieve'] = bad
+    ach, daily, tk = tasks()
+    check(int(ach[6]['index']) == 48 and int(ach[6]['state']) == 3,
+          'buoc vuot chuoi keo ve buoc cuoi, "da nhan het"',
+          (ach[6]['index'], ach[6]['state']))
+    check(int(ach[9]['index']) == 2, 'trang thai la: giu buoc, lam lai tu "dang lam"',
+          ach[9]['index'])
+    check('999' not in dict(save()['achieve'].items()), 'bo loai khong ton tai')
+    env['clock']['now'] = None
 
     print('\n===== dat %d, hong %d =====' % (n_pass, n_fail))
     return 0 if n_fail == 0 else 1

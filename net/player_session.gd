@@ -21,7 +21,7 @@ extends Node
 
 ## Doi so nay khi cau truc ban luu thay doi, de con biet duong nang cap.
 ## Phai khop SAVE_VERSION ben server/modules/battle.lua.
-const SAVE_VERSION := 10
+const SAVE_VERSION := 11
 
 var client: NakamaClient = null
 var data: Dictionary = {}
@@ -61,6 +61,11 @@ static func blank() -> Dictionary:
 		"placement": [1, 1, 2, 3],
 		# Trang bi: ten tuong -> mang toi da 6 mon (moi o mot mon).
 		"equipment": {},
+		# Thanh tuu: "<loai>" -> {i: buoc dang lam, s: trang thai}. Nhiem vu
+		# ngay xoa sach khi sang ngay moi. Ca hai do may chu giu va chot.
+		"achieve": {},
+		"daily": {"day": 0, "counts": {}, "tasks": {}, "liveness": 0, "chest": 0},
+		"stats": {"maxEquipQuality": 0},
 		"lastResult": "",
 		"updatedAt": 0,
 	}
@@ -163,6 +168,13 @@ func _upgrade(raw: Variant) -> Dictionary:
 			if n > 0:
 				bag[str(k)] = n
 	out["items"] = bag
+	# Thanh tuu, nhiem vu ngay, thong ke. Van ly do nhu tren: khong liet ke o
+	# day thi truong do bien mat lang le. Bang rong qua JSON co the thanh []
+	# chu khong phai {} — gap mang thi giu mac dinh.
+	for k in ["achieve", "daily", "stats"]:
+		var v = d.get(k)
+		if typeof(v) == TYPE_DICTIONARY:
+			out[k] = v
 	return out
 
 
@@ -440,6 +452,37 @@ func equip_buffs(hero_name: String) -> Dictionary:
 			e.appends.append([int(ap.get("type", 0)), float(ap.get("value", 0.0))])
 		items.append(e)
 	return Equipment.to_buffs(items)
+
+
+## Thanh tuu + nhiem vu ngay + ruong nang dong. May chu tinh tien do; client
+## chi hien.
+func tasks() -> Dictionary:
+	if not online:
+		return {"ok": false, "error": "chua noi duoc may chu"}
+	var r := await client.call_rpc("bx.tasks", {})
+	if r.ok:
+		data = _upgrade(r.data.get("save", {}))
+	return r
+
+
+## Nhan thuong mot buoc. May chu KIEM LAI dieu kien — client bao dat cung vo ich.
+func claim_task(task_type: int) -> Dictionary:
+	if not online:
+		return {"ok": false, "error": "chua noi duoc may chu"}
+	var r := await client.call_rpc("bx.claim_task", {"type": task_type})
+	if r.ok:
+		data = _upgrade(r.data.get("save", {}))
+	return r
+
+
+## Mo ruong nang dong trong ngay.
+func claim_liveness() -> Dictionary:
+	if not online:
+		return {"ok": false, "error": "chua noi duoc may chu"}
+	var r := await client.call_rpc("bx.claim_liveness", {})
+	if r.ok:
+		data = _upgrade(r.data.get("save", {}))
+	return r
 
 
 func gold() -> int:

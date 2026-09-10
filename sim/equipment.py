@@ -62,6 +62,49 @@ RECAST_ITEM_ID = 97            # RecastStroeItemID — da tay luyen
 # Moi cap cuong hoa nhan them he so nay; qua 200 cap thi gap 2.4 lan.
 INTENSIFY_STEP = math.pow(2.4, 1.0 / 200.0)
 
+# --- Tinh luyen (RefineLevel) ------------------------------------------
+# Bang lay tu KDBGameCommonConfig, muc ConfigName = "EquipRefineConfig":
+# mot mang 5 o, moi o 5 cap, moi cap {NeedConcentrate, AddPrecent}.
+#
+# Tinh luyen CONG PHAN TRAM vao chi so chinh, khong cong thang mot luong:
+#   share_EquipmentPropertyLogic:getMainPropertyVal
+#   val = val + val * AddPrecent / 100
+MAX_REFINE_LEVEL = 5
+REFINE_ADD_PERCENT = (5, 10, 15, 20, 25)
+# Vu khi dat hon cac o khac dung mot bac — bang goc ghi the.
+REFINE_COST_WEAPON = (40, 80, 160, 320, 640)
+REFINE_COST_OTHER = (30, 60, 120, 240, 480)
+# Gia tinh bang TINH HOA (Concentrate), ResourceType 8 — mot loai tai nguyen
+# rieng cua nguoi choi, khong phai vang. Ban goc cho tinh hoa tu viec phan giai
+# vat pham (RPC ClientRefineItem, moi vat pham mot gia tri Concentrate).
+VIP_REFINE_DISCOUNT_LEVEL = 10      # HeroLogic:GetUpgradeRefineCost
+VIP_REFINE_DISCOUNT = 0.2
+
+
+def refine_percent(refine_level):
+    """Phan tram cong them vao chi so chinh o cap tinh luyen nay."""
+    if 1 <= refine_level <= MAX_REFINE_LEVEL:
+        return float(REFINE_ADD_PERCENT[refine_level - 1])
+    return 0.0
+
+
+def refine_multiplier(refine_level):
+    return 1.0 + refine_percent(refine_level) / 100.0
+
+
+def refine_cost(part, refine_level, vip_level=0):
+    """Tinh hoa can de len cap tinh luyen `refine_level` (1..5).
+
+    VIP 10 tro len duoc giam 20%, lam TRON LEN — HeroLogic:GetUpgradeRefineCost.
+    """
+    if not 1 <= refine_level <= MAX_REFINE_LEVEL:
+        return 0
+    table = REFINE_COST_WEAPON if part == 1 else REFINE_COST_OTHER
+    cost = table[refine_level - 1]
+    if vip_level >= VIP_REFINE_DISCOUNT_LEVEL:
+        return int(math.ceil(cost * (1.0 - VIP_REFINE_DISCOUNT)))
+    return cost
+
 
 def intensify_increment(level, value):
     """increment = (Val / 25) * (2.4^(1/200))^level
@@ -147,13 +190,16 @@ def weight_of(prop_type):
 class Equipment(object):
     """Mot mon trang bi."""
 
-    __slots__ = ('part', 'level', 'intensify', 'quality', 'main', 'appends')
+    __slots__ = ('part', 'level', 'intensify', 'quality', 'refine',
+                 'main', 'appends')
 
-    def __init__(self, part, main, level=1, intensify=0, quality=1, appends=None):
+    def __init__(self, part, main, level=1, intensify=0, quality=1,
+                 appends=None, refine=0):
         self.part = part
         self.level = level
         self.intensify = intensify
         self.quality = quality
+        self.refine = refine                  # 0..5, moi cap cong % chi so chinh
         self.main = main                      # (prop_type, value)
         self.appends = list(appends or [])    # [(prop_type, value), ...]
 
@@ -161,10 +207,19 @@ class Equipment(object):
     def append_unlocked(self):
         return self.level >= APPEND_UNLOCK_LEVEL
 
+    def main_value(self):
+        """Chi so chinh sau tinh luyen.
+
+        Ban goc nhan phan tram tinh luyen NGAY TRONG getMainPropertyVal, tuc
+        moi thu tinh sau do — ke ca cuong hoa — deu dua tren con so da nhan.
+        """
+        return self.main[1] * refine_multiplier(self.refine)
+
     def stats(self):
-        """{loai chi so: tong gia tri} sau khi cong cuong hoa va thuoc tinh phu."""
+        """{loai chi so: tong gia tri} sau tinh luyen, cuong hoa, thuoc tinh phu."""
         out = {}
-        ptype, pval = self.main
+        ptype = self.main[0]
+        pval = self.main_value()
         out[ptype] = out.get(ptype, 0.0) + pval
         # Chi so THAT: dung duong cong don theo cap (cong thuc goc cua tac gia).
         bonus = intensify_total(self.intensify, pval)
@@ -186,7 +241,8 @@ class Equipment(object):
         intensify_total (cong don theo cap) — nen KHONG doi theo cap cuong hoa.
         share_EquipmentLogic:CalcEquipFightingCapacity
         """
-        ptype, pval = self.main
+        ptype = self.main[0]
+        pval = self.main_value()
         total = pval + intensify_property_val(pval, ptype)
         out = total * weight_of(ptype)
         if self.append_unlocked():
@@ -197,6 +253,12 @@ class Equipment(object):
     def cost_to_next(self):
         return intensify_cost(self.intensify + 1)
 
+    def refine_cost_next(self, vip_level=0):
+        """Tinh hoa can de tinh luyen len mot cap. Het cap thi 0."""
+        if self.refine >= MAX_REFINE_LEVEL:
+            return 0
+        return refine_cost(self.part, self.refine + 1, vip_level)
+
     def cost_to_level(self, target):
         """Tong chi phi cuong hoa tu cap hien tai len `target`."""
         if target <= self.intensify:
@@ -204,9 +266,9 @@ class Equipment(object):
         return sum(intensify_cost(lv) for lv in range(self.intensify + 1, target + 1))
 
     def __repr__(self):
-        return 'Equipment(part=%d, %s=%.1f, +%d, q%d, luc chien %.0f)' % (
+        return 'Equipment(part=%d, %s=%.1f, +%d, tinh luyen %d, q%d, luc chien %.0f)' % (
             self.part, PROPERTY_NAME.get(self.main[0], '?'), self.main[1],
-            self.intensify, self.quality, self.capacity())
+            self.intensify, self.refine, self.quality, self.capacity())
 
 
 def roll_append(base_value, rand):
@@ -272,13 +334,23 @@ def reference_cases():
         for base in REF_BASES:
             for lv in REF_LEVELS:
                 for iv in REF_INTENSIFY:
-                    e = Equipment(part=1, main=(ptype, base), level=lv,
-                                  intensify=iv, quality=2,
+                    # Cap tinh luyen chay vong 0..5 theo thu tu ca, thay vi
+                    # nhan them mot chieu nua vao tich Descartes: 168 ca van
+                    # phu het 6 cap, ma khong phinh len 1008.
+                    rf = len(out) % (MAX_REFINE_LEVEL + 1)
+                    # O do doi theo ca de phu ca gia vu khi lan gia o khac.
+                    part = 1 if len(out) % 2 == 0 else 3
+                    e = Equipment(part=part, main=(ptype, base), level=lv,
+                                  intensify=iv, quality=2, refine=rf,
                                   appends=[(CRITICAL_STRIKE, 0.05),
                                            (HP_LIMIT, 120.0)])
                     out.append({
                         'prop': ptype, 'base': base, 'level': lv,
                         'intensify': iv, 'quality': 2,
+                        'part': part, 'refine': rf,
+                        'refinePercent': refine_percent(rf),
+                        'refineCost': e.refine_cost_next(),
+                        'mainValue': e.main_value(),
                         'increment': intensify_increment(iv, base),
                         'propVal': intensify_property_val(base, ptype),
                         'total': intensify_total(iv, base),

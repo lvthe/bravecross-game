@@ -15,6 +15,7 @@
 --   bx.fight        {chapter = n}      danh mot chuong, tra ve ket qua
 --   bx.equipment    {}                 trang bi dang co, luc chien, gia cuong hoa
 --   bx.intensify    {hero, part}       cuong hoa mot mon len mot cap
+--   bx.refine       {hero, part}       tinh luyen mot cap, ton tinh hoa
 --
 -- Mo hinh chien dau la ban Lua cua sim/battle.py. Doi chieu bang RPC thu ba:
 --   bx.selftest     {}                 danh lai cac cap tham chieu roi so
@@ -26,7 +27,7 @@ local equip = require("equipment")
 local COLLECTION = "player"
 local KEY = "save"
 local TEAM_SIZE = 4
-local SAVE_VERSION = 5
+local SAVE_VERSION = 6
 --- Vang thuong khi qua MOT CHUONG MOI.
 local GOLD_PER_CHAPTER = 60
 --- Thang mot chuong DA QUA thi duoc it hon. Van phai co: neu chi thuong chuong
@@ -677,6 +678,12 @@ local EQUIP_MAX_APPENDS = 3
 --- goc ghi 1 nghia la 1%), va trong so 50 cua ban goc noi dung dieu do: chi
 --- mang tinh theo phan tram chu khong theo hang nghin nhu mau.
 local EQUIP_APPEND_CRIT = 0.01
+--- Nguon ra TINH HOA (Concentrate, ResourceType 8 cua ban goc). Ban goc cho
+--- tinh hoa tu viec phan giai vat pham (RPC ClientRefineItem, moi vat pham mot
+--- gia tri Concentrate trong bang do). Game moi chua co he vat pham, nhung da
+--- co san mot thu vut di: mon do roi ra ma YEU HON mon dang deo. Phan giai no
+--- thanh tinh hoa — dung y ban goc, va vua khop cho trong vong lap hien co.
+local CONCENTRATE_PER_CAPACITY = 10.0
 
 --- Boc mot mon do. Dai ngau nhien 0,8-1,3 dung bang dai thuoc tinh phu cua
 --- ban goc — khong bia them mot con so thu hai cho cung mot viec.
@@ -721,6 +728,7 @@ local function sanitize_item(v)
 		level = clamp(v.level, 1, EQUIP_MAX_LEVEL, 1),
 		intensify = clamp(v.intensify, 0, EQUIP_MAX_INTENSIFY, 0),
 		quality = clamp(v.quality, 1, EQUIP_MAX_QUALITY, 1),
+		refine = clamp(v.refine, 0, equip.MAX_REFINE_LEVEL, 0),
 	})
 	if type(v.appends) == "table" then
 		for _, ap in ipairs(v.appends) do
@@ -758,6 +766,15 @@ local function equip_buffs(s)
 	return out
 end
 
+--- Phan giai mot mon do thanh tinh hoa. Tra ve so tinh hoa duoc them.
+--- Quy ra tu LUC CHIEN cua mon do, nen mon cang xin thi phan giai cang duoc
+--- nhieu — khoi phai bia them mot bang gia thu hai.
+local function dismantle(s, it)
+	local n = math.max(1, math.floor(equip.capacity(it) / CONCENTRATE_PER_CAPACITY))
+	s.concentrate = (s.concentrate or 0) + n
+	return n
+end
+
 --- Thang tran thi co the roi mot mon. Chua co kho do nen quy tac gon: mon nao
 --- MANH HON thi giu, mon kia bo. Bao ro ca hai ben cho nguoi choi biet.
 local function try_drop(s, rng, chapter)
@@ -787,9 +804,12 @@ local function try_drop(s, rng, chapter)
 		drop.kept = true
 		drop.replaced = true
 		drop.oldCapacity = equip.capacity(cur)
+		-- Mon cu bi thay thi phan giai luon, khong de mat trang.
+		drop.concentrate = dismantle(s, cur)
 	else
 		drop.kept = false
 		drop.oldCapacity = equip.capacity(cur)
+		drop.concentrate = dismantle(s, it)
 	end
 	return drop
 end
@@ -809,6 +829,8 @@ local function blank_save()
 		formationLevel = 0,
 		formations = { jichu = 0 },   -- ten the tran -> cap da nang
 		placement = { 1, 1, 2, 3 },
+		-- Tinh hoa: tai nguyen rieng de tinh luyen, khong phai vang.
+		concentrate = 0,
 		-- Trang bi: ten tuong -> mang toi da 6 mon, moi mon mot o khac nhau.
 		-- Luu thang thanh mang chu khong phai bang khoa so, vi qua JSON thi
 		-- khoa so bien thanh chuoi — mang thi con nguyen la mang.
@@ -831,7 +853,7 @@ local function read_save(user_id)
 	end
 	local s = blank_save()
 	for _, k in ipairs({ "wins", "losses", "draws", "battles", "cleared",
-			"gold", "updatedAt" }) do
+			"gold", "concentrate", "updatedAt" }) do
 		s[k] = tonumber(v[k]) or 0
 	end
 	s.lastResult = tostring(v.lastResult or "")
@@ -1385,8 +1407,13 @@ local function rpc_equipment(context, payload)
 				appends = it.appends,
 				capacity = cap,
 				buffs = equip.to_buffs({ it }),
+				refine = it.refine or 0,
+				refinePercent = equip.refine_percent(it.refine or 0),
+				mainValue = equip.main_value(it),
 				nextCost = it.intensify < EQUIP_MAX_INTENSIFY
 						and math.ceil(equip.cost_to_next(it)) or nil,
+				nextRefineCost = equip.refine_cost_next(it) > 0
+						and equip.refine_cost_next(it) or nil,
 			}
 		end
 		out[name] = list
@@ -1398,7 +1425,9 @@ local function rpc_equipment(context, payload)
 		capacity = total,
 		partNames = EQUIP_PART_NAME,
 		maxIntensify = EQUIP_MAX_INTENSIFY,
+		maxRefine = equip.MAX_REFINE_LEVEL,
 		gold = s.gold,
+		concentrate = s.concentrate or 0,
 		save = s,
 	})
 end
@@ -1454,6 +1483,61 @@ local function rpc_intensify(context, payload)
 	})
 end
 
+--- Tinh luyen mot mon len MOT cap. Ton TINH HOA, khong ton vang.
+--- Gia lay tu bang cua ban goc (EquipRefineConfig): vu khi 40/80/160/320/640,
+--- o khac 30/60/120/240/480; moi cap cong 5% vao chi so chinh.
+local function rpc_refine(context, payload)
+	if context.user_id == nil then
+		error("phai dang nhap")
+	end
+	local ok, body = pcall(nk.json_decode, payload or "{}")
+	if not ok or type(body) ~= "table" then
+		error("payload khong doc duoc")
+	end
+	local name = tostring(body.hero or "")
+	local part = math.floor(tonumber(body.part) or 0)
+	if data.heroes[name] == nil then
+		error("khong co tuong " .. name)
+	end
+	if part < 1 or part > EQUIP_PARTS then
+		error("khong co o thu " .. part)
+	end
+	local s = read_save(context.user_id)
+	local it = slot_of(s, name, part)
+	if it == nil then
+		error(name .. " chua co do o o " .. (EQUIP_PART_NAME[part] or part))
+	end
+	if (it.refine or 0) >= equip.MAX_REFINE_LEVEL then
+		error("da toi cap tinh luyen cao nhat (" .. equip.MAX_REFINE_LEVEL .. ")")
+	end
+	local cost = equip.refine_cost_next(it)
+	local have = s.concentrate or 0
+	if have < cost then
+		error("thieu tinh hoa: can " .. cost .. ", dang co " .. have)
+	end
+	local before = equip.capacity(it)
+	s.concentrate = have - cost
+	it.refine = (it.refine or 0) + 1
+	write_save(context.user_id, s)
+	local after = equip.capacity(it)
+	return nk.json_encode({
+		ok = true,
+		hero = name,
+		part = part,
+		partName = EQUIP_PART_NAME[part],
+		refine = it.refine,
+		refinePercent = equip.refine_percent(it.refine),
+		cost = cost,
+		concentrate = s.concentrate,
+		capacity = after,
+		capacityGain = after - before,
+		nextRefineCost = equip.refine_cost_next(it) > 0
+				and equip.refine_cost_next(it) or nil,
+		item = it,
+		save = s,
+	})
+end
+
 nk.register_rpc(rpc_level_up, "bx.level_up")
 nk.register_rpc(rpc_set_roster, "bx.set_roster")
 nk.register_rpc(rpc_chapters, "bx.chapters")
@@ -1466,3 +1550,4 @@ nk.register_rpc(rpc_upgrade_formation, "bx.upgrade_formation")
 nk.register_rpc(rpc_set_placement, "bx.set_placement")
 nk.register_rpc(rpc_equipment, "bx.equipment")
 nk.register_rpc(rpc_intensify, "bx.intensify")
+nk.register_rpc(rpc_refine, "bx.refine")

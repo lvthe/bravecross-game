@@ -68,7 +68,8 @@ func _init() -> void:
 	# In tung ca thi 168 dong x 8 truong lut man; gom lai theo TRUONG, va khi
 	# lech thi neu ro ca dau lech bao nhieu — du de lan ra cho sai.
 	var fields := ["increment", "propVal", "total", "cost", "costTo",
-			"qualityRange", "capacity", "capacityOrig"]
+			"qualityRange", "capacity", "capacityOrig",
+			"refinePercent", "refineCost", "mainValue"]
 	var bad := {}
 	var worst := {}
 	for f in fields:
@@ -82,8 +83,10 @@ func _init() -> void:
 		var base := float(c["base"])
 		var lv := int(c["level"])
 		var iv := int(c["intensify"])
-		var e := Equipment.new(1, ptype, base, lv, iv, 2,
-				[[Equipment.CRITICAL_STRIKE, 0.05], [Equipment.HP_LIMIT, 120.0]])
+		var rf := int(c["refine"])
+		var pt := int(c["part"])
+		var e := Equipment.new(pt, ptype, base, lv, iv, 2,
+				[[Equipment.CRITICAL_STRIKE, 0.05], [Equipment.HP_LIMIT, 120.0]], rf)
 		var got := {
 			"increment": Equipment.intensify_increment(iv, base),
 			"propVal": Equipment.intensify_property_val(base, ptype),
@@ -93,14 +96,18 @@ func _init() -> void:
 			"qualityRange": Equipment.quality_range(base, 10.0, 2.0),
 			"capacity": e.capacity(),
 			"capacityOrig": e.capacity_as_original(),
+			"refinePercent": Equipment.refine_percent(rf),
+			"refineCost": e.refine_cost_next(),
+			"mainValue": e.effective_main(),
 		}
 		for f in fields:
 			var want := float(c[f])
 			if not _close(float(got[f]), want):
 				bad[f] += 1
 				if worst[f] == "":
-					worst[f] = "loai %d, goc %.1f, cap %d, +%d: GD %.10f vs PY %.10f" \
-							% [ptype, base, lv, iv, got[f], want]
+					worst[f] = ("loai %d, goc %.1f, cap %d, +%d, tinh luyen %d, o %d: "
+							+ "GD %.10f vs PY %.10f") % [ptype, base, lv, iv, rf, pt,
+							got[f], want]
 		# Bang chi so: dung so khoa va dung tung gia tri.
 		var st := e.stats()
 		var want_st: Dictionary = c["stats"]

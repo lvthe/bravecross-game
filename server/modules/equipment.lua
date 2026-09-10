@@ -67,6 +67,67 @@ M.RECAST_ITEM_ID = 97          -- RecastStroeItemID — da tay luyen
 --- Moi cap cuong hoa nhan them he so nay; qua 200 cap thi gap 2.4 lan.
 M.INTENSIFY_STEP = 2.4 ^ (1.0 / 200.0)
 
+-- --------------------------------------------------- Tinh luyen (RefineLevel)
+-- Bang lay tu KDBGameCommonConfig, muc ConfigName = "EquipRefineConfig": mot
+-- mang 5 o, moi o 5 cap, moi cap { NeedConcentrate, AddPrecent }.
+--
+-- Tinh luyen CONG PHAN TRAM vao chi so chinh, khong cong thang mot luong:
+--   share_EquipmentPropertyLogic:getMainPropertyVal
+--   val = val + val * AddPrecent / 100
+M.MAX_REFINE_LEVEL = 5
+M.REFINE_ADD_PERCENT = { 5, 10, 15, 20, 25 }
+-- Vu khi dat hon cac o khac dung mot bac — bang goc ghi the.
+M.REFINE_COST_WEAPON = { 40, 80, 160, 320, 640 }
+M.REFINE_COST_OTHER = { 30, 60, 120, 240, 480 }
+-- Gia tinh bang TINH HOA (Concentrate), ResourceType 8 — tai nguyen rieng,
+-- khong phai vang. Ban goc cho tinh hoa tu viec phan giai vat pham.
+M.VIP_REFINE_DISCOUNT_LEVEL = 10      -- HeroLogic:GetUpgradeRefineCost
+M.VIP_REFINE_DISCOUNT = 0.2
+
+--- Phan tram cong them vao chi so chinh o cap tinh luyen nay.
+function M.refine_percent(refine_level)
+	local lv = math.floor(refine_level or 0)
+	if lv >= 1 and lv <= M.MAX_REFINE_LEVEL then
+		return M.REFINE_ADD_PERCENT[lv] + 0.0
+	end
+	return 0.0
+end
+
+function M.refine_multiplier(refine_level)
+	return 1.0 + M.refine_percent(refine_level) / 100.0
+end
+
+--- Tinh hoa can de len cap tinh luyen `refine_level` (1..5).
+--- VIP 10 tro len duoc giam 20%, lam TRON LEN.
+function M.refine_cost(part, refine_level, vip_level)
+	local lv = math.floor(refine_level or 0)
+	if lv < 1 or lv > M.MAX_REFINE_LEVEL then
+		return 0
+	end
+	local tbl = (part == 1) and M.REFINE_COST_WEAPON or M.REFINE_COST_OTHER
+	local cost = tbl[lv]
+	if (vip_level or 0) >= M.VIP_REFINE_DISCOUNT_LEVEL then
+		return math.ceil(cost * (1.0 - M.VIP_REFINE_DISCOUNT))
+	end
+	return cost
+end
+
+--- Chi so chinh SAU tinh luyen.
+--- Ban goc nhan phan tram tinh luyen ngay trong getMainPropertyVal, tuc moi
+--- thu tinh sau do — ke ca cuong hoa — deu dua tren con so da nhan.
+function M.main_value(e)
+	return e.main.value * M.refine_multiplier(e.refine or 0)
+end
+
+--- Tinh hoa can de tinh luyen mon nay len mot cap. Het cap thi 0.
+function M.refine_cost_next(e, vip_level)
+	local lv = math.floor(e.refine or 0)
+	if lv >= M.MAX_REFINE_LEVEL then
+		return 0
+	end
+	return M.refine_cost(e.part, lv + 1, vip_level)
+end
+
 --- increment = (Val / 25) * (2.4^(1/200))^level
 --- share_EquipmentLogic:GetIntensifiedIncrementWithLevel
 function M.intensify_increment(level, value)
@@ -139,7 +200,7 @@ end
 --- { [loai chi so] = tong gia tri } sau cuong hoa va thuoc tinh phu.
 function M.stats(e)
 	local out = {}
-	local t, v = e.main.type, e.main.value
+	local t, v = e.main.type, M.main_value(e)
 	out[t] = (out[t] or 0.0) + v
 	local bonus = M.intensify_total(e.intensify or 0, v)
 	if bonus ~= 0 then
@@ -166,7 +227,7 @@ end
 --- cong don theo cap, nen KHONG doi theo cap cuong hoa.
 --- share_EquipmentLogic:CalcEquipFightingCapacity
 function M.capacity_as_original(e)
-	local t, v = e.main.type, e.main.value
+	local t, v = e.main.type, M.main_value(e)
 	local out = (v + M.intensify_property_val(v, t)) * M.weight_of(t)
 	if M.append_unlocked(e) then
 		for _, ap in ipairs(e.appends or {}) do
@@ -248,6 +309,8 @@ function M.make(part, prop_type, value, opts)
 		level = opts.level or 1,
 		intensify = opts.intensify or 0,
 		quality = opts.quality or 1,
+		refine = opts.refine or 0,
+
 		main = { type = prop_type, value = value },
 		appends = opts.appends or {},
 	}

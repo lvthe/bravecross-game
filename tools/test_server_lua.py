@@ -438,15 +438,16 @@ def main():
 
     cases = EQ.reference_cases()
     fields = ('increment', 'propVal', 'total', 'cost', 'costTo',
-              'qualityRange', 'capacity', 'capacityOrig')
+              'qualityRange', 'capacity', 'capacityOrig',
+              'refinePercent', 'refineCost', 'mainValue')
     bad = dict((f, []) for f in fields)
     bad_stats = []
     for c in cases:
         appends = L.table(L.table(type=EQ.CRITICAL_STRIKE, value=0.05),
                           L.table(type=EQ.HP_LIMIT, value=120.0))
-        e = LE.make(1, c['prop'], c['base'], L.table(
+        e = LE.make(c['part'], c['prop'], c['base'], L.table(
             level=c['level'], intensify=c['intensify'], quality=2,
-            appends=appends))
+            refine=c['refine'], appends=appends))
         got = {
             'increment': LE.intensify_increment(c['intensify'], c['base']),
             'propVal': LE.intensify_property_val(c['base'], c['prop']),
@@ -456,12 +457,17 @@ def main():
             'qualityRange': LE.quality_range(c['base'], 10.0, 2.0),
             'capacity': LE.capacity(e),
             'capacityOrig': LE.capacity_as_original(e),
+            'refinePercent': LE.refine_percent(c['refine']),
+            'refineCost': LE.refine_cost_next(e),
+            'mainValue': LE.main_value(e),
         }
         for f in fields:
             if not lclose(float(got[f]), c[f]):
-                bad[f].append('loai %d goc %.1f cap %d +%d: Lua %.10f vs Python %.10f'
+                bad[f].append('loai %d goc %.1f cap %d +%d tinh luyen %d o %d: '
+                              'Lua %.10f vs Python %.10f'
                               % (c['prop'], c['base'], c['level'],
-                                 c['intensify'], got[f], c[f]))
+                                 c['intensify'], c['refine'], c['part'],
+                                 got[f], c[f]))
         st = dict(LE.stats(e))
         want = dict((int(k), v) for k, v in c['stats'].items())
         if set(st) != set(want) or any(not lclose(float(st[k]), want[k]) for k in want):
@@ -572,6 +578,86 @@ def main():
         except lupa.LuaError:
             pass
         check(ok, 'thieu vang / chua co do thi khong cuong hoa duoc')
+        print('\n=== 10e. tinh luyen: ton tinh hoa, khong ton vang ===')
+        # Tinh hoa CHI den tu do THUA: mon roi vao mot o DA CO do, roi thua
+        # cuoc so sanh. Luot roi dau tien thi 24 o (4 tuong x 6 o) con trong
+        # het nen khong the co tinh hoa — phai danh tiep cho den khi trung o.
+        conc = 0
+        for _ in range(200):
+            eq_now = rpcs['bx.equipment'](u, None)
+            conc = int(eq_now['concentrate'])
+            if conc > 0:
+                break
+            rpcs['bx.fight'](u, L.table(chapter=1))
+        eq_now = rpcs['bx.equipment'](u, None)
+        conc = int(eq_now['concentrate'])
+        check(conc > 0, 'danh du lau thi do thua phan giai ra tinh hoa', conc)
+        check(int(eq_now['maxRefine']) == 5, 'co 5 cap tinh luyen',
+              eq_now['maxRefine'])
+
+        owned2 = dict(eq_now['equipment'])
+        item2 = None
+        for it in owned2[hero].values():
+            if int(it['part']) == part:
+                item2 = it
+        check(int(item2['refine']) == 0, 'mon moi roi thi chua tinh luyen')
+        want_cost = 40 if part == 1 else 30
+        check(int(item2['nextRefineCost']) == want_cost,
+              'gia tinh luyen cap 1 dung bang goc (%d cho o %d)' % (want_cost, part),
+              item2['nextRefineCost'])
+
+        # Danh tiep cho du tinh hoa ma tinh luyen that — day moi la phep
+        # quan trong nhat cua muc nay, khong duoc de no bi bo qua.
+        for _ in range(600):
+            if conc >= want_cost:
+                break
+            rpcs['bx.fight'](u, L.table(chapter=1))
+            conc = int(rpcs['bx.equipment'](u, None)['concentrate'])
+        eq_now = rpcs['bx.equipment'](u, None)
+        conc = int(eq_now['concentrate'])
+        for it in dict(eq_now['equipment'])[hero].values():
+            if int(it['part']) == part:
+                item2 = it
+        gold_before = int(eq_now['gold'])
+        if conc >= want_cost:
+            cap_b = float(item2['capacity'])
+            r_rf = rpcs['bx.refine'](u, L.table(hero=hero, part=part))
+            check(int(r_rf['refine']) == 1, 'len tinh luyen cap 1', r_rf['refine'])
+            check(float(r_rf['refinePercent']) == 5.0, 'cap 1 cong 5%',
+                  r_rf['refinePercent'])
+            check(int(r_rf['concentrate']) == conc - want_cost,
+                  'tru dung so tinh hoa',
+                  '%d - %d vs %s' % (conc, want_cost, r_rf['concentrate']))
+            check(int(r_rf['save']['gold']) == gold_before,
+                  'KHONG dong den vang', r_rf['save']['gold'])
+            check(float(r_rf['capacity']) > cap_b, 'luc chien tang len that',
+                  '%.2f -> %.2f' % (cap_b, float(r_rf['capacity'])))
+            check(int(r_rf['nextRefineCost']) == want_cost * 2,
+                  'cap sau dat gap doi', r_rf['nextRefineCost'])
+        else:
+            print('  (chua du tinh hoa de thu tinh luyen — bo qua)')
+
+        for args, why in (
+                (dict(hero='KhongCoAi', part=1), 'tuong khong ton tai'),
+                (dict(hero=hero, part=0), 'o so 0')):
+            ok = True
+            try:
+                rpcs['bx.refine'](u, L.table(**args))
+                ok = False
+            except lupa.LuaError:
+                pass
+            check(ok, 'tu choi tinh luyen: %s' % why)
+
+        broke2 = L.table(user_id='u-ngheo-tinhhoa')
+        rpcs['bx.chapters'](broke2, None)
+        ok = True
+        try:
+            rpcs['bx.refine'](broke2, L.table(hero=hero, part=part))
+            ok = False
+        except lupa.LuaError:
+            pass
+        check(ok, 'khong co do / khong co tinh hoa thi khong tinh luyen duoc')
+
 
     print('\n=== 10d. ban luu ban thi bo mon do, khong sua cho lanh ===')
     # Ban luu la du lieu ben ngoai. Nhet vao vai mon vo ly roi doc lai.

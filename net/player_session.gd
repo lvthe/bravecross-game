@@ -21,7 +21,7 @@ extends Node
 
 ## Doi so nay khi cau truc ban luu thay doi, de con biet duong nang cap.
 ## Phai khop SAVE_VERSION ben server/modules/battle.lua.
-const SAVE_VERSION := 5
+const SAVE_VERSION := 6
 
 var client: NakamaClient = null
 var data: Dictionary = {}
@@ -49,6 +49,7 @@ static func blank() -> Dictionary:
 		"wins": 0, "losses": 0, "draws": 0, "battles": 0,
 		"cleared": 0,                 # chuong cao nhat da qua
 		"gold": 0,
+		"concentrate": 0,             # tinh hoa, dung de tinh luyen
 		"levels": {},                 # ten tuong -> cap
 		# The tran (KDBGameFormationConfig cua ban goc). `placement` la cho dung
 		# cua tung tuong: 1 truoc, 2 giua, 3 sau. Cho dung quyet ca vi tri tren
@@ -103,7 +104,8 @@ func _upgrade(raw: Variant) -> Dictionary:
 	var d: Dictionary = raw
 	# Thieu mot ten o day la truong do bien mat lang le: may chu van giu, nhung
 	# client doc ra khong thay. Da dinh dung the voi "cleared".
-	for k in ["wins", "losses", "draws", "battles", "cleared", "gold"]:
+	for k in ["wins", "losses", "draws", "battles", "cleared", "gold",
+			"concentrate"]:
 		out[k] = int(d.get(k, 0))
 	var levels := {}
 	if typeof(d.get("levels")) == TYPE_DICTIONARY:
@@ -299,6 +301,23 @@ func equipment() -> Dictionary:
 	if r.ok:
 		data = _upgrade(r.data.get("save", {}))
 	return r
+
+
+## Tinh luyen mot mon len mot cap. Ton TINH HOA chu khong ton vang; may chu
+## tru va chot, y nhu cuong hoa.
+func refine(hero_name: String, part: int) -> Dictionary:
+	if not online:
+		return {"ok": false, "error": "chua noi duoc may chu"}
+	var r := await client.call_rpc("bx.refine",
+			{"hero": hero_name, "part": part})
+	if r.ok:
+		data = _upgrade(r.data.get("save", {}))
+	return r
+
+
+## Tinh hoa dang co. Nguon ra: do thua bi phan giai (xem battle.lua).
+func concentrate() -> int:
+	return int(data.get("concentrate", 0))
 
 
 ## Cuong hoa mot mon len mot cap. May chu tinh gia va tru vang.

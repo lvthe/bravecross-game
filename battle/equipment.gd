@@ -62,6 +62,22 @@ const RECAST_ITEM_ID := 97          ## RecastStroeItemID — da tay luyen
 ## lang le, ma sai o day thi lech het thang cuong hoa.
 static var INTENSIFY_STEP: float = pow(2.4, 1.0 / 200.0)
 
+## Tinh luyen (RefineLevel). Bang lay tu KDBGameCommonConfig, muc
+## ConfigName = "EquipRefineConfig": 5 o, moi o 5 cap, moi cap
+## { NeedConcentrate, AddPrecent }.
+##
+## Tinh luyen CONG PHAN TRAM vao chi so chinh, khong cong thang mot luong:
+## share_EquipmentPropertyLogic:getMainPropertyVal
+##     val = val + val * AddPrecent / 100
+const MAX_REFINE_LEVEL := 5
+const REFINE_ADD_PERCENT := [5, 10, 15, 20, 25]
+## Vu khi dat hon cac o khac dung mot bac — bang goc ghi the.
+const REFINE_COST_WEAPON := [40, 80, 160, 320, 640]
+const REFINE_COST_OTHER := [30, 60, 120, 240, 480]
+## Gia tinh bang TINH HOA (Concentrate, ResourceType 8), khong phai vang.
+const VIP_REFINE_DISCOUNT_LEVEL := 10      ## HeroLogic:GetUpgradeRefineCost
+const VIP_REFINE_DISCOUNT := 0.2
+
 ## Gia tri cuong hoa phu thuoc LOAI chi so: mau so va moc rieng cho tung loai.
 ## share_EquipmentPropertyLogic:getIntensifyPropertyVal
 const _INTENSIFY_BY_TYPE := {
@@ -75,6 +91,7 @@ var part: int = 1          ## 1..6: vu khi, giap, day chuyen, nhan, giay, o phu
 var level: int = 1         ## cap mon do — tu 4 tro len moi co thuoc tinh phu
 var intensify: int = 0     ## cap cuong hoa
 var quality: int = 1       ## pham chat
+var refine: int = 0        ## cap tinh luyen 0..5, moi cap cong % chi so chinh
 var main_type: int = AP    ## loai chi so chinh
 var main_value: float = 0.0
 var appends: Array = []    ## [[loai, gia tri], ...]
@@ -82,13 +99,14 @@ var appends: Array = []    ## [[loai, gia tri], ...]
 
 func _init(p_part: int = 1, p_type: int = AP, p_value: float = 0.0,
 		p_level: int = 1, p_intensify: int = 0, p_quality: int = 1,
-		p_appends: Array = []) -> void:
+		p_appends: Array = [], p_refine: int = 0) -> void:
 	part = p_part
 	main_type = p_type
 	main_value = p_value
 	level = p_level
 	intensify = p_intensify
 	quality = p_quality
+	refine = p_refine
 	appends = p_appends.duplicate(true)
 
 
@@ -140,6 +158,29 @@ static func quality_range(base_value: float, coefficient: float,
 	if is_zero_approx(coefficient) or is_zero_approx(p_quality):
 		return 0.0
 	return (base_value / coefficient + 0.3) / p_quality
+
+
+## Phan tram cong them vao chi so chinh o cap tinh luyen nay.
+static func refine_percent(refine_level: int) -> float:
+	if refine_level >= 1 and refine_level <= MAX_REFINE_LEVEL:
+		return float(REFINE_ADD_PERCENT[refine_level - 1])
+	return 0.0
+
+
+static func refine_multiplier(refine_level: int) -> float:
+	return 1.0 + refine_percent(refine_level) / 100.0
+
+
+## Tinh hoa can de len cap tinh luyen `refine_level` (1..5).
+## VIP 10 tro len duoc giam 20%, lam TRON LEN.
+static func refine_cost(p_part: int, refine_level: int, vip_level: int = 0) -> int:
+	if refine_level < 1 or refine_level > MAX_REFINE_LEVEL:
+		return 0
+	var tbl: Array = REFINE_COST_WEAPON if p_part == 1 else REFINE_COST_OTHER
+	var cost: int = int(tbl[refine_level - 1])
+	if vip_level >= VIP_REFINE_DISCOUNT_LEVEL:
+		return ceili(float(cost) * (1.0 - VIP_REFINE_DISCOUNT))
+	return cost
 
 
 static func weight_of(prop_type: int) -> float:
@@ -195,10 +236,18 @@ func append_unlocked() -> bool:
 
 
 ## { loai chi so: tong gia tri } sau cuong hoa va thuoc tinh phu.
+## Chi so chinh SAU tinh luyen. Ban goc nhan phan tram nay ngay trong
+## getMainPropertyVal, tuc moi thu tinh sau do — ke ca cuong hoa — deu dua
+## tren con so da nhan.
+func effective_main() -> float:
+	return main_value * refine_multiplier(refine)
+
+
 func stats() -> Dictionary:
 	var out := {}
-	out[main_type] = float(out.get(main_type, 0.0)) + main_value
-	var bonus := intensify_total(intensify, main_value)
+	var mv := effective_main()
+	out[main_type] = float(out.get(main_type, 0.0)) + mv
+	var bonus := intensify_total(intensify, mv)
 	if bonus != 0.0:
 		out[main_type] = float(out.get(main_type, 0.0)) + bonus
 	if append_unlocked():
@@ -221,8 +270,8 @@ func capacity() -> float:
 ## cong don theo cap, nen KHONG doi theo cap cuong hoa.
 ## share_EquipmentLogic:CalcEquipFightingCapacity
 func capacity_as_original() -> float:
-	var out := (main_value + intensify_property_val(main_value, main_type)) \
-			* weight_of(main_type)
+	var mv := effective_main()
+	var out := (mv + intensify_property_val(mv, main_type)) * weight_of(main_type)
 	if append_unlocked():
 		for a in appends:
 			out += float(a[1]) * weight_of(int(a[0]))
@@ -231,6 +280,13 @@ func capacity_as_original() -> float:
 
 func cost_to_next() -> float:
 	return intensify_cost(intensify + 1)
+
+
+## Tinh hoa can de tinh luyen mon nay len mot cap. Het cap thi 0.
+func refine_cost_next(vip_level: int = 0) -> int:
+	if refine >= MAX_REFINE_LEVEL:
+		return 0
+	return refine_cost(part, refine + 1, vip_level)
 
 
 ## Tong chi phi cuong hoa tu cap hien tai len `target`.
@@ -244,6 +300,6 @@ func cost_to_level(target: int) -> float:
 
 
 func _to_string() -> String:
-	return "Equipment(o %d, %s %.1f, +%d, pham %d, luc chien %.0f)" % [
+	return "Equipment(o %d, %s %.1f, +%d, tinh luyen %d, pham %d, luc chien %.0f)" % [
 			part, PROPERTY_NAME.get(main_type, "?"), main_value,
-			intensify, quality, capacity()]
+			intensify, refine, quality, capacity()]

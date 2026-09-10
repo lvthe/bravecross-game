@@ -103,6 +103,60 @@ check(all(80.0 <= v <= 130.0 for v in vals),
       'gia tri phu luon nam trong 0.8-1.3 lan goc',
       (min(vals), max(vals)))
 
+print('\n=== 6b. tinh luyen ===')
+# Bang lay tu KDBGameCommonConfig / EquipRefineConfig: 5 cap, +5% moi cap,
+# gia nhan doi moi cap, vu khi dat hon o khac mot bac.
+check(E.MAX_REFINE_LEVEL == 5, 'co 5 cap tinh luyen')
+check([E.refine_percent(i) for i in range(1, 6)] == [5.0, 10.0, 15.0, 20.0, 25.0],
+      'moi cap cong them 5%', [E.refine_percent(i) for i in range(1, 6)])
+check(E.refine_percent(0) == 0.0 and E.refine_percent(6) == 0.0,
+      'ngoai khoang 1..5 thi khong cong gi')
+check([E.refine_cost(1, i) for i in range(1, 6)] == [40, 80, 160, 320, 640],
+      'gia tinh luyen vu khi', [E.refine_cost(1, i) for i in range(1, 6)])
+check([E.refine_cost(3, i) for i in range(1, 6)] == [30, 60, 120, 240, 480],
+      'gia tinh luyen o khac', [E.refine_cost(3, i) for i in range(1, 6)])
+check(E.refine_cost(1, 3) > E.refine_cost(2, 3), 'vu khi dat hon o khac')
+check(all(E.refine_cost(1, i + 1) == E.refine_cost(1, i) * 2 for i in range(1, 5)),
+      'gia nhan doi moi cap')
+# VIP 10 giam 20%, lam tron LEN.
+check(E.refine_cost(1, 1, vip_level=10) == 32, 'VIP10 giam 20%',
+      E.refine_cost(1, 1, vip_level=10))
+check(E.refine_cost(3, 1, vip_level=10) == 24, 'VIP10 tren o khac',
+      E.refine_cost(3, 1, vip_level=10))
+check(E.refine_cost(3, 1, vip_level=9) == 30, 'VIP9 chua duoc giam')
+check(E.refine_cost(1, 0) == 0 and E.refine_cost(1, 6) == 0,
+      'ngoai khoang thi khong co gia')
+
+# Tinh luyen nhan vao CHI SO CHINH, va moi thu sau do dua tren so da nhan.
+r0 = E.Equipment(1, (E.AP, 100.0), level=5, intensify=10, refine=0)
+r5 = E.Equipment(1, (E.AP, 100.0), level=5, intensify=10, refine=5)
+check(close(r0.main_value(), 100.0), 'chua tinh luyen thi giu nguyen',
+      r0.main_value())
+check(close(r5.main_value(), 125.0), 'tinh luyen 5 thi chi so chinh +25%',
+      r5.main_value())
+check(r5.capacity() > r0.capacity(), 'luc chien tang theo tinh luyen',
+      '%.1f -> %.1f' % (r0.capacity(), r5.capacity()))
+# Cuong hoa tinh TREN chi so da tinh luyen, nen hai truc nhan nhau chu khong
+# cong roi ra. Kiem bang cach so phan cuong hoa cong them.
+add0 = r0.stats()[E.AP] - r0.main_value()
+add5 = r5.stats()[E.AP] - r5.main_value()
+check(close(add5 / add0, 1.25, 1e-9),
+      'phan cuong hoa cung duoc nhan theo tinh luyen',
+      '%.4f vs %.4f' % (add5 / add0, 1.25))
+
+caps = []
+for r in range(0, 6):
+    caps.append(E.Equipment(1, (E.AP, 100.0), refine=r).capacity())
+check(all(caps[i] < caps[i + 1] for i in range(5)),
+      'luc chien tang don dieu theo cap tinh luyen', caps)
+
+w3 = E.Equipment(1, (E.AP, 100.0), refine=0)
+check(w3.refine_cost_next() == 40, 'gia cap ke khi chua tinh luyen',
+      w3.refine_cost_next())
+w3.refine = 5
+check(w3.refine_cost_next() == 0, 'het cap thi khong con gia',
+      w3.refine_cost_next())
+
 print('\n=== 7. chi phi cong don ===')
 w2 = E.Equipment(1, (E.AP, 100.0), intensify=0)
 step = sum(E.intensify_cost(i) for i in range(1, 11))

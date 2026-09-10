@@ -37,8 +37,8 @@ func _check(ok: bool, desc: String, detail: String = "") -> void:
 
 ## Mot mon do dung dang ma bx.equipment tra ve.
 func _item(part: int, prop: int, value: float, lv: int, intensify: int,
-		appends: Array = []) -> Dictionary:
-	var e := Equipment.new(part, prop, value, lv, intensify, 2)
+		appends: Array = [], refine: int = 0) -> Dictionary:
+	var e := Equipment.new(part, prop, value, lv, intensify, 2, [], refine)
 	for a in appends:
 		e.appends.append(a)
 	var aps: Array = []
@@ -46,10 +46,12 @@ func _item(part: int, prop: int, value: float, lv: int, intensify: int,
 		aps.append({"type": a[0], "value": a[1]})
 	return {
 		"part": part, "level": lv, "intensify": intensify, "quality": 2,
+		"refine": refine,
 		"main": {"type": prop, "value": value},
 		"appends": aps,
 		"capacity": e.capacity(),
 		"nextCost": ceili(Equipment.intensify_cost(intensify + 1)),
+		"nextRefineCost": e.refine_cost_next(),
 	}
 
 
@@ -109,14 +111,18 @@ func _ready() -> void:
 	# Ba lop ta bat phai hien, con cac bang hanh dong khac phai con an.
 	var main_ui := XggLayout.find_node(scr.ui, "lEquipmentMainUI")
 	var refine := XggLayout.find_node(scr.ui, "lEquipmentRefineUI")
+	var forge := XggLayout.find_node(scr.ui, "lEquipmentForgeUI")
 	_check(main_ui != null and main_ui.visible, "panel mon do duoc bat len")
-	_check(refine != null and not refine.visible,
-			"bang tinh luyen (chua co luat) van an")
+	_check(refine != null, "co bang tinh luyen trong bo cuc")
+	# Ren (chua co luat) thi van phai an — chi bat cai da co luat.
+	_check(forge != null and not forge.visible, "bang ren (chua co luat) van an")
 
 	print("\n=== 2. do vao thi hien dung so ===")
 	var data := {
 		"gold": 500,
+		"concentrate": 100,
 		"maxIntensify": 200,
+		"maxRefine": 5,
 		"equipment": {
 			"MaChao": [
 				_item(1, Equipment.AP, 100.0, 5, 3,
@@ -161,6 +167,68 @@ func _ready() -> void:
 	var btn := XggLayout.find_node(scr.ui, "snsEquipIntensify")
 	_check(btn != null and btn.visible, "co nut cuong hoa")
 	_check(btn != null and btn.modulate.r > 0.9, "du vang thi nut sang binh thuong")
+
+	print("\n=== 3b. bang tinh luyen ===")
+	_check(scr.tab == "intensify", "mo bang cuong hoa truoc", scr.tab)
+	var pan_in := XggLayout.find_node(scr.ui, "lEquipmentIntensifyUI")
+	var pan_rf := XggLayout.find_node(scr.ui, "lEquipmentRefineUI")
+	scr._set_tab("refine")
+	_check(pan_rf != null and pan_rf.visible, "doi sang bang tinh luyen")
+	_check(pan_in != null and not pan_in.visible, "bang cuong hoa an di")
+
+	# O vu khi: gia cap 1 la 40 (bang goc); o khac la 30.
+	_check(scr.refine_cost_now() == 40, "gia tinh luyen cap 1 cua vu khi",
+			str(scr.refine_cost_now()))
+	var rbtn := XggLayout.find_by_cls(scr.ui, scr.CLS_REFINE_BTN)
+	_check(rbtn != null and rbtn.visible, "co nut tinh luyen")
+	_check(rbtn != null and rbtn.modulate.r > 0.9, "co 100 tinh hoa thi du 40")
+
+	var step := XggLayout.find_by_cls(scr.ui, scr.CLS_REFINE_STEP)
+	_check(step != null and step.visible, "hien khoi truoc/sau khi tinh luyen")
+	var now_g := _text_of(scr, scr._child(step, scr.CLS_GRADE_NOW))
+	var next_g := _text_of(scr, scr._child(step, scr.CLS_GRADE_NEXT))
+	_check(now_g == "Bac 0", "cap hien tai", now_g)
+	_check(next_g == "Bac 1", "cap ke", next_g)
+	var now_v := _text_of(scr, scr._child(step, scr.CLS_ADD_NOW))
+	var next_v := _text_of(scr, scr._child(step, scr.CLS_ADD_NEXT))
+	_check(now_v == "Cong 100.0", "chi so chinh hien tai", now_v)
+	_check(next_v == "Cong 105.0", "sau mot cap thi +5%", next_v)
+
+	print("\n=== 3c. thieu tinh hoa / het cap tinh luyen ===")
+	var thin := data.duplicate(true)
+	thin["concentrate"] = 5
+	scr.set_data(thin, ["MaChao", "GanNing"])
+	scr.part = 1
+	scr._refresh()
+	_check(rbtn != null and rbtn.modulate.r < 0.9, "thieu tinh hoa thi nut mo di")
+	_check(scr._tips.text.begins_with("Thieu tinh hoa"),
+			"bao truoc khi bam", scr._tips.text)
+
+	var maxed_rf := {
+		"gold": 500, "concentrate": 9999, "maxIntensify": 200, "maxRefine": 5,
+		"equipment": {"MaChao": [_item(1, Equipment.AP, 100.0, 5, 0, [], 5)]},
+	}
+	scr.set_data(maxed_rf, ["MaChao"])
+	scr.part = 1
+	scr._refresh()
+	_check(scr.refine_cost_now() == 0, "het cap thi khong con gia",
+			str(scr.refine_cost_now()))
+	_check(rbtn != null and not rbtn.visible, "het cap thi giau nut tinh luyen")
+	var full := XggLayout.find_by_cls(scr.ui, scr.CLS_REFINE_FULL)
+	_check(full != null and full.visible, "hien khoi 'da het cap'")
+	_check(_text_of(scr, scr._child(full, scr.CLS_GRADE_NOW)) == "Bac 5",
+			"khoi het cap ghi dung cap",
+			_text_of(scr, scr._child(full, scr.CLS_GRADE_NOW)))
+	# Va chi so chinh phai la 125 = 100 * 1.25.
+	_check(_text_of(scr, scr._child(full, scr.CLS_ADD_NOW)) == "Cong 125.0",
+			"tinh luyen 5 cong 25% vao chi so chinh",
+			_text_of(scr, scr._child(full, scr.CLS_ADD_NOW)))
+
+	# Tra lai trang thai cho cac muc sau.
+	scr.set_data(data, ["MaChao", "GanNing"])
+	scr._set_tab("intensify")
+	scr.part = 1
+	scr._refresh()
 
 	print("\n=== 4. o trong ===")
 	scr.part = 3          # day chuyen: MaChao khong co

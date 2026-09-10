@@ -65,6 +65,19 @@ const CLS_AFTER_BOX := "强化后的属性Layer"   # khoi "sau khi cuong hoa"
 ## Ca hai khoi deu co mot nhan ten CUNG TEN LOP nay — phai tim trong tung khoi.
 const CLS_TITLE := "名字(这个位置决定了其他3个元素的位置)"
 const CLS_COST := "强化消耗"               # khoi gia vang
+
+# --- tab tinh luyen (lEquipmentRefineUI) ---
+const CLS_REFINE_BTN := "精炼按钮"          # nut tinh luyen
+const CLS_REFINE_COST := "消耗精华"         # khoi "ton tinh hoa"
+const CLS_REFINE_STEP := "锻位进阶"         # khoi truoc/sau khi tinh luyen
+const CLS_REFINE_FULL := "满锻位"           # khoi khi da het cap
+const CLS_GRADE_NOW := "currentgrade"
+const CLS_GRADE_NEXT := "nextgrade"
+const CLS_ADD_NOW := "HPnowincrease"
+const CLS_ADD_NEXT := "HPnextincrease"
+const CLS_FULL_FORGE := "FullForge"
+const CLS_FULL_TIPS := "FullHPTips"
+const CLS_REFINE_PROGRESS := "RefineProgress"   # day 5 cham bac
 const CLS_MAXED := "强化到达最高级"          # bao da toi cap cao nhat
 
 ## Man nay lam viec duoc ma khong can may chu: set_data() nhan thang du lieu.
@@ -74,7 +87,11 @@ var heroes: Array = []
 var hero_i := 0
 var part := 1
 var gold := 0
+var concentrate := 0
 var max_intensify := 200
+var max_refine := 5
+## "intensify" hoac "refine" — dung hai nut cua ban goc de doi.
+var tab := "intensify"
 
 var ui: Control = null
 var _busy := false
@@ -94,6 +111,8 @@ func _ready() -> void:
 	# Dung de chup anh va soi bo cuc; du lieu la mon do bia ra.
 	if "--fake" in OS.get_cmdline_user_args():
 		set_data(_fake(), ["MaChao", "GanNing"])
+		if "--refine" in OS.get_cmdline_user_args():
+			_set_tab("refine")
 		return
 	await _reload()
 
@@ -101,22 +120,23 @@ func _ready() -> void:
 ## Mot ban tra loi bx.equipment bia ra, chi de xem bo cuc.
 func _fake() -> Dictionary:
 	var mk := func(part: int, prop: int, v: float, lv: int, iv: int,
-			aps: Array) -> Dictionary:
-		var e := Equipment.new(part, prop, v, lv, iv, 2)
+			aps: Array, rf: int = 0) -> Dictionary:
+		var e := Equipment.new(part, prop, v, lv, iv, 2, [], rf)
 		var out: Array = []
 		for a in aps:
 			e.appends.append(a)
 			out.append({"type": a[0], "value": a[1]})
 		return {"part": part, "level": lv, "intensify": iv, "quality": 2,
-				"main": {"type": prop, "value": v}, "appends": out,
+				"refine": rf, "main": {"type": prop, "value": v}, "appends": out,
 				"capacity": e.capacity(),
-				"nextCost": ceili(Equipment.intensify_cost(iv + 1))}
+				"nextCost": ceili(Equipment.intensify_cost(iv + 1)),
+				"nextRefineCost": e.refine_cost_next()}
 	return {
-		"gold": 1240, "maxIntensify": 200,
+		"gold": 1240, "concentrate": 86, "maxIntensify": 200, "maxRefine": 5,
 		"equipment": {
 			"MaChao": [
 				mk.call(1, Equipment.AP, 118.4, 7, 12,
-						[[Equipment.CRITICAL_STRIKE, 0.0132]]),
+						[[Equipment.CRITICAL_STRIKE, 0.0132]], 2),
 				mk.call(2, Equipment.HP_LIMIT, 264.0, 5, 3, []),
 			],
 			"GanNing": [mk.call(1, Equipment.AP, 41.2, 6, 0, [])],
@@ -146,7 +166,7 @@ func _build() -> void:
 	# Ban goc an gan het roi de Lua bat dung cai can. Bat ba lop ta dung, va
 	# CHI ba lop do — bat het thi 5 bang hanh dong ve chong len nhau.
 	for n in ["lEquipmentUI", "lEquipmentMainUI", "lEquipmentChildUI",
-			"lEquipmentIntensifyUI"]:
+			"lEquipmentIntensifyUI", "lEquipmentRefineUI"]:
 		var node := XggLayout.find_node(ui, n)
 		if node != null:
 			XggLayout.show_branch(node, ui)
@@ -173,6 +193,18 @@ func _build() -> void:
 	_click(XggLayout.find_node(ui, "btnHeroEquipUIToLeft"), func(): _step_part(-1))
 	_click(XggLayout.find_node(ui, "btnHeroEquipUIToRight"), func(): _step_part(1))
 	_click(XggLayout.find_node(ui, "snsEquipIntensify"), _on_intensify)
+	_click(XggLayout.find_by_cls(ui, CLS_REFINE_BTN), _on_refine)
+	# Hai nut doi bang cua chinh ban goc, nam o cot phai panel trai.
+	_click(XggLayout.find_node(ui, "btnShowEquipmentIntensifyUI"),
+			func(): _set_tab("intensify"))
+	_click(XggLayout.find_node(ui, "btnShowEquipmentRefineUI"),
+			func(): _set_tab("refine"))
+	_button_art(XggLayout.find_by_cls(ui, CLS_REFINE_BTN), "v6/ui_button01.png")
+	_backing(XggLayout.find_node(ui, "lEquipmentRefineUI"))
+	# Nut "lay them tinh hoa" tro toi cua hang — chua co he do, an di.
+	var get_btn := XggLayout.find_by_cls(ui, "获取按钮")
+	if get_btn != null:
+		get_btn.visible = false
 	# Tay luyen tu dong la he chua co luat — an di thay vi de nut cho co.
 	var auto := XggLayout.find_node(ui, "snsEquipAutoIntensify")
 	if auto != null:
@@ -327,6 +359,19 @@ func _in(parent_cls: String, child_cls: String, txt: String) -> void:
 	_label(XggLayout.find_by_cls(box, child_cls), txt, true)
 
 
+## Doi giua bang cuong hoa va bang tinh luyen. Ban goc cung lam the: hai bang
+## nam chong nhau trong lEquipmentChildUI, Lua bat dung mot cai.
+func _set_tab(which: String) -> void:
+	tab = which
+	var it := XggLayout.find_node(ui, "lEquipmentIntensifyUI")
+	var rf := XggLayout.find_node(ui, "lEquipmentRefineUI")
+	if it != null:
+		it.visible = which == "intensify"
+	if rf != null:
+		rf.visible = which == "refine"
+	_refresh()
+
+
 # ------------------------------------------------------------------ du lieu
 func _reload() -> void:
 	var ses := await Game.ensure_session()
@@ -346,7 +391,9 @@ func _reload() -> void:
 func set_data(p: Dictionary, hero_list: Array = []) -> void:
 	payload = p
 	gold = int(p.get("gold", 0))
+	concentrate = int(p.get("concentrate", 0))
 	max_intensify = int(p.get("maxIntensify", 200))
+	max_refine = int(p.get("maxRefine", 5))
 	var owned: Dictionary = p.get("equipment", {})
 	# Duyet theo doi hinh truoc (do la nhung tuong nguoi choi dang dung), roi
 	# them tuong nao co do ma khong trong doi hinh.
@@ -384,7 +431,7 @@ func _model(it: Dictionary) -> Equipment:
 	var e := Equipment.new(int(it.get("part", part)),
 			int(m.get("type", Equipment.AP)), float(m.get("value", 0.0)),
 			int(it.get("level", 1)), int(it.get("intensify", 0)),
-			int(it.get("quality", 1)))
+			int(it.get("quality", 1)), [], int(it.get("refine", 0)))
 	for ap in it.get("appends", []):
 		e.appends.append([int(ap.get("type", 0)), float(ap.get("value", 0.0))])
 	return e
@@ -392,7 +439,8 @@ func _model(it: Dictionary) -> Equipment:
 
 # ------------------------------------------------------------------ hien
 func _refresh() -> void:
-	_header.text = "%s      o: %s      vang: %d" % [hero(), PART_NAME.get(part, part), gold]
+	_header.text = "%s      o: %s      vang: %d      tinh hoa: %d" % [
+			hero(), PART_NAME.get(part, part), gold, concentrate]
 	if ui == null:
 		return
 	var it := item()
@@ -410,8 +458,10 @@ func _refresh() -> void:
 	_label(XggLayout.find_node(ui, "bmfEquipMainUILevel"), "Cap %d" % int(it.get("level", 1)))
 	_label(XggLayout.find_node(ui, "ttfEquipMainUIQuality"), "Pham %d" % int(it.get("quality", 1)))
 	_label(XggLayout.find_node(ui, "ttfEquipMainUIRank"), "O %d" % part)
-	# Tinh luyen chua co luat ben game moi — noi thang thay vi hien so 0 gia.
-	_label(XggLayout.find_node(ui, "ttfEquipMainUIRefine"), "Tinh luyen: chua co")
+	var rf := int(it.get("refine", 0))
+	_label(XggLayout.find_node(ui, "ttfEquipMainUIRefine"),
+			"Tinh luyen %d (+%d%%)" % [rf, int(Equipment.refine_percent(rf))]
+			if rf > 0 else "Chua tinh luyen")
 
 	var mt := int(it.get("main", {}).get("type", Equipment.AP))
 	var base := float(it.get("main", {}).get("value", 0.0))
@@ -436,6 +486,7 @@ func _refresh() -> void:
 
 	_icon(it)
 	_refresh_intensify(it, e, mt)
+	_refresh_refine(it, e, mt)
 
 
 ## Icon mon do va nen theo pham chat, dung cach dat ten cua ban goc:
@@ -559,6 +610,137 @@ func _refresh_intensify(it: Dictionary, e: Equipment, mt: int) -> void:
 	_tips.text = "" if gold >= cost or maxed else "Thieu vang: can %d, dang co %d" % [cost, gold]
 
 
+## Bang tinh luyen. Bo cuc goc chia lam hai khoi chong nhau: "锻位进阶" khi
+## con len duoc, "满锻位" khi da het cap — bat dung mot cai, y nhu ban goc.
+func _refresh_refine(it: Dictionary, e: Equipment, mt: int) -> void:
+	var lv := int(it.get("refine", 0))
+	var maxed := lv >= max_refine
+	var pname: String = PROP_NAME.get(mt, str(mt))
+
+	# Tab tinh luyen co o icon rieng cua no; gan cung mot anh.
+	var rf_panel := XggLayout.find_node(ui, "lEquipmentRefineUI")
+	if rf_panel != null:
+		var rf_icon := XggLayout.find_by_cls(rf_panel, "spEquipMainUIIcon")
+		if rf_icon != null:
+			_slot_art(rf_icon, "equip_%d_%d.png" % [(part - 1) % 5 + 1,
+					clampi(int(it.get("level", 1)), 0, 10)])
+			var bg := rf_icon.get_parent()
+			if bg is TextureRect:
+				_slot_art(bg, "v6/equipment_b_%d.png"
+						% clampi(int(it.get("quality", 1)), 2, 6))
+
+	# Nam cham bac: ban goc lam MO cai chua dat (setGray). Khong lam thi nhin
+	# vao khong biet dang o bac may.
+	var prog := XggLayout.find_by_cls(ui, CLS_REFINE_PROGRESS)
+	if prog != null:
+		for i in range(1, max_refine + 1):
+			var dot := XggLayout.find_by_cls(prog, "CCSprite%d" % i)
+			if dot != null:
+				dot.modulate = Color(1, 1, 1) if i <= lv else Color(0.32, 0.34, 0.38)
+
+	var step := XggLayout.find_by_cls(ui, CLS_REFINE_STEP)
+	var full := XggLayout.find_by_cls(ui, CLS_REFINE_FULL)
+	if step != null:
+		step.visible = not maxed
+	if full != null:
+		full.visible = maxed
+
+	if maxed:
+		_label(_child(full, CLS_GRADE_NOW), "Bac %d" % lv, true)
+		_label(_child(full, CLS_FULL_FORGE), "cao nhat", true)
+		_label(_child(full, CLS_ADD_NOW),
+				"%s %s" % [pname, _num(e.effective_main(), mt)], true)
+		_label(_child(full, CLS_FULL_TIPS), "+%d%%" % int(Equipment.refine_percent(lv)), true)
+	else:
+		var after := _model(it)
+		after.refine = lv + 1
+		_label(_child(step, CLS_GRADE_NOW), "Bac %d" % lv, true)
+		_label(_child(step, CLS_GRADE_NEXT), "Bac %d" % (lv + 1), true)
+		_label(_child(step, CLS_ADD_NOW),
+				"%s %s" % [pname, _num(e.effective_main(), mt)], true)
+		_label(_child(step, CLS_ADD_NEXT),
+				"%s %s" % [pname, _num(after.effective_main(), mt)], true)
+
+	# Khoi gia: so tinh hoa can / dang co.
+	var cost := refine_cost_now()
+	var box := XggLayout.find_by_cls(ui, CLS_REFINE_COST)
+	if box != null:
+		box.visible = not maxed
+		var labels: Array = []
+		_collect_labels(box, labels)
+		if labels.size() > 0:
+			_label(labels[0], "%d / %d" % [concentrate, cost])
+		for i in range(1, labels.size()):
+			_label(labels[i], "")
+
+	var btn := XggLayout.find_by_cls(ui, CLS_REFINE_BTN)
+	if btn != null:
+		btn.visible = not maxed
+		for c in btn.get_children():
+			if c is Label:
+				_label(c, "Tinh luyen")
+				(c as Label).horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				(c as Label).vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+				c.size = btn.size
+				c.position = Vector2.ZERO
+		btn.modulate = Color(1, 1, 1) if concentrate >= cost else Color(0.55, 0.55, 0.55)
+
+	if tab == "refine":
+		_tips.text = "" if maxed or concentrate >= cost else 				"Thieu tinh hoa: can %d, dang co %d" % [cost, concentrate]
+
+
+## Nhan con theo ten lop, tim TRONG mot khoi.
+func _child(box: Control, cls: String) -> Control:
+	if box == null:
+		return null
+	return XggLayout.find_by_cls(box, cls)
+
+
+func _collect_labels(node: Control, into: Array) -> void:
+	for c in node.get_children():
+		if c is Label:
+			into.append(c)
+		elif c is Control:
+			_collect_labels(c, into)
+
+
+## Tinh hoa can de tinh luyen mon dang xem len mot cap.
+func refine_cost_now() -> int:
+	var it := item()
+	if it.is_empty():
+		return 0
+	if it.has("nextRefineCost"):
+		return int(it["nextRefineCost"])
+	var lv := int(it.get("refine", 0))
+	if lv >= max_refine:
+		return 0
+	return Equipment.refine_cost(part, lv + 1)
+
+
+func _on_refine() -> void:
+	if _busy:
+		return
+	var it := item()
+	if it.is_empty() or int(it.get("refine", 0)) >= max_refine:
+		return
+	var cost := refine_cost_now()
+	if concentrate < cost:
+		_tips.text = "Thieu tinh hoa: can %d, dang co %d" % [cost, concentrate]
+		return
+	_busy = true
+	_tips.text = "dang tinh luyen..."
+	var ses := await Game.ensure_session()
+	var r := await ses.refine(hero(), part)
+	_busy = false
+	if not r.ok:
+		_tips.text = "khong tinh luyen duoc: %s" % str(r.get("error", ""))
+		return
+	await _reload()
+	_tips.text = "Tinh luyen %d  (+%d%%, ton %d tinh hoa)" % [
+			int(r.data.get("refine", 0)), int(r.data.get("refinePercent", 0)),
+			int(r.data.get("cost", 0))]
+
+
 func _show_empty() -> void:
 	_label(XggLayout.find_node(ui, "bmfEquipMainUIName"), PART_NAME.get(part, str(part)))
 	_label(XggLayout.find_node(ui, "bmfEquipMainUILevel"), "")
@@ -580,6 +762,11 @@ func _show_empty() -> void:
 	var btn := XggLayout.find_node(ui, "snsEquipIntensify")
 	if btn != null:
 		btn.visible = false
+	# Bang tinh luyen cung phai tat het theo.
+	for cls in [CLS_REFINE_BTN, CLS_REFINE_COST, CLS_REFINE_STEP, CLS_REFINE_FULL]:
+		var n := XggLayout.find_by_cls(ui, cls)
+		if n != null:
+			n.visible = false
 	# O trong thi giau ca icon: de cai khung "?" nam do trong hai panel trong
 	# nhu la co do ma khong doc duoc.
 	for n in ["spEquipMainUIIconBg", "spEquipIntensifyUIIcon"]:

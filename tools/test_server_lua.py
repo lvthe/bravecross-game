@@ -60,6 +60,13 @@ package.preload["nakama"] = function() return nk end
 return { rpcs = rpcs, hooks = hooks, store = store }
 '''
 
+PRELOAD_EQUIP = """
+    local src = ...
+    package.preload["equipment"] = function()
+        return assert(load(src, "equipment"))()
+    end
+"""
+
 n_pass = n_fail = 0
 
 
@@ -94,6 +101,11 @@ def main():
             return assert(load(src, "hero_data"))()
         end
     ''', io.open(a.data, encoding='utf-8').read())
+
+    # battle.lua require("equipment") nen phai preload TRUOC khi nap no.
+    L.execute(PRELOAD_EQUIP,
+              io.open(os.path.join(ROOT, 'server', 'modules', 'equipment.lua'),
+                      encoding='utf-8').read())
 
     L.execute(io.open(a.module, encoding='utf-8').read())
     rpcs = env['rpcs']
@@ -379,21 +391,37 @@ def main():
               % (e['result'], e['aliveA'], e['aliveB'], e['seconds'],
                  res, a, b, secs))
 
+    # Nam tran nua voi trang bi tren doi ta. Muc nay do cho NOI: buff trang bi
+    # co vao tran dung cach khong, va hai ban co gop buff giong nhau khong.
+    eq_got = ft['equipBattles']
+    eq_buffs = {}
+    for name in ft['equipBuffs']:
+        eq_buffs[str(name)] = dict(ft['equipBuffs'][name])
+    check(len(eq_buffs) == 4 and all(b for b in eq_buffs.values()),
+          'may chu gui ve buff trang bi cua ca 4 tuong', list(eq_buffs))
+    for i in range(1, len(eq_got) + 1):
+        e = eq_got[i]
+        seed = int(e['seed'])
+        res, secs, a, b = F.lua_battle(hero_by_name, army_rows, base, rules,
+                                       mine, theirs, seed, seed,
+                                       equips=eq_buffs)
+        same = (int(e['result']) == res and int(e['aliveA']) == a
+                and int(e['aliveB']) == b
+                and abs(float(e['seconds']) - secs) < 0.05)
+        check(same,
+              'co trang bi, seed %d: ket qua %d, con song %d-%d, %.1f giay'
+              % (seed, res, a, b, secs),
+              'Lua %s/%s-%s/%.2fs  vs  Python %s/%s-%s/%.2fs'
+              % (e['result'], e['aliveA'], e['aliveB'], e['seconds'],
+                 res, a, b, secs))
+
     print('\n=== 9. TRANG BI: Lua khop Python tung ca ===')
     # Cho nay khong co ngau nhien nen doi hoi chat hon muc 8: hai ban cung
     # float64, cung thu tu phep tinh, phai ra dung mot so. Nguong 1e-9 chi de
     # bo qua sai so lam tron.
     import equipment as EQ
 
-    eq_path = os.path.join(ROOT, 'server', 'modules', 'equipment.lua')
-    L.execute('''
-        local src = ...
-        package.preload["equipment"] = function()
-            return assert(load(src, "equipment"))()
-        end
-    ''', io.open(eq_path, encoding='utf-8').read())
-    # Lua 5.4 cua lupa cho `require` tra VE HAI gia tri (bang + duong dan), va
-    # runtime nay bat unpack_returned_tuples nen ben Python nhan ra mot tuple.
+    # Module luat trang bi da preload o dau main() — battle.lua require no.
     LE = L.eval('(require("equipment"))')
 
     check(abs(float(LE.INTENSIFY_STEP) - EQ.INTENSIFY_STEP) < 1e-15,
@@ -445,6 +473,141 @@ def main():
               '%d ca lech; %s' % (len(bad[f]), bad[f][0] if bad[f] else ''))
     check(not bad_stats, '%-13s khop ca %d ca' % ('stats', len(cases)),
           '%d ca lech; %s' % (len(bad_stats), bad_stats[0] if bad_stats else ''))
+
+    print('\n=== 10. TRANG BI: ban luu va RPC ===')
+    u = L.table(user_id='u-trangbi')
+    e0 = rpcs['bx.equipment'](u, None)
+    check(len(dict(e0['equipment'])) == 0, 'nguoi choi moi chua co mon nao')
+    check(float(e0['capacity']) == 0.0, 'luc chien trang bi bang 0', e0['capacity'])
+
+    rpcs['bx.set_roster'](u, L.table(roster=L.table(
+        'LvBuGod', 'MaChao', 'LvBu', 'GanNing')))
+    drop = None
+    for _ in range(80):
+        rr = rpcs['bx.fight'](u, L.table(chapter=1))
+        d = rr['drop']
+        if d is not None and bool(d['kept']):
+            drop = d
+            break
+    check(drop is not None, 'danh du lau thi co do roi ra')
+    if drop is None:
+        print('  (khong co do roi — bo qua phan con lai cua muc 10)')
+    else:
+        hero, part = str(drop['hero']), int(drop['part'])
+        check(1 <= part <= 6, 'o hop le', part)
+        check(float(drop['capacity']) > 0, 'mon roi ra co luc chien',
+              drop['capacity'])
+
+        e1 = rpcs['bx.equipment'](u, None)
+        owned = dict(e1['equipment'])
+        check(hero in owned, 'mon vua roi nam trong ban luu', list(owned))
+        check(float(e1['capacity']) > 0.0, 'luc chien tong > 0', e1['capacity'])
+        # Buff phai la thu mo hinh chien dau hieu, khong phai ten chi so goc.
+        bf = dict(dict(e1['buffs'])[hero])
+        check(bf and all(k in ('hp', 'ap', 'dp', 'crit') for k in bf),
+              'buff dung khoa cua mo hinh chien dau', list(bf))
+
+        print('\n=== 10b. cuong hoa: may chu tinh gia va tru vang ===')
+        item = None
+        for it in owned[hero].values():
+            if int(it['part']) == part:
+                item = it
+        check(item is not None, 'doc lai duoc dung mon do')
+        cost = int(item['nextCost'])
+        check(cost == 25, 'gia cuong hoa cap dau la 25', cost)
+
+        gold = int(e1['gold'])
+        cap_before = float(item['capacity'])
+        r_in = rpcs['bx.intensify'](u, L.table(hero=hero, part=part))
+        check(int(r_in['intensify']) == 1, 'len cuong hoa cap 1',
+              r_in['intensify'])
+        check(int(r_in['save']['gold']) == gold - cost, 'tru dung so vang',
+              '%d - %d vs %s' % (gold, cost, r_in['save']['gold']))
+        check(float(r_in['capacity']) > cap_before, 'luc chien tang len that',
+              '%.3f -> %.3f' % (cap_before, float(r_in['capacity'])))
+        check(int(r_in['nextCost']) > cost, 'cap sau dat hon cap truoc',
+              '%d -> %s' % (cost, r_in['nextCost']))
+
+        # Cuong hoa xong thi tran sau phai thay chi so moi.
+        e2 = rpcs['bx.equipment'](u, None)
+        check(float(e2['capacity']) > float(e1['capacity']),
+              'ban luu giu cap cuong hoa moi',
+              '%s -> %s' % (e1['capacity'], e2['capacity']))
+
+        print('\n=== 10c. tu choi cai phai tu choi ===')
+        for args, why in (
+                (dict(hero='KhongCoAi', part=1), 'tuong khong ton tai'),
+                (dict(hero=hero, part=0), 'o so 0'),
+                (dict(hero=hero, part=99), 'o so 99')):
+            ok = True
+            try:
+                rpcs['bx.intensify'](u, L.table(**args))
+                ok = False
+            except lupa.LuaError:
+                pass
+            check(ok, 'tu choi %s' % why)
+
+        # O trong thi khong cuong hoa duoc.
+        empty_part = None
+        for pp in range(1, 7):
+            if not any(int(it['part']) == pp for it in owned[hero].values()):
+                empty_part = pp
+                break
+        if empty_part is not None:
+            ok = True
+            try:
+                rpcs['bx.intensify'](u, L.table(hero=hero, part=empty_part))
+                ok = False
+            except lupa.LuaError:
+                pass
+            check(ok, 'tu choi cuong hoa o con trong')
+
+        # Khong co vang thi khong cuong hoa duoc.
+        poor = L.table(user_id='u-ngheo-trangbi')
+        rpcs['bx.chapters'](poor, None)
+        ok = True
+        try:
+            rpcs['bx.intensify'](poor, L.table(hero=hero, part=part))
+            ok = False
+        except lupa.LuaError:
+            pass
+        check(ok, 'thieu vang / chua co do thi khong cuong hoa duoc')
+
+    print('\n=== 10d. ban luu ban thi bo mon do, khong sua cho lanh ===')
+    # Ban luu la du lieu ben ngoai. Nhet vao vai mon vo ly roi doc lai.
+    bad_user = 'u-banluu-ban'
+    env['store'][bad_user + '/player/save'] = L.table(
+        version=5, gold=1000,
+        equipment=L.table(
+            MaChao=L.table(
+                L.table(part=1, level=1, intensify=0, quality=1,
+                        main=L.table(type=20, value=10.0)),        # hop le
+                L.table(part=1, level=1, intensify=0, quality=1,
+                        main=L.table(type=20, value=99.0)),        # trung o
+                L.table(part=99, level=1, intensify=0, quality=1,
+                        main=L.table(type=20, value=10.0)),        # o khong co
+                L.table(part=2, level=1, intensify=0, quality=1,
+                        main=L.table(type=777, value=10.0)),       # loai la
+                L.table(part=3, level=1, intensify=999999, quality=1,
+                        main=L.table(type=20, value=10.0)),        # cuong hoa vo ly
+                L.table(part=4, level=1, intensify=0, quality=1,
+                        main=L.table(type=20, value=-5.0))),       # gia tri am
+            KhongCoAi=L.table(
+                L.table(part=1, level=1, intensify=0, quality=1,
+                        main=L.table(type=20, value=10.0)))))
+    eb = rpcs['bx.equipment'](L.table(user_id=bad_user), None)
+    got = dict(eb['equipment'])
+    check('KhongCoAi' not in got, 'bo trang bi cua tuong khong ton tai',
+          list(got))
+    items = list(dict(got.get('MaChao', L.table())).values()) if 'MaChao' in got else []
+    parts = sorted(int(it['part']) for it in items)
+    check(parts == [1, 3], 'chi giu mon hop le, moi o mot mon', parts)
+    kept = dict((int(it['part']), it) for it in items)
+    check(float(kept[1]['main']['value']) == 10.0,
+          'o trung thi giu mon dau, khong phai mon sau',
+          kept[1]['main']['value'])
+    check(int(kept[3]['intensify']) == 200,
+          'cuong hoa vo ly bi keo ve tran 200', kept[3]['intensify'])
 
     print('\n===== dat %d, hong %d =====' % (n_pass, n_fail))
     return 0 if n_fail == 0 else 1

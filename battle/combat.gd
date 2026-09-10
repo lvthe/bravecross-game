@@ -186,6 +186,10 @@ class Fighter extends RefCounted:
 			taken *= 1.0 - float(buffs.get("taken_pct", 0.0))
 			lifesteal += float(buffs.get("lifesteal", 0.0))
 			reflect += float(buffs.get("reflect", 0.0))
+			# `crit` la kenh cua TRANG BI (PropertyType CriticalStrike). The
+			# tran khong dung khoa nay, nen them vao day khong doi con so cua
+			# the tran.
+			crit_chance += float(buffs.get("crit", 0.0))
 		reset()
 
 	func reset() -> void:

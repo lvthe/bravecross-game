@@ -200,6 +200,46 @@ function M.roll_append(base_value, rand)
 		+ rand() * (M.APPEND_RANGE_MAX - M.APPEND_RANGE_MIN))
 end
 
+-- Trang bi noi vao mo hinh chien dau qua DUNG cai kenh buff ma the tran dang
+-- dung (apply_buffs trong battle.lua) — khong mo duong rieng.
+--
+-- Bon loai chi so co cho tuong ung; ba loai khang he va ReducingDamage thi
+-- CHUA co he tuong ung ben game moi, nen bo qua co y thuc.
+M.BUFF_KEY = {
+	[M.HP_LIMIT] = "hp",
+	[M.AP] = "ap",
+	[M.DP_ADDITION] = "dp",
+	[M.CRITICAL_STRIKE] = "crit",
+}
+
+--- Gop chi so cua mot dam trang bi thanh bang buff cho mo hinh chien dau.
+function M.to_buffs(items)
+	local out = {}
+	for _, e in ipairs(items or {}) do
+		for t, v in pairs(M.stats(e)) do
+			local k = M.BUFF_KEY[t]
+			if k ~= nil then
+				out[k] = (out[k] or 0.0) + v
+			end
+		end
+	end
+	return out
+end
+
+--- Cong hai bang buff. Trang bi va the tran di chung mot bang, cong don tung
+--- khoa — nho vay thu tu ap dung khong con quan trong, va ba ban cai dat chac
+--- chan ra cung mot so.
+function M.merge_buffs(a, b)
+	local out = {}
+	for k, v in pairs(a or {}) do
+		out[k] = v
+	end
+	for k, v in pairs(b or {}) do
+		out[k] = (out[k] or 0.0) + v
+	end
+	return out
+end
+
 --- Dung mot mon trang bi tu cac truong roi, dien san mac dinh.
 function M.make(part, prop_type, value, opts)
 	opts = opts or {}

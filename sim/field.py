@@ -344,13 +344,16 @@ def lua_pick_armies(army_rows, seed_value):
 
 def lua_battle(hero_by_name, army_rows, base, rules, mine, theirs,
                seed, chapter, power=1.0, levels=None, placement=None,
-               formation='', formation_level=0, doc=None):
+               formation='', formation_level=0, doc=None, equips=None):
     """Ban Python cua army_battle() trong battle.lua, dung tung buoc mot.
 
     Dung de doi chieu: cung seed thi hai ben phai ra cung ket qua, cung so
     giay, cung so nguoi con song.
     """
     levels = levels or {}
+    # Buff do TRANG BI, theo ten tuong. Di chung mot bang voi buff the tran roi
+    # ap mot lan — dung y ban Lua lam, nen thu tu ap dung khong the lam lech.
+    equips = equips or {}
     army_lv = ARMY_BASE_LEVEL + max(0, chapter)
     teams = [[], []]
     roster = [mine, theirs]
@@ -373,6 +376,10 @@ def lua_battle(hero_by_name, army_rows, base, rules, mine, theirs,
             spot = src[i] if i < len(src) else 1
             bf = (formation_buffs(buffs_doc, formation, formation_level, spot)
                   if t == 0 and formation else {})
+            if t == 0 and equips:
+                bf = dict(bf)
+                for k, v in (equips.get(name) or {}).items():
+                    bf[k] = bf.get(k, 0.0) + float(v)
             f = Fighter(hero_by_name[name], base, rules, level=lv, buffs=bf)
             f.reach = 0.0
             f.min_reach = 0.0

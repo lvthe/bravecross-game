@@ -21,7 +21,7 @@ extends Node
 
 ## Doi so nay khi cau truc ban luu thay doi, de con biet duong nang cap.
 ## Phai khop SAVE_VERSION ben server/modules/battle.lua.
-const SAVE_VERSION := 4
+const SAVE_VERSION := 5
 
 var client: NakamaClient = null
 var data: Dictionary = {}
@@ -57,6 +57,8 @@ static func blank() -> Dictionary:
 		"formationLevel": 0,
 		"formations": {"jichu": 0},   # ten the tran -> cap da nang
 		"placement": [1, 1, 2, 3],
+		# Trang bi: ten tuong -> mang toi da 6 mon (moi o mot mon).
+		"equipment": {},
 		"lastResult": "",
 		"updatedAt": 0,
 	}
@@ -135,6 +137,20 @@ func _upgrade(raw: Variant) -> Dictionary:
 	while spots.size() < 4:
 		spots.append(1)
 	out["placement"] = spots
+	# Trang bi. Van ly do o tren: khong liet ke o day thi truong nay bien mat
+	# lang le, may chu van giu ma client doc ra khong thay.
+	var eq := {}
+	if typeof(d.get("equipment")) == TYPE_DICTIONARY:
+		for name in d["equipment"]:
+			if typeof(d["equipment"][name]) != TYPE_ARRAY:
+				continue
+			var items: Array = []
+			for one in d["equipment"][name]:
+				if typeof(one) == TYPE_DICTIONARY:
+					items.append(one)
+			if not items.is_empty():
+				eq[str(name)] = items
+	out["equipment"] = eq
 	return out
 
 
@@ -272,6 +288,50 @@ func set_placement(spots: Array) -> Dictionary:
 	if r.ok:
 		data = _upgrade(r.data.get("save", {}))
 	return r
+
+
+## Trang bi dang co: tung tuong, tung o, kem luc chien va gia cuong hoa ke.
+## Con so do MAY CHU tinh — client chi hien lai, y nhu the tran va cap tuong.
+func equipment() -> Dictionary:
+	if not online:
+		return {"ok": false, "error": "chua noi duoc may chu"}
+	var r := await client.call_rpc("bx.equipment", {})
+	if r.ok:
+		data = _upgrade(r.data.get("save", {}))
+	return r
+
+
+## Cuong hoa mot mon len mot cap. May chu tinh gia va tru vang.
+func intensify(hero_name: String, part: int) -> Dictionary:
+	if not online:
+		return {"ok": false, "error": "chua noi duoc may chu"}
+	var r := await client.call_rpc("bx.intensify",
+			{"hero": hero_name, "part": part})
+	if r.ok:
+		data = _upgrade(r.data.get("save", {}))
+	return r
+
+
+## Buff do trang bi cua mot tuong, dang ma mo hinh chien dau hieu.
+##
+## Doc thang tu ban luu may chu gui ve — KHONG tinh lai tu cong thuc, de client
+## va may chu khong bao gio lech. Equipment.to_buffs() chi dung khi muon xem
+## thu mot mon do chua deo.
+func equip_buffs(hero_name: String) -> Dictionary:
+	var all_eq: Dictionary = data.get("equipment", {})
+	if not all_eq.has(hero_name):
+		return {}
+	var items := []
+	for raw in all_eq[hero_name]:
+		var it: Dictionary = raw
+		var m: Dictionary = it.get("main", {})
+		var e := Equipment.new(int(it.get("part", 1)), int(m.get("type", Equipment.AP)),
+				float(m.get("value", 0.0)), int(it.get("level", 1)),
+				int(it.get("intensify", 0)), int(it.get("quality", 1)))
+		for ap in it.get("appends", []):
+			e.appends.append([int(ap.get("type", 0)), float(ap.get("value", 0.0))])
+		items.append(e)
+	return Equipment.to_buffs(items)
 
 
 func gold() -> int:

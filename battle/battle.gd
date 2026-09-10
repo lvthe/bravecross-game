@@ -84,6 +84,9 @@ var mirrored := false
 var replay_seed := 0
 ## He so manh cua doi dich theo chuong, do may chu tinh.
 var replay_power := 1.0
+## Buff trang bi dung khi PHAT LAI (luc do khong co phien de hoi). Ten tuong ->
+## bang buff. Rong thi phat lai tran khong trang bi, y nhu truoc.
+var replay_equip: Dictionary = {}
 ## Thoi gian con du chua di het mot buoc.
 var _accum := 0.0
 
@@ -296,6 +299,17 @@ func _spawn(with_art := true) -> void:
 					spot = session.placement_of(i)
 					buffs = combat.formation_buffs(
 							session.formation(), session.formation_level(), spot)
+					# Trang bi di CHUNG mot bang voi buff the tran roi ap mot
+					# lan — dung y may chu lam (army_battle trong battle.lua).
+					# Thieu cho nay thi tran phat lai lech han tran may chu xu,
+					# ngay khi nguoi choi nhat duoc mon do dau tien.
+					buffs = Equipment.merge_buffs(buffs,
+							session.equip_buffs(hero_name))
+				elif not replay_equip.is_empty():
+					# Duong phat lai: khong co phien de hoi, may chu gui thang
+					# bang buff no vua dung — ap dung cai do.
+					buffs = Equipment.merge_buffs(buffs,
+							replay_equip.get(hero_name, {}))
 			else:
 				power = replay_power
 			var y: float = MID_Y + (float(i) - (roster[t].size() - 1) * 0.5) * ROW_GAP
@@ -523,39 +537,51 @@ func _replay_check(url: String) -> void:
 	print("doi trai : %s" % ", ".join(mine))
 	print("doi phai : %s\n" % ", ".join(theirs))
 
-	for e in ft.data.get("battles", []):
-		var seed_value := int(e.get("seed", 0))
-		# bx.fieldtest goi army_battle(mine, theirs, Rng.new(seed), 1.0, {},
-		# chapter = seed, seed_value = seed) — khong ban luu nen khong the tran,
-		# khong cap, cho dung mac dinh. Dung lai y het o day.
-		Game.chapter = seed_value
-		session = null
-		roster = [mine.duplicate(), theirs.duplicate()]
-		replay_seed = seed_value
-		replay_power = 1.0
-		_spawn(false)
+	# Hai luot. Luot dau la tran tran nhu truoc; luot hai dung nhung tran do
+	# nhung doi ta co trang bi — do CHINH cai vua noi vao: buff trang bi rang
+	# vao tran o client co giong het ben may chu khong.
+	var rounds := [
+		{"ten": "khong trang bi", "battles": ft.data.get("battles", []), "eq": {}},
+		{"ten": "co trang bi", "battles": ft.data.get("equipBattles", []),
+			"eq": ft.data.get("equipBuffs", {})},
+	]
+	for r in rounds:
+		var label: String = r["ten"]
+		replay_equip = r["eq"]
+		print("-- %s --" % label)
+		for e in r["battles"]:
+			var seed_value := int(e.get("seed", 0))
+			# bx.fieldtest goi army_battle(mine, theirs, Rng.new(seed), 1.0, {},
+			# chapter = seed, seed_value = seed) — khong ban luu nen khong the tran,
+			# khong cap, cho dung mac dinh. Dung lai y het o day.
+			Game.chapter = seed_value
+			session = null
+			roster = [mine.duplicate(), theirs.duplicate()]
+			replay_seed = seed_value
+			replay_power = 1.0
+			_spawn(false)
 
-		var out := -1
-		var guard := 0
-		while out < 0 and guard < 100000:
-			out = _step(STEP)
-			guard += 1
+			var out := -1
+			var guard := 0
+			while out < 0 and guard < 100000:
+				out = _step(STEP)
+				guard += 1
 
-		var want_out := int(e.get("result", -1))
-		var want_a := int(e.get("aliveA", -1))
-		var want_b := int(e.get("aliveB", -1))
-		var want_s := float(e.get("seconds", -1.0))
-		var same := (out == want_out and _alive(0) == want_a and _alive(1) == want_b
-				and absf(elapsed - want_s) < 0.05)
-		if same:
-			n_pass += 1
-			print("  dat   seed %d: ket qua %d, con song %d-%d, %.1f giay"
-					% [seed_value, out, _alive(0), _alive(1), elapsed])
-		else:
-			n_fail += 1
-			print("  HONG  seed %d  ->  may chu %d/%d-%d/%.2fs   client %d/%d-%d/%.2fs"
-					% [seed_value, want_out, want_a, want_b, want_s,
-					out, _alive(0), _alive(1), elapsed])
+			var want_out := int(e.get("result", -1))
+			var want_a := int(e.get("aliveA", -1))
+			var want_b := int(e.get("aliveB", -1))
+			var want_s := float(e.get("seconds", -1.0))
+			var same := (out == want_out and _alive(0) == want_a and _alive(1) == want_b
+					and absf(elapsed - want_s) < 0.05)
+			if same:
+				n_pass += 1
+				print("  dat   seed %d: ket qua %d, con song %d-%d, %.1f giay"
+						% [seed_value, out, _alive(0), _alive(1), elapsed])
+			else:
+				n_fail += 1
+				print("  HONG  %s seed %d  ->  may chu %d/%d-%d/%.2fs   client %d/%d-%d/%.2fs"
+						% [label, seed_value, want_out, want_a, want_b, want_s,
+						out, _alive(0), _alive(1), elapsed])
 
 	print("\n===== dat %d, hong %d =====" % [n_pass, n_fail])
 	get_tree().quit(0 if n_fail == 0 else 1)

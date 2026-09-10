@@ -219,6 +219,42 @@ def roll_append(base_value, rand):
                          + rand() * (APPEND_RANGE_MAX - APPEND_RANGE_MIN))
 
 
+# Trang bi noi vao mo hinh chien dau qua DUNG cai kenh buff ma the tran dang
+# dung (xem Fighter.__init__ trong sim/battle.py) — khong mo duong rieng.
+#
+# Bon loai chi so co cho tuong ung; ba loai khang he (lua/bang/set) va
+# ReducingDamage thi CHUA co he tuong ung ben game moi, nen bo qua co y thuc
+# chu khong am tham quy ra thu khac.
+BUFF_KEY = {
+    HP_LIMIT: 'hp',
+    AP: 'ap',
+    DP_ADDITION: 'dp',
+    CRITICAL_STRIKE: 'crit',
+}
+
+
+def to_buffs(items):
+    """Gop chi so cua mot dam trang bi thanh bang buff cho mo hinh chien dau."""
+    out = {}
+    for e in items:
+        for t, v in e.stats().items():
+            k = BUFF_KEY.get(t)
+            if k is None:
+                continue
+            out[k] = out.get(k, 0.0) + v
+    return out
+
+
+def merge_buffs(a, b):
+    """Cong hai bang buff. Trang bi va the tran di chung mot bang, cong don
+    tung khoa — nho vay thu tu ap dung khong con quan trong, va ba ban cai dat
+    chac chan ra cung mot so."""
+    out = dict(a or {})
+    for k, v in (b or {}).items():
+        out[k] = out.get(k, 0.0) + v
+    return out
+
+
 # --------------------------------------------------------------- doi chieu
 # Bo ca dung chung cho ca ba ban cai dat. Python sinh ra ky vong, Lua va
 # GDScript tinh lai tung ca roi so — lech mot so la biet ngay ben nao sai.

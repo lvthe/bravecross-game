@@ -13,17 +13,20 @@
 --   bx.chapters     {}                 danh sach chuong + tien do
 --   bx.set_roster   {roster = {...}}   doi doi hinh, co kiem ten
 --   bx.fight        {chapter = n}      danh mot chuong, tra ve ket qua
+--   bx.equipment    {}                 trang bi dang co, luc chien, gia cuong hoa
+--   bx.intensify    {hero, part}       cuong hoa mot mon len mot cap
 --
 -- Mo hinh chien dau la ban Lua cua sim/battle.py. Doi chieu bang RPC thu ba:
 --   bx.selftest     {}                 danh lai cac cap tham chieu roi so
 
 local nk = require("nakama")
 local data = require("hero_data")
+local equip = require("equipment")
 
 local COLLECTION = "player"
 local KEY = "save"
 local TEAM_SIZE = 4
-local SAVE_VERSION = 4
+local SAVE_VERSION = 5
 --- Vang thuong khi qua MOT CHUONG MOI.
 local GOLD_PER_CHAPTER = 60
 --- Thang mot chuong DA QUA thi duoc it hon. Van phai co: neu chi thuong chuong
@@ -310,6 +313,9 @@ local function apply_buffs(f, b)
 	f.taken = f.taken * (1.0 - g("taken_pct"))
 	f.lifesteal = f.lifesteal + g("lifesteal")
 	f.reflect = (f.reflect or 0.0) + g("reflect")
+	-- `crit` la kenh cua TRANG BI (PropertyType CriticalStrike). The tran
+	-- khong dung khoa nay, nen them vao day khong doi con so cua the tran.
+	f.crit_chance = f.crit_chance + g("crit")
 	return f
 end
 
@@ -576,9 +582,13 @@ end
 --- co y nghia lai thanh vo nghia.
 local FOE_PLACEMENT = { 1, 1, 2, 3 }
 
+--- `equips` la bang ten tuong -> bang buff do trang bi cong vao. Cong CHUNG
+--- mot bang voi buff the tran roi ap MOT LAN: nho vay thu tu ap dung khong
+--- con quan trong, va ban Python (sim/field.py) chac chan ra dung cung so.
 local function army_battle(mine, theirs, rng, power, levels, chapter, seed_value,
-		placement, formation, formation_level)
+		placement, formation, formation_level, equips)
 	levels = levels or {}
+	equips = equips or {}
 	chapter = chapter or 0
 	placement = placement or FOE_PLACEMENT
 	local army_lv = ARMY_BASE_LEVEL + math.max(0, chapter)
@@ -601,8 +611,13 @@ local function army_battle(mine, theirs, rng, power, levels, chapter, seed_value
 				-- Cho dung quyet ca hai thu: dung o dau tren san, va an buff
 				-- nao cua the tran. Chi doi cua NGUOI CHOI co the tran.
 				local place = (t == 0 and placement[i] or FOE_PLACEMENT[i]) or 1
-				if t == 0 and formation ~= nil and formation ~= "" then
-					apply_buffs(f, formation_buffs(formation, formation_level, place))
+				if t == 0 then
+					local bf = {}
+					if formation ~= nil and formation ~= "" then
+						bf = formation_buffs(formation, formation_level, place)
+					end
+					-- Trang bi CHI cua nguoi choi: doi dich khong deo do.
+					apply_buffs(f, equip.merge_buffs(bf, equips[name]))
 				end
 				f.reach = 0.0
 				f.min_reach = 0.0
@@ -632,6 +647,153 @@ local function level_price(level)
 	return LEVEL_COST * level
 end
 
+-- ------------------------------------------------------------- trang bi
+-- Luat va cong thuc nam o server/modules/equipment.lua (chep tu ban goc).
+-- Phan o day la thu ban goc co ma game moi chua co: NGUON ra trang bi. Ban
+-- goc lay tu roi do, ghep do, cua hang, kho — chua he nao trong so do ton tai
+-- ben nay, nen tam thoi mon do roi thang tu tran ra va gan luon vao tuong.
+-- Khi nao co he vat pham va kho thi thay cho nay, khong phai thay cong thuc.
+local EQUIP_PARTS = 6
+local EQUIP_PART_NAME = { "vu khi", "giap", "day chuyen", "nhan", "giay", "o phu" }
+--- O nao ra chi so gi. Chi dung ba loai ma ban goc co bang cuong hoa rieng
+--- (Ap, HpLimit, DpAddtion) — do la dau hieu day moi la ba loai chi so chinh;
+--- chi mang chi xuat hien o thuoc tinh phu, y nhu ban goc.
+local EQUIP_MAIN = { equip.AP, equip.HP_LIMIT, equip.AP,
+		equip.DP_ADDITION, equip.DP_ADDITION, equip.HP_LIMIT }
+--- Gia tri goc o chuong 1, doi chieu voi chi so nen: HpBase 1000 x Viability,
+--- MinAp 30 x AttackCapability, DpBase 30. Tuc mot mon do dau chuong dang
+--- chung 5-10% chi so — dang ke ma khong lat keo.
+local EQUIP_BASE = {
+	[equip.AP] = 20.0,
+	[equip.HP_LIMIT] = 200.0,
+	[equip.DP_ADDITION] = 3.0,
+}
+local EQUIP_DROP_CHANCE = 0.35
+local EQUIP_MAX_INTENSIFY = 200
+local EQUIP_MAX_LEVEL = 90
+local EQUIP_MAX_QUALITY = 5
+local EQUIP_MAX_APPENDS = 3
+--- Mot diem chi mang o day la 1% — dung thang cua CriticalStrikeBase (bang so
+--- goc ghi 1 nghia la 1%), va trong so 50 cua ban goc noi dung dieu do: chi
+--- mang tinh theo phan tram chu khong theo hang nghin nhu mau.
+local EQUIP_APPEND_CRIT = 0.01
+
+--- Boc mot mon do. Dai ngau nhien 0,8-1,3 dung bang dai thuoc tinh phu cua
+--- ban goc — khong bia them mot con so thu hai cho cung mot viec.
+local function roll_equipment(rng, chapter, part)
+	local t = EQUIP_MAIN[part] or equip.AP
+	local scale = 1.0 + POWER_STEP * math.max(0, (chapter or 1) - 1)
+	local base = (EQUIP_BASE[t] or 1.0) * scale
+	local value = equip.roll_append(base, function() return rng:float() end)
+	local level = rng:int(6)
+	local it = equip.make(part, t, value, {
+		level = level,
+		quality = rng:int(3),
+	})
+	-- Thuoc tinh phu chi co tu cap 4, dung luat ban goc.
+	if level >= equip.APPEND_UNLOCK_LEVEL then
+		it.appends = { {
+			type = equip.CRITICAL_STRIKE,
+			value = equip.roll_append(EQUIP_APPEND_CRIT,
+					function() return rng:float() end),
+		} }
+	end
+	return it
+end
+
+--- Loc mot mon do doc tu ban luu. Ban luu la du lieu ben ngoai: khong tin gi
+--- ca, cai nao khong hop le thi bo han mon do chu khong sua cho lanh.
+local function sanitize_item(v)
+	if type(v) ~= "table" or type(v.main) ~= "table" then
+		return nil
+	end
+	local part = math.floor(tonumber(v.part) or 0)
+	local t = math.floor(tonumber(v.main.type) or 0)
+	local val = tonumber(v.main.value) or -1
+	if part < 1 or part > EQUIP_PARTS then return nil end
+	if equip.BUFF_KEY[t] == nil then return nil end
+	if val ~= val or val < 0 or val > 1e9 then return nil end
+	local function clamp(x, lo, hi, dflt)
+		local n = math.floor(tonumber(x) or dflt)
+		return math.max(lo, math.min(hi, n))
+	end
+	local it = equip.make(part, t, val, {
+		level = clamp(v.level, 1, EQUIP_MAX_LEVEL, 1),
+		intensify = clamp(v.intensify, 0, EQUIP_MAX_INTENSIFY, 0),
+		quality = clamp(v.quality, 1, EQUIP_MAX_QUALITY, 1),
+	})
+	if type(v.appends) == "table" then
+		for _, ap in ipairs(v.appends) do
+			local at = math.floor(tonumber(ap.type) or 0)
+			local av = tonumber(ap.value) or -1
+			if equip.BUFF_KEY[at] ~= nil and av == av and av >= 0 and av <= 1e9
+					and #it.appends < EQUIP_MAX_APPENDS then
+				it.appends[#it.appends + 1] = { type = at, value = av }
+			end
+		end
+	end
+	return it
+end
+
+--- Mon do dang deo o mot o cua mot tuong, kem chi so trong mang.
+local function slot_of(s, name, part)
+	local slots = s.equipment[name]
+	if slots == nil then
+		return nil, nil
+	end
+	for i, it in ipairs(slots) do
+		if it.part == part then
+			return it, i
+		end
+	end
+	return nil, nil
+end
+
+--- Bang ten tuong -> buff do trang bi cong vao, de dua thang cho army_battle.
+local function equip_buffs(s)
+	local out = {}
+	for name, items in pairs(s.equipment or {}) do
+		out[name] = equip.to_buffs(items)
+	end
+	return out
+end
+
+--- Thang tran thi co the roi mot mon. Chua co kho do nen quy tac gon: mon nao
+--- MANH HON thi giu, mon kia bo. Bao ro ca hai ben cho nguoi choi biet.
+local function try_drop(s, rng, chapter)
+	if #s.roster == 0 or rng:float() >= EQUIP_DROP_CHANCE then
+		return nil
+	end
+	local name = s.roster[rng:int(#s.roster)]
+	local part = rng:int(EQUIP_PARTS)
+	local it = roll_equipment(rng, chapter, part)
+	if s.equipment[name] == nil then
+		s.equipment[name] = {}
+	end
+	local cur, idx = slot_of(s, name, part)
+	local drop = {
+		hero = name,
+		part = part,
+		partName = EQUIP_PART_NAME[part],
+		item = it,
+		capacity = equip.capacity(it),
+	}
+	if cur == nil then
+		local slots = s.equipment[name]
+		slots[#slots + 1] = it
+		drop.kept = true
+	elseif equip.capacity(it) > equip.capacity(cur) then
+		s.equipment[name][idx] = it
+		drop.kept = true
+		drop.replaced = true
+		drop.oldCapacity = equip.capacity(cur)
+	else
+		drop.kept = false
+		drop.oldCapacity = equip.capacity(cur)
+	end
+	return drop
+end
+
 local function blank_save()
 	return {
 		version = SAVE_VERSION,
@@ -647,6 +809,10 @@ local function blank_save()
 		formationLevel = 0,
 		formations = { jichu = 0 },   -- ten the tran -> cap da nang
 		placement = { 1, 1, 2, 3 },
+		-- Trang bi: ten tuong -> mang toi da 6 mon, moi mon mot o khac nhau.
+		-- Luu thang thanh mang chu khong phai bang khoa so, vi qua JSON thi
+		-- khoa so bien thanh chuoi — mang thi con nguyen la mang.
+		equipment = {},
 		lastResult = "",
 		updatedAt = 0,
 	}
@@ -703,6 +869,25 @@ local function read_save(user_id)
 	end
 	s.formation = fname
 	s.formationLevel = s.formations[fname] or 0
+	-- Trang bi: chi nhan tuong co that, moi o nhieu nhat mot mon.
+	if type(v.equipment) == "table" then
+		for name, items in pairs(v.equipment) do
+			local hero = tostring(name)
+			if data.heroes[hero] ~= nil and type(items) == "table" then
+				local seen, out = {}, {}
+				for _, raw in ipairs(items) do
+					local it = sanitize_item(raw)
+					if it ~= nil and not seen[it.part] then
+						seen[it.part] = true
+						out[#out + 1] = it
+					end
+				end
+				if #out > 0 then
+					s.equipment[hero] = out
+				end
+			end
+		end
+	end
 	-- Cho dung: dung bon so, moi so 1..3.
 	if type(v.placement) == "table" then
 		local out = {}
@@ -885,11 +1070,12 @@ local function rpc_fight(context, payload)
 	-- la team_fight(), ghep cap tuong danh tay doi, khac han cai tren man hinh.
 	local out, secs, alive_a, alive_b =
 			army_battle(s.roster, theirs, rng, power, s.levels, chapter, chapter,
-					s.placement, s.formation, s.formationLevel)
+					s.placement, s.formation, s.formationLevel, equip_buffs(s))
 
 	s.battles = s.battles + 1
 	local unlocked = false
 	local reward = 0
+	local drop = nil
 	if out == 0 then
 		s.wins = s.wins + 1
 		s.lastResult = "thang"
@@ -903,6 +1089,9 @@ local function rpc_fight(context, payload)
 			reward = math.floor(GOLD_PER_CHAPTER * chapter * GOLD_REPLAY)
 		end
 		s.gold = s.gold + reward
+		-- Boc do SAU khi da xu xong tran: mon vua roi khong duoc anh huong
+		-- chinh tran vua danh.
+		drop = try_drop(s, rng, chapter)
 	elseif out == 1 then
 		s.losses = s.losses + 1
 		s.lastResult = "thua"
@@ -920,6 +1109,7 @@ local function rpc_fight(context, payload)
 		result = out,
 		unlockedNext = unlocked,
 		goldGained = reward,
+		drop = drop,
 		opponent = theirs,
 		seconds = secs,
 		survivors = { mine = alive_a, theirs = alive_b },
@@ -1023,7 +1213,28 @@ local function rpc_fieldtest(context, payload)
 		out[#out + 1] = { seed = seed, result = res, seconds = secs,
 				aliveA = a, aliveB = b }
 	end
-	return nk.json_encode({ ok = true, mine = mine, theirs = theirs, battles = out })
+	-- Nam tran nua, lan nay doi ta co trang bi. Gui ke ca bang buff da dung
+	-- de ban Python ap DUNG cai do — muc nay do phan NOI trang bi vao tran,
+	-- con cong thuc trang bi thi muc 9 da do rieng.
+	local eq = {}
+	local rng0 = Rng.new(20250910)
+	for _, name in ipairs(mine) do
+		local items = {}
+		for part = 1, 3 do
+			items[#items + 1] = roll_equipment(rng0, 6, part)
+		end
+		eq[name] = equip.to_buffs(items)
+	end
+	local out2 = {}
+	for seed = 1, 5 do
+		local rng = Rng.new(seed)
+		local res, secs, a2, b2 = army_battle(mine, theirs, rng, 1.0, {}, seed,
+				seed, nil, nil, 0, eq)
+		out2[#out2 + 1] = { seed = seed, result = res, seconds = secs,
+				aliveA = a2, aliveB = b2 }
+	end
+	return nk.json_encode({ ok = true, mine = mine, theirs = theirs,
+			battles = out, equipBattles = out2, equipBuffs = eq })
 end
 
 --- Danh sach the tran: cai nao da mo, cap may, nang tiep het bao nhieu.
@@ -1150,6 +1361,99 @@ local function rpc_set_placement(context, payload)
 	return nk.json_encode({ ok = true, placement = out, save = s })
 end
 
+--- Trang bi dang co: tung tuong, tung o, kem luc chien va gia cuong hoa ke.
+--- Client hien theo bang nay chu khong tu tinh — con so la cua may chu.
+local function rpc_equipment(context, payload)
+	if context.user_id == nil then
+		error("phai dang nhap")
+	end
+	local s = read_save(context.user_id)
+	local out = {}
+	local total = 0.0
+	for name, items in pairs(s.equipment) do
+		local list = {}
+		for _, it in ipairs(items) do
+			local cap = equip.capacity(it)
+			total = total + cap
+			list[#list + 1] = {
+				part = it.part,
+				partName = EQUIP_PART_NAME[it.part],
+				level = it.level,
+				intensify = it.intensify,
+				quality = it.quality,
+				main = it.main,
+				appends = it.appends,
+				capacity = cap,
+				buffs = equip.to_buffs({ it }),
+				nextCost = it.intensify < EQUIP_MAX_INTENSIFY
+						and math.ceil(equip.cost_to_next(it)) or nil,
+			}
+		end
+		out[name] = list
+	end
+	return nk.json_encode({
+		ok = true,
+		equipment = out,
+		buffs = equip_buffs(s),
+		capacity = total,
+		partNames = EQUIP_PART_NAME,
+		maxIntensify = EQUIP_MAX_INTENSIFY,
+		gold = s.gold,
+		save = s,
+	})
+end
+
+--- Cuong hoa mot mon len MOT cap. Gia do may chu tinh va tru — client gui gia
+--- len thi cung khong ai nghe.
+local function rpc_intensify(context, payload)
+	if context.user_id == nil then
+		error("phai dang nhap")
+	end
+	local ok, body = pcall(nk.json_decode, payload or "{}")
+	if not ok or type(body) ~= "table" then
+		error("payload khong doc duoc")
+	end
+	local name = tostring(body.hero or "")
+	local part = math.floor(tonumber(body.part) or 0)
+	if data.heroes[name] == nil then
+		error("khong co tuong " .. name)
+	end
+	if part < 1 or part > EQUIP_PARTS then
+		error("khong co o thu " .. part)
+	end
+	local s = read_save(context.user_id)
+	local it = slot_of(s, name, part)
+	if it == nil then
+		error(name .. " chua co do o o " .. (EQUIP_PART_NAME[part] or part))
+	end
+	if it.intensify >= EQUIP_MAX_INTENSIFY then
+		error("da toi cap cuong hoa cao nhat (" .. EQUIP_MAX_INTENSIFY .. ")")
+	end
+	local cost = math.ceil(equip.cost_to_next(it))
+	if s.gold < cost then
+		error("thieu vang: can " .. cost .. ", dang co " .. s.gold)
+	end
+	local before = equip.capacity(it)
+	s.gold = s.gold - cost
+	it.intensify = it.intensify + 1
+	write_save(context.user_id, s)
+	local after = equip.capacity(it)
+	return nk.json_encode({
+		ok = true,
+		hero = name,
+		part = part,
+		partName = EQUIP_PART_NAME[part],
+		intensify = it.intensify,
+		cost = cost,
+		capacity = after,
+		capacityGain = after - before,
+		nextCost = it.intensify < EQUIP_MAX_INTENSIFY
+				and math.ceil(equip.cost_to_next(it)) or nil,
+		item = it,
+		save = s,
+	})
+end
+
 nk.register_rpc(rpc_level_up, "bx.level_up")
 nk.register_rpc(rpc_set_roster, "bx.set_roster")
 nk.register_rpc(rpc_chapters, "bx.chapters")
@@ -1160,3 +1464,5 @@ nk.register_rpc(rpc_formations, "bx.formations")
 nk.register_rpc(rpc_set_formation, "bx.set_formation")
 nk.register_rpc(rpc_upgrade_formation, "bx.upgrade_formation")
 nk.register_rpc(rpc_set_placement, "bx.set_placement")
+nk.register_rpc(rpc_equipment, "bx.equipment")
+nk.register_rpc(rpc_intensify, "bx.intensify")

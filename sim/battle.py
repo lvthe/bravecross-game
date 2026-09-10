@@ -173,6 +173,9 @@ class Fighter(object):
         self.taken *= 1.0 - b.get('taken_pct', 0.0)
         self.lifesteal += b.get('lifesteal', 0.0)
         self.reflect += b.get('reflect', 0.0)
+        # `crit` la kenh cua TRANG BI (PropertyType CriticalStrike). The tran
+        # khong dung khoa nay, nen them vao day khong doi con so cua the tran.
+        self.crit_chance += b.get('crit', 0.0)
 
         self.reset()
 

@@ -153,6 +153,42 @@ static func roll_append(base_value: float, rnd: RandomNumberGenerator) -> float:
 			+ rnd.randf() * (APPEND_RANGE_MAX - APPEND_RANGE_MIN))
 
 
+## Trang bi noi vao mo hinh chien dau qua DUNG cai kenh buff ma the tran dang
+## dung (xem Fighter._init trong battle/combat.gd) — khong mo duong rieng.
+##
+## Bon loai chi so co cho tuong ung; ba loai khang he va ReducingDamage thi
+## CHUA co he tuong ung ben game moi, nen bo qua co y thuc.
+const BUFF_KEY := {
+	HP_LIMIT: "hp",
+	AP: "ap",
+	DP_ADDITION: "dp",
+	CRITICAL_STRIKE: "crit",
+}
+
+
+## Gop chi so cua mot dam trang bi thanh bang buff cho mo hinh chien dau.
+static func to_buffs(items: Array) -> Dictionary:
+	var out := {}
+	for e in items:
+		var st: Dictionary = e.stats()
+		for t in st:
+			if not BUFF_KEY.has(int(t)):
+				continue
+			var k: String = BUFF_KEY[int(t)]
+			out[k] = float(out.get(k, 0.0)) + float(st[t])
+	return out
+
+
+## Cong hai bang buff. Trang bi va the tran di chung mot bang, cong don tung
+## khoa — nho vay thu tu ap dung khong con quan trong, va ba ban cai dat chac
+## chan ra cung mot so.
+static func merge_buffs(a: Dictionary, b: Dictionary) -> Dictionary:
+	var out := a.duplicate(true)
+	for k in b:
+		out[k] = float(out.get(k, 0.0)) + float(b[k])
+	return out
+
+
 # ------------------------------------------------------------- mot mon cu the
 func append_unlocked() -> bool:
 	return level >= APPEND_UNLOCK_LEVEL

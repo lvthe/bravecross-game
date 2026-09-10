@@ -1,0 +1,221 @@
+# Kiem man trang bi ma KHONG can may chu.
+#
+#   godot --headless --path . tools/verify_equip.tscn
+#
+# Chay dang CANH chu khong phai --script: man trang bi dung autoload `Game`,
+# ma autoload chi ton tai khi co cay canh. Da thu --script truoc: Godot bao
+# "Identifier not found: Game" ngay luc bien dich.
+#
+# Man trang bi nhan du lieu qua set_data() thay vi tu goi mang, nen o day dua
+# vao mot ban tra loi bx.equipment gia roi do:
+#
+#   * moi node cua ban goc ma man nay tro toi deu co that trong bo cuc
+#     (day la hop dong voi UI_Equipment.xgg — thieu mot cai la hong)
+#   * cac nhan duoc dien dung so
+#   * o trong thi khong hien nut cuong hoa
+#   * doi o, doi tuong thi noi dung doi theo
+#   * thieu vang thi nut mo di va co loi bao truoc
+#
+# Cai KHONG do o day: mot node co that su ve ra pixel khong. Do la viec cua
+# anh chup (godot ... ui/equip.tscn -- --shot=x.png).
+extends Node
+
+const SCENE := "res://ui/equip.tscn"
+
+var n_pass := 0
+var n_fail := 0
+
+
+func _check(ok: bool, desc: String, detail: String = "") -> void:
+	if ok:
+		n_pass += 1
+		print("  dat   ", desc)
+	else:
+		n_fail += 1
+		print("  HONG  ", desc, "" if detail == "" else "  -> " + detail)
+
+
+## Mot mon do dung dang ma bx.equipment tra ve.
+func _item(part: int, prop: int, value: float, lv: int, intensify: int,
+		appends: Array = []) -> Dictionary:
+	var e := Equipment.new(part, prop, value, lv, intensify, 2)
+	for a in appends:
+		e.appends.append(a)
+	var aps: Array = []
+	for a in appends:
+		aps.append({"type": a[0], "value": a[1]})
+	return {
+		"part": part, "level": lv, "intensify": intensify, "quality": 2,
+		"main": {"type": prop, "value": value},
+		"appends": aps,
+		"capacity": e.capacity(),
+		"nextCost": ceili(Equipment.intensify_cost(intensify + 1)),
+	}
+
+
+## Doc chu cua mot node, di qua dung duong ma man hinh dung.
+##
+## Mot so nhan trong bo cuc goc khong ra Label duoc (truong "lop" cua chung la
+## chu tieng Trung mo ta), nen man hinh gan mot Label lam con. Doc thang node
+## se bao "khong phai nhan" du chu van hien dung.
+func _text_of(scr: Control, n: Control) -> String:
+	if n == null:
+		return "<khong tim thay node>"
+	var lb: Label = scr._ensure_label(n)
+	return lb.text if lb != null else "<khong phai nhan>"
+
+
+func _text(scr: Control, node_name: String) -> String:
+	return _text_of(scr, XggLayout.find_node(scr.ui, node_name))
+
+
+func _text_cls(scr: Control, cls: String) -> String:
+	return _text_of(scr, XggLayout.find_by_cls(scr.ui, cls))
+
+
+func _ready() -> void:
+	var packed := load(SCENE) as PackedScene
+	if packed == null:
+		print("khong nap duoc ", SCENE)
+		_done(1)
+		return
+	var scr := packed.instantiate() as Control
+	# Khong add vao cay: _ready() se di goi may chu. Dung tay dung bo cuc roi
+	# bom du lieu vao — dung cai duong ma bo test muon do.
+	scr._header = scr.get_node("Header")
+	scr._tips = scr.get_node("Tips")
+	scr._build()
+
+	print("=== 1. bo cuc co du node man nay tro toi ===")
+	_check(scr.ui != null, "dung duoc bo cuc UI_Equipment")
+	if scr.ui == null:
+		print("  (thieu layout_ref — chay: python ../brave-cross/work/layout.py "
+				+ "--all --out layout_ref)")
+		_done(1)
+		return
+	var missing: Array = []
+	for n in scr.NEED:
+		if XggLayout.find_node(scr.ui, n) == null:
+			missing.append(n)
+	_check(missing.is_empty(), "%d node ten cua ban goc deu co" % scr.NEED.size(),
+			str(missing))
+	var missing_cls: Array = []
+	for c in [scr.CLS_AFTER_MAIN, scr.CLS_AFTER_LEVEL, scr.CLS_AFTER_ADD,
+			scr.CLS_NOW_MAIN, scr.CLS_NOW_LEVEL, scr.CLS_NOW_ADD,
+			scr.CLS_COST, scr.CLS_MAXED]:
+		if XggLayout.find_by_cls(scr.ui, c) == null:
+			missing_cls.append(c)
+	_check(missing_cls.is_empty(), "8 nhan tra theo ten lop deu co", str(missing_cls))
+	# Ba lop ta bat phai hien, con cac bang hanh dong khac phai con an.
+	var main_ui := XggLayout.find_node(scr.ui, "lEquipmentMainUI")
+	var refine := XggLayout.find_node(scr.ui, "lEquipmentRefineUI")
+	_check(main_ui != null and main_ui.visible, "panel mon do duoc bat len")
+	_check(refine != null and not refine.visible,
+			"bang tinh luyen (chua co luat) van an")
+
+	print("\n=== 2. do vao thi hien dung so ===")
+	var data := {
+		"gold": 500,
+		"maxIntensify": 200,
+		"equipment": {
+			"MaChao": [
+				_item(1, Equipment.AP, 100.0, 5, 3,
+						[[Equipment.CRITICAL_STRIKE, 0.0123]]),
+				_item(2, Equipment.HP_LIMIT, 250.0, 2, 0),
+			],
+			"GanNing": [_item(1, Equipment.AP, 40.0, 6, 0)],
+		},
+	}
+	scr.set_data(data, ["MaChao", "GanNing"])
+	_check(scr.hero() == "MaChao", "tuong dau tien la tuong trong doi hinh", scr.hero())
+	_check(scr.part == 1, "mo o vu khi truoc")
+	var nm := _text(scr, "bmfEquipMainUIName")
+	_check(nm == "Vu khi +3", "ten o kem cap cuong hoa", nm)
+	var lv := _text(scr, "bmfEquipMainUILevel")
+	_check(lv == "Cap 5", "cap mon do", lv)
+
+	# Chi so chinh phai la con so goc, con phan cuong hoa nam o nhan "+".
+	var prop := _text(scr, "bmfEquipMainUIProperty")
+	_check(prop == "Cong 100.0", "chi so chinh", prop)
+	var add := _text(scr, "bmfEquipMainUIPropertyAdd")
+	_check(add.begins_with("+") and add != "+0.0", "phan cuong hoa cong them", add)
+
+	var cap := _text(scr, "ttfEquipMainUIFightingCapacity")
+	_check(cap.begins_with("Luc chien "), "luc chien", cap)
+
+	# Cap 5 >= 4 nen thuoc tinh phu da mo, va chi mang hien theo phan tram.
+	var ap1 := _text(scr, "ttfEquipMainUIAppendProperty1")
+	_check(ap1 == "Chi mang +1.23%", "thuoc tinh phu hien theo phan tram", ap1)
+
+	print("\n=== 3. bang cuong hoa: hien tai va sau khi cuong hoa ===")
+	_check(_text_cls(scr, scr.CLS_NOW_LEVEL) == "+3", "cap hien tai",
+			_text_cls(scr, scr.CLS_NOW_LEVEL))
+	_check(_text_cls(scr, scr.CLS_AFTER_LEVEL) == "+4", "cap sau khi cuong hoa",
+			_text_cls(scr, scr.CLS_AFTER_LEVEL))
+	var now_main := _text_cls(scr, scr.CLS_NOW_MAIN)
+	var aft_main := _text_cls(scr, scr.CLS_AFTER_MAIN)
+	_check(now_main != aft_main, "cuong hoa lam chi so tang len that",
+			"%s -> %s" % [now_main, aft_main])
+	_check(scr.cost_now() == ceili(Equipment.intensify_cost(4)),
+			"gia dung cong thuc cap ke", str(scr.cost_now()))
+	var btn := XggLayout.find_node(scr.ui, "snsEquipIntensify")
+	_check(btn != null and btn.visible, "co nut cuong hoa")
+	_check(btn != null and btn.modulate.r > 0.9, "du vang thi nut sang binh thuong")
+
+	print("\n=== 4. o trong ===")
+	scr.part = 3          # day chuyen: MaChao khong co
+	scr._refresh()
+	_check(_text(scr, "bmfEquipMainUIProperty") == "O nay chua co do",
+			"noi ro o trong", _text(scr, "bmfEquipMainUIProperty"))
+	_check(btn != null and not btn.visible, "o trong thi khong hien nut cuong hoa")
+	_check(scr.cost_now() == 0, "o trong thi khong co gia")
+
+	print("\n=== 5. hai mui ten cua ban goc duyet het 6 o ===")
+	scr.part = 1
+	var seen: Array = []
+	for i in 6:
+		seen.append(scr.part)
+		scr._step_part(1)
+	_check(seen == [1, 2, 3, 4, 5, 6], "sang phai di het 6 o roi quay lai", str(seen))
+	_check(scr.part == 1, "quay ve o dau")
+	scr._step_part(-1)
+	_check(scr.part == 6, "sang trai tu o 1 thi ve o 6", str(scr.part))
+
+	print("\n=== 6. doi tuong ===")
+	scr.part = 1
+	scr._step_hero(1)
+	_check(scr.hero() == "GanNing", "sang tuong sau", scr.hero())
+	var g_prop := _text(scr, "bmfEquipMainUIProperty")
+	_check(g_prop == "Cong 40.0", "hien do CUA tuong do", g_prop)
+	scr._step_hero(-1)
+	_check(scr.hero() == "MaChao", "quay lai tuong truoc")
+
+	print("\n=== 7. thieu vang ===")
+	var poor := data.duplicate(true)
+	poor["gold"] = 1
+	scr.set_data(poor, ["MaChao", "GanNing"])
+	scr.part = 1
+	scr._refresh()
+	_check(btn != null and btn.modulate.r < 0.9, "thieu vang thi nut mo di")
+	_check(scr._tips.text.begins_with("Thieu vang"), "bao truoc chu khong de bam roi loi",
+			scr._tips.text)
+
+	print("\n=== 8. da toi cap cao nhat ===")
+	var maxed := {
+		"gold": 999999999, "maxIntensify": 200,
+		"equipment": {"MaChao": [_item(1, Equipment.AP, 100.0, 5, 200)]},
+	}
+	scr.set_data(maxed, ["MaChao"])
+	scr.part = 1
+	scr._refresh()
+	_check(btn != null and not btn.visible, "het cap thi giau nut cuong hoa")
+	var note := XggLayout.find_by_cls(scr.ui, scr.CLS_MAXED)
+	_check(note != null and note.visible, "hien dong bao da toi cap cao nhat")
+
+	scr.free()
+	print("\n===== dat %d, hong %d =====" % [n_pass, n_fail])
+	_done(1 if n_fail > 0 else 0)
+
+
+func _done(code: int) -> void:
+	get_tree().quit(code)

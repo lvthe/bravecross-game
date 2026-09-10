@@ -36,6 +36,15 @@ static var debug_boxes := false
 ## Mac dinh bo qua 360 cai do — hien thieu anh con hon hien nham anh.
 static var use_guessed_images := false
 
+## Nghe theo co hien/an cua ban goc. MAC DINH CO.
+##
+## File HUD chua 20 LOP TRANG THAI khac nhau chong len nhau: lUITopLayer la
+## HUD trong tran that (314 node), con lHeroPKBattleUI, lArenaFight,
+## lContestFight, clBattlePause... la UI cua cac che do khac, deu an san.
+## Tat co nay di thi ca 20 lop cung ve mot luc — man hinh thanh mot dong mat
+## tuong khong lo chong nhau. Da thu va dung nhu vay.
+static var respect_visible := true
+
 const _DEBUG_COLORS := {
 	"sprite": Color(0.90, 0.45, 0.25, 0.55),
 	"scale9": Color(0.25, 0.55, 0.85, 0.55),
@@ -46,15 +55,19 @@ const _DEBUG_COLORS := {
 
 ## Loai node Godot suy tu ten lop Cocos.
 ##
-## Quy uoc ten cua ban goc: sp* sprite, s9* scale-9, ttf* chu, l*/g_*/cl* lop.
-## Ten lop Cocos that (CCSprite, CCScale9Sprite, CCLabelTTF) duoc uu tien vi
-## no chinh xac hon tien to.
+## Quy uoc ten cua ban goc: sp* sprite, s9* scale-9, ttf* chu, bmf* chu phong
+## bitmap (CCLabelBMFont), l*/g_*/cl* lop. Ten lop Cocos that (CCSprite,
+## CCScale9Sprite, CCLabelTTF) duoc uu tien vi no chinh xac hon tien to.
 static func kind_of(cls: String) -> String:
 	if cls.begins_with("CCScale9Sprite") or cls.begins_with("s9"):
 		return "scale9"
 	if cls.begins_with("CCSprite") or cls.begins_with("sp"):
 		return "sprite"
 	if cls.begins_with("CCLabel") or cls.begins_with("ttf") or cls.begins_with("sns"):
+		return "label"
+	# bmf = CCLabelBMFont. Bo sot tien to nay thi nhung o so nhu ten do, cap,
+	# chi so chinh ra Control tron va khong hien duoc chu nao.
+	if cls.begins_with("bmf"):
 		return "label"
 	return "layer"
 
@@ -146,6 +159,13 @@ static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 	node.rotation_degrees = -float(nd.get("rot", 0.0))   # Cocos quay nguoc chieu
 	node.scale = Vector2(float(nd.get("scaleX", 1.0)), float(nd.get("scaleY", 1.0)))
 	node.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Co hien/an cua ban goc. An san la BINH THUONG o day: ban goc an gan het
+	# roi de Lua bat len khi can — tren HUD man tran chi 10/629 node hien san.
+	# Ta chua port phan Lua do, nen mac dinh HIEN HET de con nhin thay khung;
+	# bat respect_visible khi da co logic bat/tat that su.
+	node.set_meta("xgg_visible", bool(nd.get("visible", true)))
+	if respect_visible and not bool(nd.get("visible", true)):
+		node.visible = false
 	node.set_meta("cls", nd.get("cls", ""))
 	node.set_meta("res", nd.get("res", ""))
 	node.set_meta("kind", kind)
@@ -226,6 +246,34 @@ static func _index(node: Node, into: Dictionary) -> void:
 			into[nm] = node
 	for c in node.get_children():
 		_index(c, into)
+
+
+## Tim node theo TEN LOP Cocos (meta "cls").
+##
+## Nhieu nhan trong bo cuc goc khong co ten instance — nguoi lam UI dat ten
+## LOP thanh chu tieng Trung mo ta cho do ("当前-主属性", "强化消耗"). Do la
+## cach duy nhat tro toi chung ma khong phai dem chi so con, thu se vo nghia
+## ngay khi bo cuc doi mot node.
+static func find_by_cls(root: Node, cls: String) -> Control:
+	if root is Control and String(root.get_meta("cls", "")) == cls:
+		return root
+	for c in root.get_children():
+		var hit := find_by_cls(c, cls)
+		if hit != null:
+			return hit
+	return null
+
+
+## Hien mot node va MOI CAP CHA cua no, tinh den `stop`.
+##
+## Ban goc an gan het roi de Lua bat len dung cai can. Bat mot node ma quen
+## cha thi no van khong hien — da dinh dung the.
+static func show_branch(node: Control, stop: Node = null) -> void:
+	var n: Node = node
+	while n != null and n != stop:
+		if n is Control:
+			(n as Control).visible = true
+		n = n.get_parent()
 
 
 ## Toa do man hinh cua mot node, cong don qua ca duong tu goc xuong.

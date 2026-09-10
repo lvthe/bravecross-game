@@ -1,0 +1,49 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://ui/equip.gd" id="1"]
+
+[node name="Equip" type="Control"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1")
+
+[node name="Bg" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.106, 0.118, 0.145, 1)
+
+[node name="Header" type="Label" parent="."]
+offset_left = 16.0
+offset_top = 10.0
+offset_right = 620.0
+offset_bottom = 42.0
+text = "..."
+
+[node name="PrevHero" type="Button" parent="."]
+offset_left = 628.0
+offset_top = 8.0
+offset_right = 664.0
+offset_bottom = 40.0
+text = "<"
+
+[node name="NextHero" type="Button" parent="."]
+offset_left = 668.0
+offset_top = 8.0
+offset_right = 704.0
+offset_bottom = 40.0
+text = ">"
+
+[node name="Back" type="Button" parent="."]
+offset_left = 830.0
+offset_top = 8.0
+offset_right = 944.0
+offset_bottom = 40.0
+text = "Ve menu"
+
+[node name="Tips" type="Label" parent="."]
+offset_left = 16.0
+offset_top = 44.0
+offset_right = 944.0
+offset_bottom = 68.0

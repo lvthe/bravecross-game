@@ -21,6 +21,7 @@ SUITES = [
     ('mo hinh chien dau',    'script', 'tools/verify_battle.gd',  False, []),
     ('bo cuc man hinh',     'script', 'tools/verify_layout.gd',  False, []),
     ('trang bi (GDScript)',  'script', 'tools/verify_equipment.gd', False, []),
+    ('man trang bi',         'scene',  'tools/verify_equip.tscn', False, []),
     ('thien vi san',         'scene',  'battle/battle.tscn',      False,
      ['--sim=300', '--mirror']),
     ('giao van mang',        'script', 'tools/verify_net.gd',     True,  []),

@@ -17,6 +17,7 @@ func _ready() -> void:
 	$Backdrop.modulate = Color(1, 1, 1) if world != null else Color(0.55, 0.55, 0.6)
 	$Buttons/Roster.pressed.connect(_on_roster)
 	$Buttons/Formation.pressed.connect(func(): Game.goto(Game.FORMATION))
+	$Buttons/Equip.pressed.connect(func(): Game.goto(Game.EQUIP))
 	$Buttons/Practice.pressed.connect(_on_practice)
 	_title.text = "BraveCross"
 	_status.text = "dang dang nhap..."

@@ -528,6 +528,50 @@ func _ready() -> void:
 	scr.part = 1
 	scr._refresh()
 
+	print("\n=== 3k. ky nang vu khi chuyen thuoc ===")
+	var wdata := {
+		"gold": 500, "concentrate": 0, "maxIntensify": 200, "maxRefine": 5,
+		"maxPurify": 20, "maxQuality": 6,
+		"weaponSkills": {"XiaoQiao": {"skill": "ShenQinRaoLiang",
+			"buffs": {"pierce": 0.1, "anger": 35.0}, "modelled": true}},
+		"equipment": {"XiaoQiao": [{
+			"part": 1, "level": 5, "intensify": 0, "quality": 2, "refine": 5,
+			"equipType": 3, "exclusive": true, "purify": 0,
+			"purifyPercent": 25.0, "nextPurifyCost": 100,
+			"main": {"type": Equipment.AP, "value": 100.0},
+			"appends": [], "capacity": 112.5, "levelCoef": 20.0,
+		}]},
+	}
+	scr.set_data(wdata, ["XiaoQiao"])
+	scr.part = 1
+	scr._refresh()
+	var wtip := _text(scr, "ttfHeroEquipmentUITips")
+	_check(wtip.begins_with("Ky nang vu khi: ShenQinRaoLiang"),
+			"hien ten ky nang vu khi", wtip)
+	_check(not wtip.contains("chua mo phong"),
+			"ky nang nay mo phong duoc nen khong ghi chu them", wtip)
+
+	# Ky nang may trang thai: van hien ten, nhung noi ro la chua mo phong.
+	var wdata2 := wdata.duplicate(true)
+	wdata2["weaponSkills"] = {"XiaoQiao": {"skill": "ShenQiangLongDan",
+			"buffs": {}, "modelled": false}}
+	scr.set_data(wdata2, ["XiaoQiao"])
+	scr.part = 1
+	scr._refresh()
+	_check(_text(scr, "ttfHeroEquipmentUITips").contains("chua mo phong"),
+			"noi ro ky nang chua mo phong", _text(scr, "ttfHeroEquipmentUITips"))
+
+	# O khac vu khi thi khong hien dong nay.
+	scr.part = 2
+	scr._refresh()
+	_check(_text(scr, "ttfHeroEquipmentUITips") == "",
+			"chi hien o o vu khi", _text(scr, "ttfHeroEquipmentUITips"))
+
+	scr.set_data(data, ["MaChao", "GanNing"])
+	scr._set_tab("intensify")
+	scr.part = 1
+	scr._refresh()
+
 	print("\n=== 4. o trong ===")
 	scr.part = 3          # day chuyen: MaChao khong co
 	scr._refresh()

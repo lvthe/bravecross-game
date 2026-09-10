@@ -110,6 +110,8 @@ var concentrate := 0
 var max_intensify := 200
 var max_refine := 5
 var max_purify := 20
+## Ky nang vu khi chuyen thuoc theo tung tuong, may chu gui ve.
+var weapon_skills: Dictionary = {}
 ## "intensify" hoac "refine" — dung hai nut cua ban goc de doi.
 var tab := "intensify"
 
@@ -498,6 +500,7 @@ func set_data(p: Dictionary, hero_list: Array = []) -> void:
 	max_intensify = int(p.get("maxIntensify", 200))
 	max_refine = int(p.get("maxRefine", 5))
 	max_purify = int(p.get("maxPurify", 20))
+	weapon_skills = p.get("weaponSkills", {})
 	var owned: Dictionary = p.get("equipment", {})
 	# Duyet theo doi hinh truoc (do la nhung tuong nguoi choi dang dung), roi
 	# them tuong nao co do ma khong trong doi hinh.
@@ -599,6 +602,19 @@ func _refresh() -> void:
 	for i in range(1, 7):
 		_label(XggLayout.find_node(ui, "ttfEquipMainUIAppendProperty%d" % i),
 				str(lines[i - 1]) if i <= lines.size() else "")
+
+	# Vu khi chuyen thuoc con cho mot ky nang RIENG cua tung tuong. Hien ten
+	# no ngay tren panel trai, ke ca khi chua mo phong duoc — nguoi choi nen
+	# thay minh dang co gi.
+	var wtip := XggLayout.find_node(ui, "ttfHeroEquipmentUITips")
+	if wtip != null:
+		var wrow = weapon_skills.get(hero())
+		if part == 1 and bool(it.get("exclusive", false)) and wrow != null:
+			var wname := str(wrow.get("skill", ""))
+			_label(wtip, "Ky nang vu khi: %s%s" % [wname,
+					"" if bool(wrow.get("modelled", false)) else "  (chua mo phong)"])
+		else:
+			_label(wtip, "")
 
 	_icon(it)
 	_refresh_intensify(it, e, mt)
@@ -1383,6 +1399,9 @@ func _show_empty() -> void:
 	if btn != null:
 		btn.visible = false
 	# Bang tinh luyen cung phai tat het theo.
+	# Dong ky nang vu khi phai xoa theo, khong thi no dinh lai khi sang o
+	# trong. Bo test bat duoc dung cho nay.
+	_label(XggLayout.find_node(ui, "ttfHeroEquipmentUITips"), "")
 	var fbtn := XggLayout.find_node(ui, "snsEquipForge")
 	if fbtn != null:
 		fbtn.visible = false

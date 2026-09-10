@@ -145,5 +145,31 @@ func _init() -> void:
 	_check(stats_bad == 0, "%-13s khop ca %d ca" % ["stats", n],
 			"%d ca lech; %s" % [stats_bad, stats_note])
 
+	print("\n=== 3. ky nang vu khi chuyen thuoc ===")
+	# Doc CUNG bang ma may chu doc (data_ref/battle_data.json), roi so voi
+	# nhung con so ban Python da tinh — chep tay o day thi khong con la doi
+	# chieu nua.
+	var btxt := FileAccess.get_file_as_string("res://data_ref/battle_data.json")
+	if btxt.is_empty():
+		_check(false, "doc duoc data_ref/battle_data.json")
+	else:
+		var bdoc = JSON.parse_string(btxt)
+		var wtab: Dictionary = bdoc.get("weaponSkills", {})
+		_check(wtab.size() == 13, "13 tuong co ky nang vu khi", str(wtab.size()))
+		var r1: Array = Equipment.weapon_skill(wtab, "XiaoQiao")
+		_check(String(r1[0]) == "ShenQinRaoLiang", "dung ten ky nang", str(r1[0]))
+		_check(bool(r1[2]), "ky nang nay mo phong duoc")
+		var b1: Dictionary = r1[1]
+		_check(is_equal_approx(float(b1.get("pierce", 0.0)), 0.10),
+				"pha giap 10%", str(b1))
+		_check(is_equal_approx(float(b1.get("anger", 0.0)), 35.0),
+				"cong no 35", str(b1))
+		var r2: Array = Equipment.weapon_skill(wtab, "ZhaoYun")
+		_check(String(r2[0]) == "ShenQiangLongDan" and not bool(r2[2]),
+				"may trang thai: co ten, chua mo phong", str(r2))
+		_check((r2[1] as Dictionary).is_empty(), "va khong bia chi so nao")
+		var r3: Array = Equipment.weapon_skill(wtab, "GuYong")
+		_check(r3[0] == null, "tuong ngoai danh sach thi khong co gi")
+
 	print("\n===== dat %d, hong %d =====" % [n_pass, n_fail])
 	quit(0 if n_fail == 0 else 1)

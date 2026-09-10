@@ -22,7 +22,8 @@ import os, re, sys, json, argparse, collections
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from tables import (Heroes, Talents, Armies, Formations, EquipSynthesis,
-                    ExclusiveEquip, EquipQuality, TableError, DEFAULT_CONFIG)
+                    ExclusiveEquip, EquipQuality, WeaponSkills,
+                    TableError, DEFAULT_CONFIG)
 from battle import Rules, match
 
 DEFAULT_OUT = os.path.normpath(os.path.join(HERE, '..', 'data_ref', 'battle_data.json'))
@@ -199,6 +200,7 @@ def write_lua(path, doc):
         ('equipSynthesis', doc['equipSynthesis']),
         ('exclusiveEquip', doc['exclusiveEquip']),
         ('equipQuality', doc['equipQuality']),
+        ('weaponSkills', doc['weaponSkills']),
     ])
     d = os.path.dirname(path)
     if d:
@@ -294,6 +296,18 @@ def main():
     qual_out = collections.OrderedDict(
         (str(k), qual.by_quality[k]) for k in sorted(qual.by_quality))
 
+    # Ky nang VU KHI chuyen thuoc, theo tung tuong. Ban goc goi mot bang
+    # khong ton tai (ExclusiveWeaponSkillConfig), anh xa that nam trong engine
+    # o map/heroex_config.xml + map/quality_config.xml.
+    wsk = WeaponSkills(a.config)
+    wsk_out = collections.OrderedDict()
+    for hero in sorted(wsk.hero_skill):
+        name, fields = wsk.fields_of(hero)
+        wsk_out[hero] = collections.OrderedDict([
+            ('skill', name),
+            ('fields', collections.OrderedDict(sorted(fields.items()))),
+        ])
+
     exc_out = collections.OrderedDict([
         ('heroes', [int(x) for x in exc.heroes]),
         ('forge', forge_out),
@@ -344,6 +358,7 @@ def main():
         ('equipSynthesis', syn_out),
         ('exclusiveEquip', exc_out),
         ('equipQuality', qual_out),
+        ('weaponSkills', wsk_out),
     ])
 
     out_dir = os.path.dirname(a.out)

@@ -339,6 +339,10 @@ local function apply_buffs(f, b)
 	f.crit_mult = f.crit_mult + g("crit_mult")
 	f.taken_skill = (f.taken_skill or 0.0) + g("taken_skill")
 	f.immune_normal = (f.immune_normal or 0.0) + g("immune_normal")
+	-- Ba kenh cua KY NANG VU KHI chuyen thuoc.
+	f.pierce = f.pierce + g("pierce")
+	f.anger_gain = f.anger_gain + g("anger")
+	f.interval = f.interval * math.max(0.1, 1.0 + g("interval_pct"))
 	return f
 end
 
@@ -815,10 +819,23 @@ local function slot_of(s, name, part)
 end
 
 --- Bang ten tuong -> buff do trang bi cong vao, de dua thang cho army_battle.
+--- Ky nang VU KHI chuyen thuoc cua mot tuong, neu tuong do dang deo vu khi
+--- chuyen thuoc (o 1). Tra ve (ten, buff, co mo phong khong).
+local function weapon_skill_of(s, hero_name)
+	local w = slot_of(s, hero_name, 1)
+	if w == nil or not w.exclusive then
+		return nil, {}, false
+	end
+	return equip.weapon_skill(data.weaponSkills, hero_name)
+end
+
 local function equip_buffs(s)
 	local out = {}
 	for name, items in pairs(s.equipment or {}) do
-		out[name] = equip.to_buffs(items)
+		local b = equip.to_buffs(items)
+		-- Vu khi chuyen thuoc con cho mot ky nang RIENG cua tung tuong.
+		local _, wb = weapon_skill_of(s, name)
+		out[name] = equip.merge_buffs(b, wb)
 	end
 	return out
 end
@@ -1512,6 +1529,19 @@ local function synthesis_info(s, hero_name, it)
 	}
 end
 
+--- Ky nang vu khi cua tung tuong dang deo do chuyen thuoc. Ke ca ky nang
+--- CHUA mo phong duoc — nguoi choi van nen thay minh dang co gi.
+local function weapon_skill_report(s)
+	local out = {}
+	for name, _ in pairs(s.equipment or {}) do
+		local sk, buffs, modelled = weapon_skill_of(s, name)
+		if sk ~= nil then
+			out[name] = { skill = sk, buffs = buffs, modelled = modelled }
+		end
+	end
+	return out
+end
+
 --- Trang bi dang co: tung tuong, tung o, kem luc chien va gia cuong hoa ke.
 --- Client hien theo bang nay chu khong tu tinh — con so la cua may chu.
 local function rpc_equipment(context, payload)
@@ -1572,6 +1602,7 @@ local function rpc_equipment(context, payload)
 		equipment = out,
 		buffs = equip_buffs(s),
 		capacity = total,
+		weaponSkills = weapon_skill_report(s),
 		partNames = EQUIP_PART_NAME,
 		maxIntensify = EQUIP_MAX_INTENSIFY,
 		maxRefine = equip.MAX_REFINE_LEVEL,

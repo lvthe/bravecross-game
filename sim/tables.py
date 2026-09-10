@@ -21,7 +21,7 @@ Bang tuong KHONG chua chi so tuyet doi. No chua BAC:
 Chi so tuyet doi nam o GameHeroFightPropertyConfig: HpBase 1000, MinApBase 30,
 MaxApBase 120, DpBase 30, AttackInterval 2.5.
 """
-import os, json, collections
+import os, re, json, collections
 
 # Mac dinh tro sang repo dich nguoc nam canh. Du lieu do CO BAN QUYEN va khong
 # nam trong repo nay.
@@ -271,6 +271,70 @@ class EquipSynthesis(object):
 
     def __len__(self):
         return len(self.by_key)
+
+
+class WeaponSkills(object):
+    """Ky nang VU KHI chuyen thuoc, theo tung tuong.
+
+    Ban goc co goi GetExclusiveWeaponSkillConfig(heroID) nhung bang do KHONG
+    ton tai trong ban phat hanh — ham luon tra nil. Anh xa that nam trong
+    engine, o hai file map/:
+
+        heroex_config.xml    <ten>Exclus -> lsSkill  (13 tuong)
+        quality_config.xml   dinh nghia tung ky nang, muc <exclusive>
+
+    Nhieu ky nang la MAY TRANG THAI cua engine (phan don, hoi sinh, gay
+    debuff) — khong quy ra chi so duoc. O day chi doc ten va cac truong SO;
+    ben nao dung duoc thi dung, con lai giu ten de con biet.
+    """
+
+    SKILL_DIR = os.path.join('vn', 'decrypted', 'assets', 'map')
+
+    def __init__(self, config_dir=DEFAULT_CONFIG):
+        # map/ nam canh config/share/, lui hai bac.
+        root = os.path.dirname(os.path.dirname(config_dir))
+        self.hero_skill = {}
+        self.skill_fields = {}
+        hx = self._read(os.path.join(root, 'map', 'heroex_config.xml'))
+        for m in re.finditer(r'<lsSkill>(.*?)</lsSkill>', hx, re.S):
+            names = re.findall(r'<item>(\w+)</item>', m.group(1))
+            before = re.findall(r'<sName>(\w+)</sName>', hx[:m.start()])
+            var = before[-1] if before else ''
+            if var.endswith('Exclus') and names:
+                self.hero_skill[var[:-len('Exclus')]] = names[0]
+
+        qc = self._read(os.path.join(root, 'map', 'quality_config.xml'))
+        for blk in re.findall(r'<plug>(.*?)</plug>', qc, re.S):
+            m = re.search(r'<sName>(\w+)</sName>', blk)
+            if not m:
+                continue
+            fields = collections.OrderedDict()
+            for k, v in re.findall(r'<([a-zA-Z]\w*)>([^<]*)</\1>', blk):
+                v = v.strip()
+                if k in ('sName',) or not v:
+                    continue
+                try:
+                    fields[k] = float(v)
+                except ValueError:
+                    pass
+            self.skill_fields[m.group(1)] = fields
+
+    @staticmethod
+    def _read(path):
+        raw = open(path, 'rb').read()
+        for enc in ('utf-8', 'gbk', 'gb18030'):
+            try:
+                return raw.decode(enc)
+            except UnicodeDecodeError:
+                continue
+        return raw.decode('utf-8', 'replace')
+
+    def fields_of(self, hero_sprite):
+        name = self.hero_skill.get(hero_sprite)
+        return name, self.skill_fields.get(name, {})
+
+    def __len__(self):
+        return len(self.hero_skill)
 
 
 class EquipQuality(object):

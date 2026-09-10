@@ -347,6 +347,43 @@ bf2 = E.to_buffs([E.Equipment(1, (E.AP, 100.0), level=5, quality=2,
 check(close(bf2.get('crit', 0.0), 0.05),
       '5 diem phan tram -> 0.05 phan so', bf2)
 
+print('\n=== 6g. ky nang vu khi chuyen thuoc ===')
+WTAB = {
+    'XiaoQiao': {'skill': 'ShenQinRaoLiang',
+                 'fields': {'fPiercingByLevel': 10.0, 'fAddFuryForHero': 35.0,
+                            'fBonusPerHit': 1.0}},
+    'PoJun': {'skill': 'BingJianTianShu',
+              'fields': {'fAddAttackSpeed': 0.25, 'fAddCritDamageDouble': 1.0,
+                         'bNoFuryReduce': 1.0}},
+    'GuanYu': {'skill': 'ShenMaoQingLongYanYue',
+               'fields': {'fAddHitDrainsRate': 2.5, 'fHpUnderPercent': 0.2}},
+    'ZhaoYun': {'skill': 'ShenQiangLongDan',
+                'fields': {'nCounterOdds': 22.0}},
+}
+n, b, m = E.weapon_skill(WTAB, 'XiaoQiao')
+check(n == 'ShenQinRaoLiang' and m, 'doc dung ten va co mo phong', (n, m))
+check(close(b.get('pierce', 0), 0.10), 'fPiercingByLevel 10 -> 10% pha giap', b)
+check(close(b.get('anger', 0), 35.0), 'fAddFuryForHero -> cong no', b)
+check('fBonusPerHit' not in str(b), 'truong khong hieu thi bo, khong doan bua')
+
+n, b, m = E.weapon_skill(WTAB, 'PoJun')
+check(close(b.get('interval_pct', 0), -0.25),
+      'danh nhanh hon 25% = khoang cach ngan lai 25%', b)
+check(close(b.get('crit_mult', 0), 1.0), 'cong he so sat thuong chi mang', b)
+
+# Hai ky nang co DIEU KIEN / NHIP: co ten nhung khong quy ra chi so.
+n, b, m = E.weapon_skill(WTAB, 'GuanYu')
+check(n == 'ShenMaoQingLongYanYue' and not m and not b,
+      'hut mau co dieu kien duoi 20% mau — khong ap vo dieu kien', (n, b, m))
+n, b, m = E.weapon_skill(WTAB, 'ZhaoYun')
+check(n == 'ShenQiangLongDan' and not m and not b,
+      'phan don la may trang thai — co ten, khong bia chi so', (n, b, m))
+
+check(E.weapon_skill(WTAB, 'GuYong') == (None, {}, False),
+      'tuong ngoai danh sach thi khong co gi')
+check(E.weapon_skill(None, 'XiaoQiao') == (None, {}, False),
+      'khong co bang thi cung khong no')
+
 print('\n=== 7. chi phi cong don ===')
 w2 = E.Equipment(1, (E.AP, 100.0), intensify=0)
 step = sum(E.intensify_cost(i) for i in range(1, 11))

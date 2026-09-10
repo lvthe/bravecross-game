@@ -277,6 +277,72 @@ EXCLUSIVE_SKILL = {
 }
 
 
+# Ky nang VU KHI chuyen thuoc, rieng tung tuong (o 1).
+#
+# Ban goc CO goi GetExclusiveWeaponSkillConfig(heroID), nhung bang do khong
+# ton tai trong ban phat hanh — ham luon tra nil. Anh xa that nam ben engine:
+# map/heroex_config.xml (<ten>Exclus -> lsSkill) va map/quality_config.xml
+# (dinh nghia tung ky nang). Ca hai da duoc xuat ra `weaponSkills`.
+#
+# Nhieu ky nang la MAY TRANG THAI cua engine — phan don, hoi sinh, gay debuff,
+# doi hinh dang — khong quy ra chi so duoc. O day chi lay nhung truong SO ma
+# mo hinh chien dau ben nay CO cho nhan; con lai giu ten de biet la co, va
+# danh dau modelled = False chu khong bia hanh vi.
+WEAPON_SKILL_FIELD = {
+    # truong cua ban goc -> (kenh buff, he so doi don vi)
+    'fPiercingByLevel': ('pierce', 0.01),        # 10 -> 10% pha giap
+    'fAddFuryForHero': ('anger', 1.0),           # cong thang vao no moi don
+    'fAddAttackSpeed': ('interval_pct', -1.0),   # nhanh hon = khoang cach ngan lai
+    'fAddAttackIntervalPercent': ('interval_pct', 1.0),
+    'fAddCritDamageDouble': ('crit_mult', 1.0),
+}
+
+# CHI nhung truong duoc liet ke o day moi duoc dung. Khong lay bua moi truong
+# so trong bang: nhieu truong co DIEU KIEN hoac NHIP di kem ma mo hinh chien
+# dau ben nay khong co cho, ap thang vao la sai han:
+#
+#   ShenMaoQingLongYanYue  fAddHitDrainsRate 2.5 — nhung chi khi mau duoi 20%
+#                          (fHpUnderPercent). Ap vo dieu kien la hut mau 250%.
+#   YueShiYinSuoJinLing    fAddFury 13 moi 5 GIAY (fAddFuryInterval), khong
+#                          phai moi don danh — mo hinh o day tinh no theo don.
+#   ShenQiangLongDan,      phan don / hoi sinh / gay debuff / doi hinh dang:
+#   ShenJiFangTian,        deu la may trang thai cua engine.
+#   FengBaoZhiLi, ...
+#
+# Nhung ky nang do van duoc GHI TEN tren mon do — nguoi choi thay minh co gi —
+# chi la chua mo phong, va bao ro nhu vay.
+WEAPON_SKILL_USE = {
+    'ShenQinRaoLiang': ('fPiercingByLevel', 'fAddFuryForHero'),
+    'BingJianTianShu': ('fAddAttackSpeed', 'fAddCritDamageDouble'),
+    'BingJianGongShu': ('fAddAttackIntervalPercent',),
+}
+
+
+def weapon_skill(table, hero_sprite):
+    """(ten ky nang, bang buff, co mo phong duoc khong).
+
+    `table` la khoi `weaponSkills` da xuat. Tuong khong co do rieng thi tra
+    (None, {}, False). Co ten ma chua mo phong duoc thi tra (ten, {}, False).
+    """
+    row = (table or {}).get(str(hero_sprite))
+    if row is None:
+        return None, {}, False
+    name = row.get('skill')
+    use = WEAPON_SKILL_USE.get(name)
+    if not use:
+        return name, {}, False
+    fields = row.get('fields') or {}
+    buffs = {}
+    for k in use:
+        if k not in fields:
+            continue
+        pair = WEAPON_SKILL_FIELD.get(k)
+        if pair is None:
+            continue
+        buffs[pair[0]] = buffs.get(pair[0], 0.0) + float(fields[k]) * pair[1]
+    return name, buffs, bool(buffs)
+
+
 def exclusive_percent(purify_table, part, purify_level):
     """Phan tram cong vao chi so chinh cua do CHUYEN THUOC.
 

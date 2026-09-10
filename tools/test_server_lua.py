@@ -494,6 +494,26 @@ def main():
     check(not bad_stats, '%-13s khop ca %d ca' % ('stats', len(cases)),
           '%d ca lech; %s' % (len(bad_stats), bad_stats[0] if bad_stats else ''))
 
+    # Ky nang vu khi: ba ban phai doc cung mot bang va ra cung mot ket qua.
+    wtab = L.eval('(require("hero_data"))')['weaponSkills']
+    import json as _j2
+    py_tab = _j2.load(io.open(os.path.join(ROOT, 'data_ref', 'battle_data.json'),
+                              encoding='utf-8'))['weaponSkills']
+    bad_w = []
+    for hero in ('XiaoQiao', 'PoJun', 'BingJianGongShu', 'ZhaoYun', 'GuYong',
+                 'SunShangXiang', 'GuanYu'):
+        lname, lbuf, lmod = LE.weapon_skill(wtab, hero)
+        pname, pbuf, pmod = EQ.weapon_skill(py_tab, hero)
+        lb = dict(lbuf) if lbuf is not None else {}
+        same = ((lname or None) == (pname or None) and bool(lmod) == bool(pmod)
+                and set(lb) == set(pbuf)
+                and all(abs(float(lb[k]) - pbuf[k]) < 1e-9 for k in pbuf))
+        if not same:
+            bad_w.append('%s: Lua (%s,%s,%s) vs Python (%s,%s,%s)'
+                         % (hero, lname, lb, lmod, pname, pbuf, pmod))
+    check(not bad_w, 'ky nang vu khi: Lua khop Python',
+          bad_w[0] if bad_w else '')
+
     print('\n=== 10. TRANG BI: ban luu va RPC ===')
     u = L.table(user_id='u-trangbi')
     e0 = rpcs['bx.equipment'](u, None)
@@ -1046,6 +1066,70 @@ def main():
         except lupa.LuaError:
             pass
         check(ok, 'may chu tu choi khi tuong chua du cap')
+
+        print('\n=== 10j. ky nang vu khi chuyen thuoc ===')
+        # XiaoQiao co ky nang ShenQinRaoLiang, va no la mot trong ba ky nang
+        # quy duoc ve chi so (pha giap + no).
+        wk = 'u-ky-nang-vu-khi'
+
+        def wsave(exclusive):
+            return L.table(
+                version=9, gold=100000, concentrate=100000,
+                levels=L.table(XiaoQiao=40),
+                roster=L.table('XiaoQiao', 'MaChao', 'LvBu', 'GanNing'),
+                equipment=L.table(XiaoQiao=L.table(
+                    L.table(part=1, level=5, intensify=0, quality=2, refine=5,
+                            equipType=3, exclusive=exclusive, purify=0,
+                            main=L.table(type=20, value=100.0)))))
+
+        # Chua ren thi khong co ky nang vu khi nao ca.
+        env['store'][wk + '/player/save'] = wsave(False)
+        wc = L.table(user_id=wk)
+        e13 = rpcs['bx.equipment'](wc, None)
+        check(len(dict(e13['weaponSkills'])) == 0,
+              'vu khi thuong thi khong co ky nang rieng')
+
+        # Ren xong thi co.
+        env['store'][wk + '/player/save'] = wsave(True)
+        e14 = rpcs['bx.equipment'](wc, None)
+        wsk = dict(e14['weaponSkills'])
+        check('XiaoQiao' in wsk, 'vu khi chuyen thuoc thi co ky nang rieng',
+              list(wsk))
+        row = wsk['XiaoQiao']
+        check(str(row['skill']) == 'ShenQinRaoLiang', 'dung ky nang cua tuong do',
+              row['skill'])
+        check(bool(row['modelled']), 'ky nang nay mo phong duoc')
+        bf13 = dict(row['buffs'])
+        check(abs(float(bf13.get('pierce', 0)) - 0.10) < 1e-9,
+              'fPiercingByLevel 10 -> pha giap 10%', bf13)
+        check(abs(float(bf13.get('anger', 0)) - 35.0) < 1e-9,
+              'fAddFuryForHero 35 -> cong no 35', bf13)
+
+        # Ky nang may trang thai thi CO TEN nhung khong mo phong.
+        env['store']['u-ky-nang-may/player/save'] = L.table(
+            version=9, gold=100000, levels=L.table(ZhaoYun=40),
+            equipment=L.table(ZhaoYun=L.table(
+                L.table(part=1, level=5, intensify=0, quality=2, refine=5,
+                        equipType=1, exclusive=True, purify=0,
+                        main=L.table(type=20, value=100.0)))))
+        e15 = rpcs['bx.equipment'](L.table(user_id='u-ky-nang-may'), None)
+        row2 = dict(e15['weaponSkills'])['ZhaoYun']
+        check(str(row2['skill']) == 'ShenQiangLongDan', 'ghi ten ky nang',
+              row2['skill'])
+        check(not bool(row2['modelled']),
+              'phan don la may trang thai — co ten nhung chua mo phong')
+        check(len(dict(row2['buffs'])) == 0, 'va khong bia ra chi so nao')
+
+        # Tuong khong nam trong 13 tuong do thi khong co gi.
+        env['store']['u-khong-ky-nang/player/save'] = L.table(
+            version=9, gold=100000, levels=L.table(GuYong=40),
+            equipment=L.table(GuYong=L.table(
+                L.table(part=1, level=5, intensify=0, quality=2, refine=5,
+                        equipType=1, exclusive=True, purify=0,
+                        main=L.table(type=20, value=100.0)))))
+        e16 = rpcs['bx.equipment'](L.table(user_id='u-khong-ky-nang'), None)
+        check(len(dict(e16['weaponSkills'])) == 0,
+              'tuong ngoai 13 tuong thi khong co ky nang vu khi')
 
 
     print('\n=== 10d. ban luu ban thi bo mon do, khong sua cho lanh ===')

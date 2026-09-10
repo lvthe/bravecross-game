@@ -200,6 +200,10 @@ class Fighter extends RefCounted:
 			crit_mult += float(buffs.get("crit_mult", 0.0))
 			taken_skill += float(buffs.get("taken_skill", 0.0))
 			immune_normal += float(buffs.get("immune_normal", 0.0))
+			# Ba kenh cua KY NANG VU KHI chuyen thuoc.
+			pierce += float(buffs.get("pierce", 0.0))
+			anger_gain += float(buffs.get("anger", 0.0))
+			interval *= maxf(0.1, 1.0 + float(buffs.get("interval_pct", 0.0)))
 		reset()
 
 	func reset() -> void:

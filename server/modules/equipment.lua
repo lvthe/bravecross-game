@@ -316,6 +316,53 @@ M.EXCLUSIVE_SKILL = {
 	[5] = { "ZhuanShuJieZhi", "crit_mult", 0.25 },
 }
 
+-- Ky nang VU KHI chuyen thuoc, rieng tung tuong (o 1).
+--
+-- Ban goc CO goi GetExclusiveWeaponSkillConfig(heroID) nhung bang do khong
+-- ton tai trong ban phat hanh. Anh xa that nam ben engine (heroex_config.xml
+-- + quality_config.xml), da xuat ra khoi `weaponSkills`.
+M.WEAPON_SKILL_FIELD = {
+	fPiercingByLevel = { "pierce", 0.01 },
+	fAddFuryForHero = { "anger", 1.0 },
+	fAddAttackSpeed = { "interval_pct", -1.0 },
+	fAddAttackIntervalPercent = { "interval_pct", 1.0 },
+	fAddCritDamageDouble = { "crit_mult", 1.0 },
+}
+
+-- CHI nhung truong liet ke o day moi duoc dung: nhieu truong khac co DIEU
+-- KIEN hoac NHIP di kem ma mo hinh chien dau khong co cho (hut mau chi khi
+-- duoi 20% mau, cong no moi 5 giay, phan don, hoi sinh...). Nhung ky nang do
+-- van duoc ghi TEN tren mon do, chi la chua mo phong.
+M.WEAPON_SKILL_USE = {
+	ShenQinRaoLiang = { "fPiercingByLevel", "fAddFuryForHero" },
+	BingJianTianShu = { "fAddAttackSpeed", "fAddCritDamageDouble" },
+	BingJianGongShu = { "fAddAttackIntervalPercent" },
+}
+
+--- (ten ky nang, bang buff, co mo phong duoc khong).
+function M.weapon_skill(tbl, hero_sprite)
+	local row = tbl and tbl[tostring(hero_sprite)]
+	if row == nil then
+		return nil, {}, false
+	end
+	local name = row.skill
+	local use = M.WEAPON_SKILL_USE[name]
+	if use == nil then
+		return name, {}, false
+	end
+	local buffs = {}
+	local any = false
+	for _, k in ipairs(use) do
+		local v = row.fields and row.fields[k]
+		local pair = M.WEAPON_SKILL_FIELD[k]
+		if v ~= nil and pair ~= nil then
+			buffs[pair[1]] = (buffs[pair[1]] or 0.0) + v * pair[2]
+			any = true
+		end
+	end
+	return name, buffs, any
+end
+
 local function purify_rows(tbl, part)
 	if tbl == nil or tbl.purify == nil then
 		return nil

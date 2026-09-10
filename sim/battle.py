@@ -184,6 +184,10 @@ class Fighter(object):
         self.crit_mult += b.get('crit_mult', 0.0)
         self.taken_skill += b.get('taken_skill', 0.0)
         self.immune_normal += b.get('immune_normal', 0.0)
+        # Ba kenh cua KY NANG VU KHI chuyen thuoc.
+        self.pierce += b.get('pierce', 0.0)
+        self.anger_gain += b.get('anger', 0.0)
+        self.interval *= max(0.1, 1.0 + b.get('interval_pct', 0.0))
 
         self.reset()
 

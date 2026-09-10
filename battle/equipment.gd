@@ -126,6 +126,48 @@ static func main_property_val(prop_type: int, level_coef: float,
 	return 0.0
 
 
+## Ky nang VU KHI chuyen thuoc, rieng tung tuong (o 1).
+##
+## Ban goc CO goi GetExclusiveWeaponSkillConfig(heroID) nhung bang do khong
+## ton tai trong ban phat hanh. Anh xa that nam ben engine, da xuat ra khoi
+## `weaponSkills` cua bo so lieu.
+const WEAPON_SKILL_FIELD := {
+	"fPiercingByLevel": ["pierce", 0.01],
+	"fAddFuryForHero": ["anger", 1.0],
+	"fAddAttackSpeed": ["interval_pct", -1.0],
+	"fAddAttackIntervalPercent": ["interval_pct", 1.0],
+	"fAddCritDamageDouble": ["crit_mult", 1.0],
+}
+
+## CHI nhung truong liet ke o day moi duoc dung — xem chu thich ben
+## sim/equipment.py cho ly do tung ky nang bi bo.
+const WEAPON_SKILL_USE := {
+	"ShenQinRaoLiang": ["fPiercingByLevel", "fAddFuryForHero"],
+	"BingJianTianShu": ["fAddAttackSpeed", "fAddCritDamageDouble"],
+	"BingJianGongShu": ["fAddAttackIntervalPercent"],
+}
+
+
+## [ten ky nang, bang buff, co mo phong duoc khong].
+static func weapon_skill(table: Dictionary, hero_sprite: String) -> Array:
+	if not table.has(hero_sprite):
+		return [null, {}, false]
+	var row: Dictionary = table[hero_sprite]
+	var name = row.get("skill")
+	if not WEAPON_SKILL_USE.has(name):
+		return [name, {}, false]
+	var fields: Dictionary = row.get("fields", {})
+	var buffs := {}
+	var any := false
+	for k in WEAPON_SKILL_USE[name]:
+		if not fields.has(k) or not WEAPON_SKILL_FIELD.has(k):
+			continue
+		var pair: Array = WEAPON_SKILL_FIELD[k]
+		buffs[pair[0]] = float(buffs.get(pair[0], 0.0)) + float(fields[k]) * float(pair[1])
+		any = true
+	return [name, buffs, any]
+
+
 ## Nang pham chat (PromoteQualityEquipment). Bang: KDBGameCommonConfig /
 ## GameEquipQualityPromotionConfig, khoa la PHAM DICH (2..6).
 ##

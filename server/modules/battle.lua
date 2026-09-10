@@ -17,6 +17,7 @@
 --   bx.intensify    {hero, part}       cuong hoa mot mon len mot cap
 --   bx.refine       {hero, part}       tinh luyen mot cap, ton tinh hoa
 --   bx.synthesize   {hero, part}       ghep do len mot cap, ton vang
+--   bx.forge_exclusive {hero, part}    ren thanh do chuyen thuoc (can tay bac 5)
 --
 -- Mo hinh chien dau la ban Lua cua sim/battle.py. Doi chieu bang RPC thu ba:
 --   bx.selftest     {}                 danh lai cac cap tham chieu roi so
@@ -28,7 +29,7 @@ local equip = require("equipment")
 local COLLECTION = "player"
 local KEY = "save"
 local TEAM_SIZE = 4
-local SAVE_VERSION = 7
+local SAVE_VERSION = 8
 --- Vang thuong khi qua MOT CHUONG MOI.
 local GOLD_PER_CHAPTER = 60
 --- Thang mot chuong DA QUA thi duoc it hon. Van phai co: neu chi thuong chuong
@@ -157,6 +158,9 @@ local function fighter(name, power, level)
 		pierce = m(e, "pierce", 0.0),        -- bo qua bao nhieu phan giap
 		lifesteal = m(e, "lifesteal", 0.0),
 		reflect = 0.0,               -- doi lai bao nhieu sat thuong
+		-- Hai kenh cua DO CHUYEN THUOC.
+		taken_skill = 0.0,
+		immune_normal = 0.0,
 	}
 end
 
@@ -178,6 +182,18 @@ local function strike(a, b, rng)
 	end
 	-- Thiet bich: he so nay thuoc ve BEN CHIU, khong phai ben danh.
 	dmg = dmg * b.taken
+	-- Do chuyen thuoc: giay chiu it don KY NANG hon (ZhuanShuXieZi -15%).
+	if skill and (b.taken_skill or 0.0) ~= 0.0 then
+		dmg = dmg * math.max(0.0, 1.0 + b.taken_skill)
+	end
+	-- Giap chuyen thuoc: xac suat mien han mot don THUONG (ZhuanShuYiFu 10%).
+	-- Chi boc so khi CO chi so nay — de tran khong co do chuyen thuoc van
+	-- dung y nguyen chuoi ngau nhien cu.
+	if (not skill) and (b.immune_normal or 0.0) > 0.0 then
+		if rng:float() < b.immune_normal then
+			return
+		end
+	end
 	if rng:float() < a.crit_chance then
 		dmg = dmg * a.crit_mult
 	end
@@ -318,6 +334,9 @@ local function apply_buffs(f, b)
 	-- `crit` la kenh cua TRANG BI (PropertyType CriticalStrike). The tran
 	-- khong dung khoa nay, nen them vao day khong doi con so cua the tran.
 	f.crit_chance = f.crit_chance + g("crit")
+	f.crit_mult = f.crit_mult + g("crit_mult")
+	f.taken_skill = (f.taken_skill or 0.0) + g("taken_skill")
+	f.immune_normal = (f.immune_normal or 0.0) + g("immune_normal")
 	return f
 end
 
@@ -656,17 +675,21 @@ end
 -- ben nay, nen tam thoi mon do roi thang tu tran ra va gan luon vao tuong.
 -- Khi nao co he vat pham va kho thi thay cho nay, khong phai thay cong thuc.
 local EQUIP_PARTS = 6
-local EQUIP_PART_NAME = { "vu khi", "giap", "day chuyen", "nhan", "giay", "o phu" }
+--- Thu tu o dung theo HeroEquipPart cua ban goc (Protocol.lua:305):
+--- 1 vu khi, 2 giap, 3 giay, 4 day chuyen, 5 nhan, 6 o phu (ngua/canh).
+local EQUIP_PART_NAME = { "vu khi", "giap", "giay", "day chuyen", "nhan", "o phu" }
 --- O cua game moi -> LOAI O cua ban goc (Protocol.lua:322). Ban goc co 5 loai
 --- co bang ghep do (vu khi, giap, giay, day chuyen, nhan); o thu 6 ("o phu")
 --- chua co bang rieng nen tam dung bang cua nhan.
 local EQUIP_CATEGORY = {
 	equip.EQUIP_CATEGORY_WEAPON,     -- 1 vu khi
 	equip.EQUIP_CATEGORY_ARMOR,      -- 2 giap
-	equip.EQUIP_CATEGORY_NECKLACE,   -- 3 day chuyen
-	equip.EQUIP_CATEGORY_RING,       -- 4 nhan
-	equip.EQUIP_CATEGORY_SHOES,      -- 5 giay
-	equip.EQUIP_CATEGORY_RING,       -- 6 o phu
+	equip.EQUIP_CATEGORY_SHOES,      -- 3 giay
+	equip.EQUIP_CATEGORY_NECKLACE,   -- 4 day chuyen
+	equip.EQUIP_CATEGORY_RING,       -- 5 nhan
+	equip.EQUIP_CATEGORY_RING,       -- 6 o phu: ban goc la ngua/canh, ma hai
+	                                 -- loai do khong co bang ghep rieng nen
+	                                 -- tam dung bang cua nhan
 }
 local EQUIP_DROP_CHANCE = 0.35
 local EQUIP_MAX_INTENSIFY = 200
@@ -737,7 +760,14 @@ local function sanitize_item(v)
 		intensify = clamp(v.intensify, 0, EQUIP_MAX_INTENSIFY, 0),
 		quality = clamp(v.quality, 1, EQUIP_MAX_QUALITY, 1),
 		refine = clamp(v.refine, 0, equip.MAX_REFINE_LEVEL, 0),
+		exclusive = v.exclusive == true,
+		purify = clamp(v.purify, 0, equip.MAX_PURIFY_LEVEL, 0),
 	})
+	-- Phan tram cua duong tay tinh LAI tu bang, khong tin so trong ban luu.
+	if it.exclusive then
+		it.purifyPercent = equip.exclusive_percent(data.exclusiveEquip,
+				it.part, it.purify)
+	end
 	if type(v.appends) == "table" then
 		for _, ap in ipairs(v.appends) do
 			local at = math.floor(tonumber(ap.type) or 0)
@@ -1391,6 +1421,25 @@ local function rpc_set_placement(context, payload)
 	return nk.json_encode({ ok = true, placement = out, save = s })
 end
 
+--- Ren len do chuyen thuoc duoc chua: dieu kien va nguyen lieu ban goc doi.
+--- nil neu mon do da la chuyen thuoc roi.
+local function exclusive_info(hero_name, it)
+	if it.exclusive then
+		return nil
+	end
+	local row = data.heroes[hero_name]
+	local hero_id = row and math.floor(row.HeroID or 0) or 0
+	local ok, why = equip.exclusive_ready(data.exclusiveEquip, hero_id,
+			it.part, it.refine or 0)
+	local forge = equip.exclusive_forge_row(data.exclusiveEquip, hero_id, it.part)
+	return {
+		ready = ok,
+		reason = why,
+		needRefine = forge and forge.purifyLevel or nil,
+		materials = forge and forge.materials or nil,
+	}
+end
+
 --- Buoc ghep ke tiep cua mot mon: can cap tuong bao nhieu, ton bao nhieu
 --- vang, va co ghep duoc chua. nil neu da het cap hoac khong co cong thuc.
 local function synthesis_info(s, hero_name, it)
@@ -1447,6 +1496,15 @@ local function rpc_equipment(context, payload)
 				mainValue = equip.main_value(it),
 				equipType = it.equipType or 0,
 				synthesis = synthesis_info(s, name, it),
+				exclusive = it.exclusive == true,
+				purify = it.purify or 0,
+				purifyPercent = it.purifyPercent or 0.0,
+				bonusPercent = equip.bonus_percent(it),
+				nextPurifyCost = (it.exclusive
+						and it.purify < equip.MAX_PURIFY_LEVEL)
+						and equip.exclusive_cost(data.exclusiveEquip, it.part,
+								(it.purify or 0) + 1) or nil,
+				exclusiveReady = exclusive_info(name, it),
 				nextCost = it.intensify < EQUIP_MAX_INTENSIFY
 						and math.ceil(equip.cost_to_next(it)) or nil,
 				nextRefineCost = equip.refine_cost_next(it) > 0
@@ -1463,6 +1521,7 @@ local function rpc_equipment(context, payload)
 		partNames = EQUIP_PART_NAME,
 		maxIntensify = EQUIP_MAX_INTENSIFY,
 		maxRefine = equip.MAX_REFINE_LEVEL,
+		maxPurify = equip.MAX_PURIFY_LEVEL,
 		gold = s.gold,
 		concentrate = s.concentrate or 0,
 		save = s,
@@ -1544,17 +1603,32 @@ local function rpc_refine(context, payload)
 	if it == nil then
 		error(name .. " chua co do o o " .. (EQUIP_PART_NAME[part] or part))
 	end
-	if (it.refine or 0) >= equip.MAX_REFINE_LEVEL then
-		error("da toi cap tinh luyen cao nhat (" .. equip.MAX_REFINE_LEVEL .. ")")
+	-- Do chuyen thuoc di duong TAY rieng: 21 bac thay vi 5, bang gia khac.
+	local is_exc = it.exclusive == true
+	local cur = is_exc and (it.purify or 0) or (it.refine or 0)
+	local cap_lv = is_exc and equip.MAX_PURIFY_LEVEL or equip.MAX_REFINE_LEVEL
+	if cur >= cap_lv then
+		error("da toi bac cao nhat (" .. cap_lv .. ")")
 	end
-	local cost = equip.refine_cost_next(it)
+	local cost
+	if is_exc then
+		cost = equip.exclusive_cost(data.exclusiveEquip, it.part, cur + 1)
+	else
+		cost = equip.refine_cost_next(it)
+	end
 	local have = s.concentrate or 0
 	if have < cost then
 		error("thieu tinh hoa: can " .. cost .. ", dang co " .. have)
 	end
 	local before = equip.capacity(it)
 	s.concentrate = have - cost
-	it.refine = (it.refine or 0) + 1
+	if is_exc then
+		it.purify = cur + 1
+		it.purifyPercent = equip.exclusive_percent(data.exclusiveEquip,
+				it.part, it.purify)
+	else
+		it.refine = cur + 1
+	end
 	write_save(context.user_id, s)
 	local after = equip.capacity(it)
 	return nk.json_encode({
@@ -1562,14 +1636,19 @@ local function rpc_refine(context, payload)
 		hero = name,
 		part = part,
 		partName = EQUIP_PART_NAME[part],
-		refine = it.refine,
-		refinePercent = equip.refine_percent(it.refine),
+		exclusive = is_exc,
+		purify = it.purify or 0,
+		refine = it.refine or 0,
+		refinePercent = equip.bonus_percent(it),
 		cost = cost,
 		concentrate = s.concentrate,
 		capacity = after,
 		capacityGain = after - before,
-		nextRefineCost = equip.refine_cost_next(it) > 0
+		nextRefineCost = (not is_exc and equip.refine_cost_next(it) > 0)
 				and equip.refine_cost_next(it) or nil,
+		nextPurifyCost = (is_exc and it.purify < equip.MAX_PURIFY_LEVEL)
+				and equip.exclusive_cost(data.exclusiveEquip, it.part,
+						it.purify + 1) or nil,
 		item = it,
 		save = s,
 	})
@@ -1638,6 +1717,72 @@ local function rpc_synthesize(context, payload)
 	})
 end
 
+--- Ren mot mon do thuong da tay bac 5 thanh DO CHUYEN THUOC.
+---
+--- Dieu kien cua ban goc: tuong nam trong danh sach 22 tuong co do rieng, va
+--- mon do da tinh luyen toi bac ghi trong bang (mau la 5, tuc kich toi da cua
+--- duong tay thuong). Nguyen lieu trong ItemList thi CHUA tru duoc — game moi
+--- chua co he vat pham; day la cho phai sua khi co.
+---
+--- Ren xong, mon do doi sang duong tay rieng: bac 0 da la +25% (dung bang
+--- +25% ma duong thuong ket thuc), va len duoc toi bac 20 = +125%.
+local function rpc_forge_exclusive(context, payload)
+	if context.user_id == nil then
+		error("phai dang nhap")
+	end
+	local ok, body = pcall(nk.json_decode, payload or "{}")
+	if not ok or type(body) ~= "table" then
+		error("payload khong doc duoc")
+	end
+	local name = tostring(body.hero or "")
+	local part = math.floor(tonumber(body.part) or 0)
+	local row = data.heroes[name]
+	if row == nil then
+		error("khong co tuong " .. name)
+	end
+	if part < 1 or part > EQUIP_PARTS then
+		error("khong co o thu " .. part)
+	end
+	local s = read_save(context.user_id)
+	local it = slot_of(s, name, part)
+	if it == nil then
+		error(name .. " chua co do o o " .. (EQUIP_PART_NAME[part] or part))
+	end
+	if it.exclusive then
+		error("mon nay da la do chuyen thuoc")
+	end
+	local can, why = equip.exclusive_ready(data.exclusiveEquip,
+			math.floor(row.HeroID or 0), part, it.refine or 0)
+	if not can then
+		error("khong ren duoc: " .. why)
+	end
+
+	local before = equip.capacity(it)
+	it.exclusive = true
+	it.purify = 0
+	it.purifyPercent = equip.exclusive_percent(data.exclusiveEquip, part, 0)
+	write_save(context.user_id, s)
+	local after = equip.capacity(it)
+	local sk = equip.skills(it)
+	return nk.json_encode({
+		ok = true,
+		hero = name,
+		part = part,
+		partName = EQUIP_PART_NAME[part],
+		exclusive = true,
+		purify = 0,
+		purifyPercent = it.purifyPercent,
+		capacity = after,
+		capacityGain = after - before,
+		-- Ky nang mon do vua cho: day moi la cai dang gia cua do chuyen thuoc.
+		skill = sk[1] and sk[1][1] or nil,
+		buffs = equip.to_buffs({ it }),
+		nextPurifyCost = equip.exclusive_cost(data.exclusiveEquip, part, 1),
+		item = it,
+		save = s,
+	})
+end
+
 nk.register_rpc(rpc_level_up, "bx.level_up")
 nk.register_rpc(rpc_set_roster, "bx.set_roster")
 nk.register_rpc(rpc_chapters, "bx.chapters")
@@ -1652,3 +1797,4 @@ nk.register_rpc(rpc_equipment, "bx.equipment")
 nk.register_rpc(rpc_intensify, "bx.intensify")
 nk.register_rpc(rpc_refine, "bx.refine")
 nk.register_rpc(rpc_synthesize, "bx.synthesize")
+nk.register_rpc(rpc_forge_exclusive, "bx.forge_exclusive")

@@ -122,6 +122,11 @@ class Fighter extends RefCounted:
 	var lifesteal: float
 	## Doi lai bao nhieu sat thuong (the tran AllHeroReboundDamagePercent).
 	var reflect: float
+	## Hai kenh cua DO CHUYEN THUOC (ExclusiveEquipCommonSkillConfig):
+	##   taken_skill    chiu it/nhieu hon bao nhieu phan don KY NANG
+	##   immune_normal  xac suat mien han mot don THUONG
+	var taken_skill: float
+	var immune_normal: float
 	var level: int
 
 	## `power` la he so manh cua doi dich theo chuong. May chu nhan no vao TRUOC
@@ -161,6 +166,8 @@ class Fighter extends RefCounted:
 		pierce = float(e.get("pierce", 0.0))
 		lifesteal = float(e.get("lifesteal", 0.0))
 		reflect = 0.0
+		taken_skill = 0.0
+		immune_normal = 0.0
 		reach = 0.0
 		min_reach = 0.0
 		move_speed = float(base.get("MovingSpeed", 30))
@@ -190,6 +197,9 @@ class Fighter extends RefCounted:
 			# tran khong dung khoa nay, nen them vao day khong doi con so cua
 			# the tran.
 			crit_chance += float(buffs.get("crit", 0.0))
+			crit_mult += float(buffs.get("crit_mult", 0.0))
+			taken_skill += float(buffs.get("taken_skill", 0.0))
+			immune_normal += float(buffs.get("immune_normal", 0.0))
 		reset()
 
 	func reset() -> void:
@@ -218,6 +228,15 @@ class Fighter extends RefCounted:
 			dmg -= def_eff
 		# Thiet bich: he so nay thuoc ve BEN CHIU, khong phai ben danh.
 		dmg *= target.taken
+		# Do chuyen thuoc: giay chiu it don KY NANG hon (ZhuanShuXieZi -15%).
+		if fired and target.taken_skill != 0.0:
+			dmg *= maxf(0.0, 1.0 + target.taken_skill)
+		# Giap chuyen thuoc: xac suat mien han mot don THUONG (ZhuanShuYiFu
+		# 10%). Chi boc so khi CO chi so nay — de tran khong co do chuyen
+		# thuoc van dung y nguyen chuoi ngau nhien cu.
+		if not fired and target.immune_normal > 0.0:
+			if rng.roll() < target.immune_normal:
+				return {"damage": 0.0, "skill": fired, "crit": false}
 		var crit := rng.roll() < crit_chance
 		if crit:
 			dmg *= crit_mult

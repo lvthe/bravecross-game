@@ -22,7 +22,7 @@ import os, re, sys, json, argparse, collections
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from tables import (Heroes, Talents, Armies, Formations, EquipSynthesis,
-                    TableError, DEFAULT_CONFIG)
+                    ExclusiveEquip, TableError, DEFAULT_CONFIG)
 from battle import Rules, match
 
 DEFAULT_OUT = os.path.normpath(os.path.join(HERE, '..', 'data_ref', 'battle_data.json'))
@@ -197,6 +197,7 @@ def write_lua(path, doc):
         ('formations', doc['formations']),
         ('reference', doc['reference']),
         ('equipSynthesis', doc['equipSynthesis']),
+        ('exclusiveEquip', doc['exclusiveEquip']),
     ])
     d = os.path.dirname(path)
     if d:
@@ -275,6 +276,26 @@ def main():
     for (t, lv) in sorted(syn.by_key):
         syn_out['%d_%d' % (t, lv)] = syn.by_key[(t, lv)]
 
+    # Trang bi chuyen thuoc. `forge` khoa theo "<heroID>_<part>" vi cung ly do
+    # nhu tren; `purify` la mang 5 o x 21 bac.
+    exc = ExclusiveEquip(a.config)
+    forge_out = collections.OrderedDict()
+    for hid in sorted(exc.forge, key=lambda x: int(x)):
+        for part in sorted(exc.forge[hid], key=lambda x: int(x)):
+            row = exc.forge[hid][part]
+            forge_out['%s_%s' % (hid, part)] = collections.OrderedDict([
+                ('purifyLevel', int(row.get('PurifyLevel', 5))),
+                ('materials', [[int(m['ItemID']), int(m['Count'])]
+                               for m in row.get('ItemList', [])]),
+            ])
+    exc_out = collections.OrderedDict([
+        ('heroes', [int(x) for x in exc.heroes]),
+        ('forge', forge_out),
+        ('purify', [[collections.OrderedDict([
+            ('need', int(r['NeedConcentrate'])), ('percent', int(r['AddPrecent']))])
+            for r in slot] for slot in exc.purify]),
+    ])
+
     rules = Rules()
     by_name = {r['HeroSprite']: r for r in rows}
     ref = []
@@ -315,6 +336,7 @@ def main():
         # chuoi. Cot heroLevel vua la dieu kien cap tuong, vua la HE SO CAP
         # dung de tinh chi so chinh — xem sim/equipment.py.
         ('equipSynthesis', syn_out),
+        ('exclusiveEquip', exc_out),
     ])
 
     out_dir = os.path.dirname(a.out)

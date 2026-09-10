@@ -21,7 +21,7 @@ extends Node
 
 ## Doi so nay khi cau truc ban luu thay doi, de con biet duong nang cap.
 ## Phai khop SAVE_VERSION ben server/modules/battle.lua.
-const SAVE_VERSION := 7
+const SAVE_VERSION := 8
 
 var client: NakamaClient = null
 var data: Dictionary = {}
@@ -321,6 +321,18 @@ func synthesize(hero_name: String, part: int) -> Dictionary:
 	if not online:
 		return {"ok": false, "error": "chua noi duoc may chu"}
 	var r := await client.call_rpc("bx.synthesize",
+			{"hero": hero_name, "part": part})
+	if r.ok:
+		data = _upgrade(r.data.get("save", {}))
+	return r
+
+
+## Ren mot mon do thuong da tinh luyen bac 5 thanh DO CHUYEN THUOC.
+## Chi 22 tuong cua ban goc co do rieng; may chu kiem ca hai dieu kien.
+func forge_exclusive(hero_name: String, part: int) -> Dictionary:
+	if not online:
+		return {"ok": false, "error": "chua noi duoc may chu"}
+	var r := await client.call_rpc("bx.forge_exclusive",
 			{"hero": hero_name, "part": part})
 	if r.ok:
 		data = _upgrade(r.data.get("save", {}))

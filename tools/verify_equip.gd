@@ -305,6 +305,77 @@ func _ready() -> void:
 	scr.part = 1
 	scr._refresh()
 
+	print("\n=== 3f. do chuyen thuoc ===")
+	# Da tay bac 5: bang tinh luyen phai doi thanh che do REN, dung y ban goc
+	# (EquipRefineType.OpenExclusive) chu khong mo mot tab thu tu.
+	var ready_forge := {
+		"gold": 500, "concentrate": 100, "maxIntensify": 200, "maxRefine": 5,
+		"maxPurify": 20,
+		"equipment": {"MaChao": [{
+			"part": 4, "level": 3, "intensify": 0, "quality": 2, "refine": 5,
+			"equipType": 42, "exclusive": false,
+			"main": {"type": Equipment.HP_LIMIT, "value": 100.0},
+			"appends": [], "capacity": 12.5,
+			"exclusiveReady": {"ready": true, "reason": "", "needRefine": 5,
+				"materials": [[212, 5]]},
+		}]},
+	}
+	scr.set_data(ready_forge, ["MaChao"])
+	scr.part = 4
+	scr._set_tab("refine")
+	var rbtn2 := XggLayout.find_by_cls(scr.ui, scr.CLS_REFINE_BTN)
+	var btn_txt := ""
+	for c in rbtn2.get_children():
+		if c is Label:
+			btn_txt = (c as Label).text
+	_check(btn_txt == "Ren chuyen thuoc",
+			"tay bac 5 thi nut doi thanh nut ren", btn_txt)
+	_check(scr._tips.text.contains("chuyen thuoc"), "bao cho nguoi choi biet",
+			scr._tips.text)
+	# Ren thi khong ton tinh hoa nen khoi gia phai an.
+	var cost_box := XggLayout.find_by_cls(scr.ui, scr.CLS_REFINE_COST)
+	_check(cost_box != null and not cost_box.visible,
+			"che do ren thi khong hien gia tinh hoa")
+
+	# Da la do chuyen thuoc: duong tay 21 bac, bat dau +25%.
+	var exc := {
+		"gold": 500, "concentrate": 100000, "maxIntensify": 200,
+		"maxRefine": 5, "maxPurify": 20,
+		"equipment": {"MaChao": [{
+			"part": 4, "level": 3, "intensify": 0, "quality": 2, "refine": 5,
+			"equipType": 42, "exclusive": true, "purify": 3,
+			"purifyPercent": 40.0, "nextPurifyCost": 200,
+			"main": {"type": Equipment.HP_LIMIT, "value": 100.0},
+			"appends": [], "capacity": 14.0,
+		}]},
+	}
+	scr.set_data(exc, ["MaChao"])
+	scr.part = 4
+	scr._refresh()
+	var e_exc: Equipment = scr._model(scr.item())
+	_check(e_exc.exclusive and e_exc.bonus_percent() == 40.0,
+			"doc dung bac tay va phan tram", str(e_exc.bonus_percent()))
+	_check(is_equal_approx(e_exc.effective_main(), 140.0),
+			"chi so chinh = 100 * 1.40", str(e_exc.effective_main()))
+	_check(scr.refine_cost_now() == 200, "gia bac ke lay tu may chu",
+			str(scr.refine_cost_now()))
+	var step2 := XggLayout.find_by_cls(scr.ui, scr.CLS_REFINE_STEP)
+	_check(_text_of(scr, scr._child(step2, scr.CLS_GRADE_NOW)) == "Bac 3",
+			"bac hien tai", _text_of(scr, scr._child(step2, scr.CLS_GRADE_NOW)))
+	_check(_text_of(scr, scr._child(step2, scr.CLS_GRADE_NEXT)) == "Bac 4",
+			"bac ke")
+	# Ky nang cua o 4 la chi mang.
+	var sk: Array = e_exc.skills()
+	_check(sk.size() == 1 and String(sk[0][0]) == "ZhuanShuXiangLian",
+			"o 4 cho ky nang chi mang", str(sk))
+	_check(is_equal_approx(float(Equipment.to_buffs([e_exc]).get("crit", 0.0)), 0.10),
+			"ky nang quy ra buff crit +10%")
+
+	scr.set_data(data, ["MaChao", "GanNing"])
+	scr._set_tab("intensify")
+	scr.part = 1
+	scr._refresh()
+
 	print("\n=== 4. o trong ===")
 	scr.part = 3          # day chuyen: MaChao khong co
 	scr._refresh()

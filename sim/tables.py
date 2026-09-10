@@ -273,6 +273,34 @@ class EquipSynthesis(object):
         return len(self.by_key)
 
 
+class ExclusiveEquip(object):
+    """Trang bi chuyen thuoc: KDBGameExclusiveEquipConfig.xgg.
+
+    Bon bang trong mot file:
+
+        ExclusiveEquipHeroConfig        22 HeroID co do chuyen thuoc
+        ExclusiveEquipForgeConfig       [heroID][partID] -> {ItemList, PurifyLevel}
+                                        PurifyLevel = cap TINH LUYEN doi hoi
+                                        cua mon do thuong truoc khi ren len
+        ExclusiveEquipPurifyConfig      5 o x 21 cap {NeedConcentrate, AddPrecent}
+                                        — duong tay RIENG, bat dau +25%
+        ExclusiveEquipCommonSkillConfig o 2..5 -> ky nang chung
+    """
+
+    def __init__(self, config_dir=DEFAULT_CONFIG):
+        rows = load_json(config_dir, 'KDBGameExclusiveEquipConfig.xgg')
+        by = {}
+        for e in rows:
+            by[e['ConfigName']] = json.loads(e['ConfigContent'])
+        self.heroes = [int(x) for x in by.get('ExclusiveEquipHeroConfig', [])]
+        self.forge = by.get('ExclusiveEquipForgeConfig', {})
+        self.purify = by.get('ExclusiveEquipPurifyConfig', [])
+        self.skills = by.get('ExclusiveEquipCommonSkillConfig', {})
+
+    def forge_of(self, hero_id, part):
+        return (self.forge.get(str(int(hero_id))) or {}).get(str(int(part)))
+
+
 if __name__ == '__main__':
     import sys
     sys.stdout.reconfigure(encoding='utf-8')

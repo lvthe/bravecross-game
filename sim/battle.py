@@ -153,6 +153,11 @@ class Fighter(object):
         self.pierce = e.get('pierce', 0.0)        # bo qua bao nhieu phan giap
         self.lifesteal = e.get('lifesteal', 0.0)
         self.reflect = 0.0                        # doi lai bao nhieu sat thuong
+        # Hai kenh cua DO CHUYEN THUOC (ExclusiveEquipCommonSkillConfig):
+        #   taken_skill    chiu it/nhieu hon bao nhieu phan don KY NANG
+        #   immune_normal  xac suat mien han mot don THUONG
+        self.taken_skill = 0.0
+        self.immune_normal = 0.0
 
         # --- the tran (KDBGameFormationConfig cua ban goc)
         #
@@ -176,6 +181,9 @@ class Fighter(object):
         # `crit` la kenh cua TRANG BI (PropertyType CriticalStrike). The tran
         # khong dung khoa nay, nen them vao day khong doi con so cua the tran.
         self.crit_chance += b.get('crit', 0.0)
+        self.crit_mult += b.get('crit_mult', 0.0)
+        self.taken_skill += b.get('taken_skill', 0.0)
+        self.immune_normal += b.get('immune_normal', 0.0)
 
         self.reset()
 
@@ -208,6 +216,15 @@ class Fighter(object):
 
         # Thiet bich: he so nay thuoc ve BEN CHIU, khong phai ben danh.
         dmg *= target.taken
+        # Do chuyen thuoc: giay chiu it don KY NANG hon (ZhuanShuXieZi -15%).
+        if skill and target.taken_skill:
+            dmg *= max(0.0, 1.0 + target.taken_skill)
+        # Giap chuyen thuoc: co xac suat mien han mot don THUONG (ZhuanShuYiFu
+        # 10%). Boc so TRUOC khi biet co mien hay khong de ba ban cai dat tieu
+        # dung mot so ngau nhien nhu nhau — lech mot lan boc la lech ca tran.
+        if not skill and target.immune_normal:
+            if rng.random() < target.immune_normal:
+                return 0.0, skill, False
 
         crit = rng.random() < self.crit_chance
         if crit:

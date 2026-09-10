@@ -782,6 +782,106 @@ def main():
             pass
         check(ok, 'du cap tuong ma thieu vang thi van tu choi')
 
+        print('\n=== 10g. do chuyen thuoc ===')
+        # ZhaoYun (HeroID 13) nam trong danh sach 22 tuong co do rieng.
+        exc_u = 'u-chuyen-thuoc'
+        def mk_save(refine, exclusive=False, purify=0):
+            return L.table(
+                version=8, gold=100000, concentrate=100000,
+                levels=L.table(ZhaoYun=40),
+                roster=L.table('ZhaoYun', 'MaChao', 'LvBu', 'GanNing'),
+                equipment=L.table(ZhaoYun=L.table(
+                    L.table(part=4, level=3, intensify=0, quality=2,
+                            refine=refine, equipType=42, exclusive=exclusive,
+                            purify=purify,
+                            main=L.table(type=1, value=100.0)))))
+
+        # Chua tay du bac 5 thi khong ren duoc.
+        env['store'][exc_u + '/player/save'] = mk_save(2)
+        ec = L.table(user_id=exc_u)
+        e5 = rpcs['bx.equipment'](ec, None)
+        it5 = list(dict(e5['equipment'])['ZhaoYun'].values())[0]
+        info5 = it5['exclusiveReady']
+        check(info5 is not None and not bool(info5['ready']),
+              'tay bac 2 thi chua ren duoc')
+        check(int(info5['needRefine']) == 5, 'bang goc doi tay bac 5',
+              info5['needRefine'])
+        check(len(list(info5['materials'])) > 0, 'co danh sach nguyen lieu')
+        ok = True
+        try:
+            rpcs['bx.forge_exclusive'](ec, L.table(hero='ZhaoYun', part=4))
+            ok = False
+        except lupa.LuaError:
+            pass
+        check(ok, 'may chu tu choi ren khi chua du bac tay')
+
+        # Tuong KHONG co trong danh sach thi khong bao gio ren duoc.
+        env['store']['u-khong-chuyen/player/save'] = L.table(
+            version=8, gold=100000, concentrate=100000,
+            levels=L.table(GuYong=40),
+            equipment=L.table(GuYong=L.table(
+                L.table(part=4, level=3, intensify=0, quality=2, refine=5,
+                        equipType=42, main=L.table(type=1, value=100.0)))))
+        e6 = rpcs['bx.equipment'](L.table(user_id='u-khong-chuyen'), None)
+        it6 = list(dict(e6['equipment'])['GuYong'].values())[0]
+        check(not bool(it6['exclusiveReady']['ready']),
+              'tuong ngoai danh sach thi du tay bac 5 cung khong ren duoc')
+
+        # Du dieu kien: ren that.
+        env['store'][exc_u + '/player/save'] = mk_save(5)
+        e7 = rpcs['bx.equipment'](ec, None)
+        it7 = list(dict(e7['equipment'])['ZhaoYun'].values())[0]
+        check(bool(it7['exclusiveReady']['ready']), 'tay bac 5 thi ren duoc')
+        cap_b = float(it7['capacity'])
+        r7 = rpcs['bx.forge_exclusive'](ec, L.table(hero='ZhaoYun', part=4))
+        check(bool(r7['exclusive']), 'mon do thanh do chuyen thuoc')
+        check(float(r7['purifyPercent']) == 25.0,
+              'bac 0 cua duong tay rieng da la +25%', r7['purifyPercent'])
+        # Luc chien KHONG doi ngay luc ren, va do la dung thiet ke: duong tay
+        # rieng bat dau o dung +25% ma duong thuong ket thuc. Cai duoc la ky
+        # nang mon do cho, va tran nha tu +25% len +125%.
+        check(abs(float(r7['capacity']) - cap_b) < 1e-9,
+              'ren xong luc chien giu nguyen (bac 0 = dung +25% cua tay bac 5)',
+              '%.2f -> %.2f' % (cap_b, float(r7['capacity'])))
+        # O 4 (day chuyen) cho ky nang chi mang.
+        check(str(r7['skill']) == 'ZhuanShuXiangLian', 'cho dung ky nang cua o',
+              r7['skill'])
+        bf7 = dict(r7['buffs'])
+        check(abs(float(bf7.get('crit', 0)) - 0.10) < 1e-9,
+              'ky nang do quy ra buff chi mang +10%', bf7)
+        check(int(r7['nextPurifyCost']) == 50,
+              'gia len bac 1 cua o nay dung bang goc', r7['nextPurifyCost'])
+
+        # Ren hai lan thi tu choi.
+        ok = True
+        try:
+            rpcs['bx.forge_exclusive'](ec, L.table(hero='ZhaoYun', part=4))
+            ok = False
+        except lupa.LuaError:
+            pass
+        check(ok, 'da la do chuyen thuoc thi khong ren lai')
+
+        # Tay tiep: gio di duong 21 bac chu khong phai 5.
+        r8 = rpcs['bx.refine'](ec, L.table(hero='ZhaoYun', part=4))
+        check(int(r8['purify']) == 1, 'len bac tay 1', r8['purify'])
+        check(float(r8['refinePercent']) == 30.0, 'bac 1 la +30%',
+              r8['refinePercent'])
+        check(int(r8['nextPurifyCost']) == 100, 'gia bac 2', r8['nextPurifyCost'])
+
+        # Len het 20 bac: phai toi +125% roi dung lai.
+        for _ in range(19):
+            r8 = rpcs['bx.refine'](ec, L.table(hero='ZhaoYun', part=4))
+        check(int(r8['purify']) == 20, 'len duoc toi bac 20', r8['purify'])
+        check(float(r8['refinePercent']) == 125.0, 'bac 20 la +125%',
+              r8['refinePercent'])
+        ok = True
+        try:
+            rpcs['bx.refine'](ec, L.table(hero='ZhaoYun', part=4))
+            ok = False
+        except lupa.LuaError:
+            pass
+        check(ok, 'het bac thi dung lai')
+
 
     print('\n=== 10d. ban luu ban thi bo mon do, khong sua cho lanh ===')
     # Ban luu la du lieu ben ngoai. Nhet vao vai mon vo ly roi doc lai.

@@ -126,6 +126,21 @@ static func main_property_val(prop_type: int, level_coef: float,
 	return 0.0
 
 
+## Trang bi chuyen thuoc (ExclusiveEquip). Mon do thuong tay toi bac 5 (+25%)
+## thi ren len duoc thanh do chuyen thuoc — neu tuong nam trong danh sach 22
+## tuong co do rieng. Do chuyen thuoc dung duong tay KHAC: 21 bac (0..20), bat
+## dau ngay o +25% va len toi +125%.
+const MAX_PURIFY_LEVEL := 20
+
+## Ky nang cua do chuyen thuoc: [ten, khoa buff, gia tri].
+## O 1 (vu khi) co ky nang RIENG theo tung tuong, khong nam trong bang chung.
+const EXCLUSIVE_SKILL := {
+	2: ["ZhuanShuYiFu", "immune_normal", 0.10],
+	3: ["ZhuanShuXieZi", "taken_skill", -0.15],
+	4: ["ZhuanShuXiangLian", "crit", 0.10],
+	5: ["ZhuanShuJieZhi", "crit_mult", 0.25],
+}
+
 ## Tinh luyen (RefineLevel). Bang lay tu KDBGameCommonConfig, muc
 ## ConfigName = "EquipRefineConfig": 5 o, moi o 5 cap, moi cap
 ## { NeedConcentrate, AddPrecent }.
@@ -157,6 +172,11 @@ var intensify: int = 0     ## cap cuong hoa
 var quality: int = 1       ## pham chat
 var refine: int = 0        ## cap tinh luyen 0..5, moi cap cong % chi so chinh
 var equip_type: int = 0    ## LOAI do cua ban goc = o * 10 + nghe
+## Do chuyen thuoc: duong tay rieng. `purify_percent` la con so DA TRA tu bang
+## — giu san tren mon do de khong phai keo ca bang di khap noi.
+var exclusive: bool = false
+var purify: int = 0
+var purify_percent: float = 0.0
 var main_type: int = AP    ## loai chi so chinh
 var main_value: float = 0.0
 var appends: Array = []    ## [[loai, gia tri], ...]
@@ -273,6 +293,7 @@ const BUFF_KEY := {
 
 
 ## Gop chi so cua mot dam trang bi thanh bang buff cho mo hinh chien dau.
+## Ke ca ky nang cua do chuyen thuoc: ca bon deu quy ve kenh buff.
 static func to_buffs(items: Array) -> Dictionary:
 	var out := {}
 	for e in items:
@@ -282,6 +303,8 @@ static func to_buffs(items: Array) -> Dictionary:
 				continue
 			var k: String = BUFF_KEY[int(t)]
 			out[k] = float(out.get(k, 0.0)) + float(st[t])
+		for sk in e.skills():
+			out[sk[1]] = float(out.get(sk[1], 0.0)) + float(sk[2])
 	return out
 
 
@@ -304,8 +327,13 @@ func append_unlocked() -> bool:
 ## Chi so chinh SAU tinh luyen. Ban goc nhan phan tram nay ngay trong
 ## getMainPropertyVal, tuc moi thu tinh sau do — ke ca cuong hoa — deu dua
 ## tren con so da nhan.
+## Phan tram cong vao chi so chinh: duong thuong hay duong chuyen thuoc.
+func bonus_percent() -> float:
+	return purify_percent if exclusive else refine_percent(refine)
+
+
 func effective_main() -> float:
-	return main_value * refine_multiplier(refine)
+	return main_value * (1.0 + bonus_percent() / 100.0)
 
 
 func stats() -> Dictionary:
@@ -348,6 +376,13 @@ func cost_to_next() -> float:
 
 
 ## Tinh hoa can de tinh luyen mon nay len mot cap. Het cap thi 0.
+## Ky nang mon do cho. Chi do chuyen thuoc moi co.
+func skills() -> Array:
+	if not exclusive or not EXCLUSIVE_SKILL.has(part):
+		return []
+	return [EXCLUSIVE_SKILL[part]]
+
+
 func refine_cost_next(vip_level: int = 0) -> int:
 	if refine >= MAX_REFINE_LEVEL:
 		return 0

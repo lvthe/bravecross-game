@@ -160,6 +160,75 @@ VIP_REFINE_DISCOUNT_LEVEL = 10      # HeroLogic:GetUpgradeRefineCost
 VIP_REFINE_DISCOUNT = 0.2
 
 
+# --- Trang bi chuyen thuoc (ExclusiveEquip) ----------------------------
+# Mon do thuong tay toi bac 5 (+25%) thi REN len duoc thanh do chuyen thuoc —
+# neu tuong do nam trong danh sach 22 tuong co do rieng. Do chuyen thuoc dung
+# mot duong tay KHAC HAN: 21 bac (0..20), bat dau ngay o +25% va len toi
+# +125%. Tuc no noi tiep dung cho duong thuong dung lai.
+#
+# Bang: KDBGameExclusiveEquipConfig / ExclusiveEquipPurifyConfig.
+MAX_PURIFY_LEVEL = 20
+
+# Ky nang cua do chuyen thuoc (ExclusiveEquipCommonSkillConfig + quality_config
+# .xml). O 1 (vu khi) co ky nang RIENG theo tung tuong, khong nam o day.
+EXCLUSIVE_SKILL = {
+    2: ('ZhuanShuYiFu', 'immune_normal', 0.10),   # 10% mien mot don thuong
+    3: ('ZhuanShuXieZi', 'taken_skill', -0.15),   # chiu it hon 15% don ky nang
+    4: ('ZhuanShuXiangLian', 'crit', 0.10),       # +10% chi mang
+    5: ('ZhuanShuJieZhi', 'crit_mult', 0.25),     # +0.25 he so sat thuong chi mang
+}
+
+
+def exclusive_percent(purify_table, part, purify_level):
+    """Phan tram cong vao chi so chinh cua do CHUYEN THUOC.
+
+    Khac do thuong o cho no co gia tri ngay tu bac 0 (+25%): ban goc viet
+    `bIsExclusive == true and nRefineLevel >= 0`, chu khong phai `> 0`.
+    """
+    rows = _purify_rows(purify_table, part)
+    if not rows:
+        return 0.0
+    i = max(0, min(int(purify_level), len(rows) - 1))
+    return float(rows[i]['AddPrecent'])
+
+
+def exclusive_cost(purify_table, part, purify_level):
+    """Tinh hoa de len bac tay `purify_level` (1..20) cua do chuyen thuoc."""
+    rows = _purify_rows(purify_table, part)
+    if not rows or not 1 <= int(purify_level) <= len(rows) - 1:
+        return 0
+    return int(rows[int(purify_level)]['NeedConcentrate'])
+
+
+def _purify_rows(purify_table, part):
+    """Bang tay cua mot o. Ban goc chi co 5 o; o 6 chua co bang rieng."""
+    if not purify_table:
+        return None
+    i = int(part) - 1
+    if 0 <= i < len(purify_table):
+        return purify_table[i]
+    return None
+
+
+def exclusive_ready(hero_ids, hero_id, part, refine_level, forge_row):
+    """(ren duoc khong, ly do). Dieu kien cua ban goc:
+
+      * tuong phai nam trong ExclusiveEquipHeroConfig
+      * mon do thuong phai tay toi cap ghi trong ExclusiveEquipForgeConfig
+        (mau la 5 — tuc kich toi da cua duong tay thuong)
+      * va het nguyen lieu trong ItemList — cho nay game moi chua co he vat
+        pham nen chua tru duoc, xem ghi chu trong server/modules/battle.lua
+    """
+    if int(hero_id) not in [int(x) for x in (hero_ids or [])]:
+        return False, 'tuong nay khong co do chuyen thuoc'
+    if forge_row is None:
+        return False, 'khong co cong thuc ren cho o nay'
+    need = int(forge_row.get('PurifyLevel', MAX_REFINE_LEVEL))
+    if int(refine_level) < need:
+        return False, 'can tinh luyen bac %d' % need
+    return True, ''
+
+
 def refine_percent(refine_level):
     """Phan tram cong them vao chi so chinh o cap tinh luyen nay."""
     if 1 <= refine_level <= MAX_REFINE_LEVEL:
@@ -323,10 +392,12 @@ class Equipment(object):
     """Mot mon trang bi."""
 
     __slots__ = ('part', 'level', 'intensify', 'quality', 'refine',
-                 'equip_type', 'main', 'appends')
+                 'equip_type', 'exclusive', 'purify', 'purify_percent',
+                 'main', 'appends')
 
     def __init__(self, part, main, level=1, intensify=0, quality=1,
-                 appends=None, refine=0, equip_type=0):
+                 appends=None, refine=0, equip_type=0, exclusive=False,
+                 purify=0, purify_percent=0.0):
         self.part = part
         # LOAI trang bi cua ban goc = o * 10 + nghe. Quyet ca chi so chinh la
         # gi lan he so nghe dung de tinh no.
@@ -335,6 +406,12 @@ class Equipment(object):
         self.intensify = intensify
         self.quality = quality
         self.refine = refine                  # 0..5, moi cap cong % chi so chinh
+        # Do chuyen thuoc: duong tay RIENG, 21 bac, bat dau ngay o +25%.
+        # `purify_percent` la con so DA TRA tu bang — giu san tren mon do de
+        # stats()/capacity() khong phai keo theo ca bang di khap noi.
+        self.exclusive = bool(exclusive)
+        self.purify = purify
+        self.purify_percent = purify_percent
         self.main = main                      # (prop_type, value)
         self.appends = list(appends or [])    # [(prop_type, value), ...]
 
@@ -342,13 +419,19 @@ class Equipment(object):
     def append_unlocked(self):
         return self.level >= APPEND_UNLOCK_LEVEL
 
-    def main_value(self):
-        """Chi so chinh sau tinh luyen.
+    def bonus_percent(self):
+        """Phan tram cong vao chi so chinh: duong thuong hay duong chuyen thuoc."""
+        if self.exclusive:
+            return self.purify_percent
+        return refine_percent(self.refine)
 
-        Ban goc nhan phan tram tinh luyen NGAY TRONG getMainPropertyVal, tuc
-        moi thu tinh sau do — ke ca cuong hoa — deu dua tren con so da nhan.
+    def main_value(self):
+        """Chi so chinh sau tinh luyen (hoac tay, neu la do chuyen thuoc).
+
+        Ban goc nhan phan tram nay NGAY TRONG getMainPropertyVal, tuc moi thu
+        tinh sau do — ke ca cuong hoa — deu dua tren con so da nhan.
         """
-        return self.main[1] * refine_multiplier(self.refine)
+        return self.main[1] * (1.0 + self.bonus_percent() / 100.0)
 
     def stats(self):
         """{loai chi so: tong gia tri} sau tinh luyen, cuong hoa, thuoc tinh phu."""
@@ -394,6 +477,23 @@ class Equipment(object):
             return 0
         return refine_cost(self.part, self.refine + 1, vip_level)
 
+    def purify_cost_next(self, purify_table):
+        """Tinh hoa de len mot bac tren duong tay cua do chuyen thuoc."""
+        if not self.exclusive or self.purify >= MAX_PURIFY_LEVEL:
+            return 0
+        return exclusive_cost(purify_table, self.part, self.purify + 1)
+
+    def skills(self):
+        """Ky nang mon do cho. Chi do chuyen thuoc moi co.
+
+        O 1 (vu khi) co ky nang rieng theo tung tuong — khong nam trong bang
+        chung nen chua dua vao day.
+        """
+        if not self.exclusive:
+            return []
+        row = EXCLUSIVE_SKILL.get(self.part)
+        return [row] if row else []
+
     def cost_to_level(self, target):
         """Tong chi phi cuong hoa tu cap hien tai len `target`."""
         if target <= self.intensify:
@@ -431,7 +531,11 @@ BUFF_KEY = {
 
 
 def to_buffs(items):
-    """Gop chi so cua mot dam trang bi thanh bang buff cho mo hinh chien dau."""
+    """Gop chi so cua mot dam trang bi thanh bang buff cho mo hinh chien dau.
+
+    Ke ca ky nang cua do chuyen thuoc: bon ky nang chung deu quy duoc ve kenh
+    buff san co hoac gan san co (crit, crit_mult, taken_skill, immune_normal).
+    """
     out = {}
     for e in items:
         for t, v in e.stats().items():
@@ -439,6 +543,8 @@ def to_buffs(items):
             if k is None:
                 continue
             out[k] = out.get(k, 0.0) + v
+        for _name, key, val in e.skills():
+            out[key] = out.get(key, 0.0) + val
     return out
 
 

@@ -175,6 +175,85 @@ function M.synthesis_ready(tbl, equip_type, level, hero_level)
 	return true, ""
 end
 
+-- ---------------------------------- Trang bi chuyen thuoc (ExclusiveEquip)
+-- Mon do thuong tay toi bac 5 (+25%) thi REN len duoc thanh do chuyen thuoc —
+-- neu tuong do nam trong danh sach 22 tuong co do rieng. Do chuyen thuoc dung
+-- mot duong tay KHAC HAN: 21 bac (0..20), bat dau ngay o +25% va len toi
+-- +125%. Tuc no noi tiep dung cho duong thuong dung lai.
+M.MAX_PURIFY_LEVEL = 20
+
+--- Ky nang cua do chuyen thuoc: { ten, khoa buff, gia tri }.
+--- O 1 (vu khi) co ky nang RIENG theo tung tuong, khong nam trong bang chung.
+M.EXCLUSIVE_SKILL = {
+	[2] = { "ZhuanShuYiFu", "immune_normal", 0.10 },
+	[3] = { "ZhuanShuXieZi", "taken_skill", -0.15 },
+	[4] = { "ZhuanShuXiangLian", "crit", 0.10 },
+	[5] = { "ZhuanShuJieZhi", "crit_mult", 0.25 },
+}
+
+local function purify_rows(tbl, part)
+	if tbl == nil or tbl.purify == nil then
+		return nil
+	end
+	return tbl.purify[math.floor(part)]
+end
+
+--- Phan tram cong vao chi so chinh cua do CHUYEN THUOC.
+--- Co gia tri ngay tu bac 0 (+25%): ban goc viet `nRefineLevel >= 0`.
+function M.exclusive_percent(tbl, part, purify_level)
+	local rows = purify_rows(tbl, part)
+	if rows == nil then
+		return 0.0
+	end
+	local i = math.max(0, math.min(math.floor(purify_level or 0), #rows - 1))
+	return rows[i + 1].percent + 0.0
+end
+
+--- Tinh hoa de len bac tay `purify_level` (1..20) cua do chuyen thuoc.
+function M.exclusive_cost(tbl, part, purify_level)
+	local rows = purify_rows(tbl, part)
+	local lv = math.floor(purify_level or 0)
+	if rows == nil or lv < 1 or lv > #rows - 1 then
+		return 0
+	end
+	return rows[lv + 1].need
+end
+
+--- Co ren len do chuyen thuoc duoc khong. Tra ve (duoc, ly do).
+function M.exclusive_ready(tbl, hero_id, part, refine_level)
+	if tbl == nil then
+		return false, "khong co bang do chuyen thuoc"
+	end
+	local found = false
+	for _, id in ipairs(tbl.heroes or {}) do
+		if math.floor(id) == math.floor(hero_id) then
+			found = true
+			break
+		end
+	end
+	if not found then
+		return false, "tuong nay khong co do chuyen thuoc"
+	end
+	local row = (tbl.forge or {})[string.format("%d_%d", math.floor(hero_id),
+			math.floor(part))]
+	if row == nil then
+		return false, "khong co cong thuc ren cho o nay"
+	end
+	if math.floor(refine_level or 0) < math.floor(row.purifyLevel) then
+		return false, string.format("can tinh luyen bac %d",
+				math.floor(row.purifyLevel))
+	end
+	return true, ""
+end
+
+function M.exclusive_forge_row(tbl, hero_id, part)
+	if tbl == nil then
+		return nil
+	end
+	return (tbl.forge or {})[string.format("%d_%d", math.floor(hero_id),
+			math.floor(part))]
+end
+
 -- --------------------------------------------------- Tinh luyen (RefineLevel)
 -- Bang lay tu KDBGameCommonConfig, muc ConfigName = "EquipRefineConfig": mot
 -- mang 5 o, moi o 5 cap, moi cap { NeedConcentrate, AddPrecent }.
@@ -223,8 +302,25 @@ end
 --- Chi so chinh SAU tinh luyen.
 --- Ban goc nhan phan tram tinh luyen ngay trong getMainPropertyVal, tuc moi
 --- thu tinh sau do — ke ca cuong hoa — deu dua tren con so da nhan.
+--- Phan tram cong vao chi so chinh: duong thuong hay duong chuyen thuoc.
+function M.bonus_percent(e)
+	if e.exclusive then
+		return e.purifyPercent or 0.0
+	end
+	return M.refine_percent(e.refine or 0)
+end
+
 function M.main_value(e)
-	return e.main.value * M.refine_multiplier(e.refine or 0)
+	return e.main.value * (1.0 + M.bonus_percent(e) / 100.0)
+end
+
+--- Ky nang mon do cho. Chi do chuyen thuoc moi co.
+function M.skills(e)
+	if not e.exclusive then
+		return {}
+	end
+	local row = M.EXCLUSIVE_SKILL[math.floor(e.part or 0)]
+	return row and { row } or {}
 end
 
 --- Tinh hoa can de tinh luyen mon nay len mot cap. Het cap thi 0.
@@ -391,6 +487,10 @@ function M.to_buffs(items)
 				out[k] = (out[k] or 0.0) + v
 			end
 		end
+		-- Ke ca ky nang cua do chuyen thuoc: ca bon deu quy ve kenh buff.
+		for _, sk in ipairs(M.skills(e)) do
+			out[sk[2]] = (out[sk[2]] or 0.0) + sk[3]
+		end
 	end
 	return out
 end
@@ -432,6 +532,9 @@ function M.make(part, prop_type, value, opts)
 		quality = opts.quality or 1,
 		refine = opts.refine or 0,
 		equipType = opts.equipType or 0,
+		exclusive = opts.exclusive or false,
+		purify = opts.purify or 0,
+		purifyPercent = opts.purifyPercent or 0.0,
 
 		main = { type = prop_type, value = value },
 		appends = opts.appends or {},

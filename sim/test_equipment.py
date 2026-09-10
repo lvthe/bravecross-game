@@ -223,6 +223,68 @@ check(e2.main[1] > e1.main[1] and e3.main[1] > e2.main[1],
 check(e3.capacity() > e1.capacity(), 'luc chien tang theo')
 check(e1.equip_type == 1, 'mon do nho loai cua no')
 
+print('\n=== 6e. trang bi chuyen thuoc ===')
+# Bang tay rieng, lay tu KDBGameExclusiveEquipConfig / ExclusiveEquipPurifyConfig.
+PURIFY = [
+    [{'NeedConcentrate': 0, 'AddPrecent': 25},
+     {'NeedConcentrate': 100, 'AddPrecent': 30},
+     {'NeedConcentrate': 200, 'AddPrecent': 35}],
+    [{'NeedConcentrate': 0, 'AddPrecent': 25},
+     {'NeedConcentrate': 50, 'AddPrecent': 30}],
+]
+check(E.MAX_PURIFY_LEVEL == 20, 'duong tay rieng co 20 bac tren bac 0')
+check(E.exclusive_percent(PURIFY, 1, 0) == 25.0,
+      'bac 0 da la +25% — dung cho duong thuong ket thuc',
+      E.exclusive_percent(PURIFY, 1, 0))
+check(E.exclusive_percent(PURIFY, 1, 2) == 35.0, 'bac 2 la +35%')
+check(E.exclusive_percent(PURIFY, 1, 99) == 35.0,
+      'vuot bang thi ket o bac cuoi, khong no')
+check(E.exclusive_cost(PURIFY, 1, 1) == 100 and E.exclusive_cost(PURIFY, 2, 1) == 50,
+      'vu khi dat hon o khac, y nhu duong thuong')
+check(E.exclusive_cost(PURIFY, 1, 0) == 0, 'bac 0 khong ton gi')
+
+# Dieu kien ren: tuong phai co trong danh sach VA do phai tay du bac.
+HEROES = [13, 15, 16]
+FORGE = {'PurifyLevel': 5, 'ItemList': [{'ItemID': 212, 'Count': 5}]}
+ok, why = E.exclusive_ready(HEROES, 13, 4, 5, FORGE)
+check(ok, 'du dieu kien thi ren duoc', why)
+ok, why = E.exclusive_ready(HEROES, 13, 4, 4, FORGE)
+check(not ok and 'bac 5' in why, 'thieu bac tay thi tu choi va noi ro', why)
+ok, why = E.exclusive_ready(HEROES, 99, 4, 5, FORGE)
+check(not ok, 'tuong ngoai danh sach thi khong bao gio ren duoc')
+ok, why = E.exclusive_ready(HEROES, 13, 4, 5, None)
+check(not ok, 'khong co cong thuc cho o do thi tu choi')
+
+# Chi so: do chuyen thuoc dung duong tay rieng thay cho tinh luyen.
+n5 = E.Equipment(4, (E.HP_LIMIT, 100.0), refine=5)
+x0 = E.Equipment(4, (E.HP_LIMIT, 100.0), refine=5, exclusive=True,
+                 purify=0, purify_percent=25.0)
+x20 = E.Equipment(4, (E.HP_LIMIT, 100.0), refine=5, exclusive=True,
+                  purify=20, purify_percent=125.0)
+check(close(n5.main_value(), x0.main_value()),
+      'ren xong chi so KHONG doi — hai duong noi nhau o dung +25%',
+      '%.2f vs %.2f' % (n5.main_value(), x0.main_value()))
+check(close(x20.main_value(), 225.0), 'bac 20 cho +125%', x20.main_value())
+check(x20.capacity() > n5.capacity(), 'nhung tran nha thi cao hon han')
+
+# Ky nang: bon o co ky nang chung, o vu khi thi khong (no co ky nang rieng
+# theo tung tuong, nam o bang khac).
+check(len(n5.skills()) == 0, 'do thuong khong cho ky nang')
+for part, name, key in ((2, 'ZhuanShuYiFu', 'immune_normal'),
+                        (3, 'ZhuanShuXieZi', 'taken_skill'),
+                        (4, 'ZhuanShuXiangLian', 'crit'),
+                        (5, 'ZhuanShuJieZhi', 'crit_mult')):
+    e = E.Equipment(part, (E.HP_LIMIT, 100.0), exclusive=True)
+    sk = e.skills()
+    check(len(sk) == 1 and sk[0][0] == name and sk[0][1] == key,
+          'o %d cho ky nang %s' % (part, name), sk)
+check(len(E.Equipment(1, (E.AP, 100.0), exclusive=True).skills()) == 0,
+      'o vu khi khong dung bang ky nang chung')
+
+bf = E.to_buffs([E.Equipment(5, (E.HP_LIMIT, 100.0), exclusive=True)])
+check(close(bf.get('crit_mult', 0.0), 0.25),
+      'ky nang quy thang ra kenh buff', bf)
+
 print('\n=== 7. chi phi cong don ===')
 w2 = E.Equipment(1, (E.AP, 100.0), intensify=0)
 step = sum(E.intensify_cost(i) for i in range(1, 11))

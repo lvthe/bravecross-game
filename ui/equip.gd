@@ -25,10 +25,11 @@ extends Control
 
 const LAYOUT := "res://layout_ref/UI_Equipment_960_640.json"
 
-## O do -> ten tieng Viet. Thu tu khop EQUIP_MAIN ben server/modules/battle.lua.
+## O do -> ten tieng Viet. Thu tu dung theo HeroEquipPart cua ban goc
+## (Protocol.lua:305), khong phai thu tu tu dat.
 const PART_NAME := {
-	1: "Vu khi", 2: "Giap", 3: "Day chuyen",
-	4: "Nhan", 5: "Giay", 6: "O phu",
+	1: "Vu khi", 2: "Giap", 3: "Giay",
+	4: "Day chuyen", 5: "Nhan", 6: "O phu",
 }
 
 ## Loai chi so -> chu hien. Chi liet ke loai ma game moi thuc su dung.
@@ -101,6 +102,7 @@ var gold := 0
 var concentrate := 0
 var max_intensify := 200
 var max_refine := 5
+var max_purify := 20
 ## "intensify" hoac "refine" — dung hai nut cua ban goc de doi.
 var tab := "intensify"
 
@@ -126,6 +128,9 @@ func _ready() -> void:
 			_set_tab("refine")
 		elif "--forge" in OS.get_cmdline_user_args():
 			_set_tab("forge")
+		if "--part4" in OS.get_cmdline_user_args():
+			part = 4
+			_refresh()
 		return
 	await _reload()
 
@@ -148,12 +153,20 @@ func _fake() -> Dictionary:
 					"needHeroLevel": 20, "heroLevel": 31, "ready": true,
 					"reason": "", "materials": [[25, 3], [52, 5]]}}
 	return {
-		"gold": 1240, "concentrate": 86, "maxIntensify": 200, "maxRefine": 5,
+		"gold": 1240, "concentrate": 860, "maxIntensify": 200, "maxRefine": 5,
+		"maxPurify": 20,
 		"equipment": {
 			"MaChao": [
 				mk.call(1, Equipment.AP, 118.4, 7, 12,
 						[[Equipment.CRITICAL_STRIKE, 0.0132]], 2),
 				mk.call(2, Equipment.HP_LIMIT, 264.0, 5, 3, []),
+				# Mot mon da la do chuyen thuoc, de xem thu duong tay rieng.
+				{"part": 4, "level": 4, "intensify": 2, "quality": 3,
+					"refine": 5, "equipType": 42, "exclusive": true,
+					"purify": 3, "purifyPercent": 40.0, "nextPurifyCost": 200,
+					"main": {"type": Equipment.HP_LIMIT, "value": 210.0},
+					"appends": [], "capacity": 29.4,
+					"nextCost": ceili(Equipment.intensify_cost(3))},
 			],
 			"GanNing": [mk.call(1, Equipment.AP, 41.2, 6, 0, [])],
 		},
@@ -418,6 +431,7 @@ func set_data(p: Dictionary, hero_list: Array = []) -> void:
 	concentrate = int(p.get("concentrate", 0))
 	max_intensify = int(p.get("maxIntensify", 200))
 	max_refine = int(p.get("maxRefine", 5))
+	max_purify = int(p.get("maxPurify", 20))
 	var owned: Dictionary = p.get("equipment", {})
 	# Duyet theo doi hinh truoc (do la nhung tuong nguoi choi dang dung), roi
 	# them tuong nao co do ma khong trong doi hinh.
@@ -456,6 +470,9 @@ func _model(it: Dictionary) -> Equipment:
 			int(m.get("type", Equipment.AP)), float(m.get("value", 0.0)),
 			int(it.get("level", 1)), int(it.get("intensify", 0)),
 			int(it.get("quality", 1)), [], int(it.get("refine", 0)))
+	e.exclusive = bool(it.get("exclusive", false))
+	e.purify = int(it.get("purify", 0))
+	e.purify_percent = float(it.get("purifyPercent", 0.0))
 	for ap in it.get("appends", []):
 		e.appends.append([int(ap.get("type", 0)), float(ap.get("value", 0.0))])
 	return e
@@ -483,9 +500,14 @@ func _refresh() -> void:
 	_label(XggLayout.find_node(ui, "ttfEquipMainUIQuality"), "Pham %d" % int(it.get("quality", 1)))
 	_label(XggLayout.find_node(ui, "ttfEquipMainUIRank"), "O %d" % part)
 	var rf := int(it.get("refine", 0))
-	_label(XggLayout.find_node(ui, "ttfEquipMainUIRefine"),
-			"Tinh luyen %d (+%d%%)" % [rf, int(Equipment.refine_percent(rf))]
-			if rf > 0 else "Chua tinh luyen")
+	if bool(it.get("exclusive", false)):
+		_label(XggLayout.find_node(ui, "ttfEquipMainUIRefine"),
+				"Chuyen thuoc bac %d (+%d%%)" % [int(it.get("purify", 0)),
+				int(float(it.get("purifyPercent", 0.0)))])
+	else:
+		_label(XggLayout.find_node(ui, "ttfEquipMainUIRefine"),
+				"Tinh luyen %d (+%d%%)" % [rf, int(Equipment.refine_percent(rf))]
+				if rf > 0 else "Chua tinh luyen")
 
 	var mt := int(it.get("main", {}).get("type", Equipment.AP))
 	var base := float(it.get("main", {}).get("value", 0.0))
@@ -652,9 +674,34 @@ func _refresh_intensify(it: Dictionary, e: Equipment, mt: int) -> void:
 ## Bang tinh luyen. Bo cuc goc chia lam hai khoi chong nhau: "锻位进阶" khi
 ## con len duoc, "满锻位" khi da het cap — bat dung mot cai, y nhu ban goc.
 func _refresh_refine(it: Dictionary, e: Equipment, mt: int) -> void:
-	var lv := int(it.get("refine", 0))
-	var maxed := lv >= max_refine
+	var exclusive := bool(it.get("exclusive", false))
+	# Ban goc khong lam tab rieng cho do chuyen thuoc: no doi CHE DO cua chinh
+	# bang tinh luyen khi mon do da tay bac 5 (EquipRefineType.OpenExclusive).
+	# Lam dung the.
+	var can_forge := false
+	var forge_reason := ""
+	if not exclusive:
+		var er = it.get("exclusiveReady")
+		if er != null:
+			can_forge = bool(er.get("ready", false))
+			forge_reason = str(er.get("reason", ""))
+
+	var lv := int(it.get("purify", 0)) if exclusive else int(it.get("refine", 0))
+	var cap_lv := max_purify if exclusive else max_refine
+	var maxed := lv >= cap_lv
 	var pname: String = PROP_NAME.get(mt, str(mt))
+	var word := "Bac" if exclusive else "Bac"
+
+	# Nam cham bac: ban goc lam MO cai chua dat (setGray). Duong chuyen thuoc
+	# co 21 bac ma cho chi ve duoc 5 cham, nen chia theo tung chang 5 bac —
+	# dung y ban goc (no lay `RefineLevel % 5`).
+	var prog := XggLayout.find_by_cls(ui, CLS_REFINE_PROGRESS)
+	if prog != null:
+		var lit := lv % 5 if exclusive and lv < cap_lv else mini(lv, 5)
+		for i in range(1, 6):
+			var dot := XggLayout.find_by_cls(prog, "CCSprite%d" % i)
+			if dot != null:
+				dot.modulate = Color(1, 1, 1) if i <= lit else Color(0.32, 0.34, 0.38)
 
 	# Tab tinh luyen co o icon rieng cua no; gan cung mot anh.
 	var rf_panel := XggLayout.find_node(ui, "lEquipmentRefineUI")
@@ -668,15 +715,6 @@ func _refresh_refine(it: Dictionary, e: Equipment, mt: int) -> void:
 				_slot_art(bg, "v6/equipment_b_%d.png"
 						% clampi(int(it.get("quality", 1)), 2, 6))
 
-	# Nam cham bac: ban goc lam MO cai chua dat (setGray). Khong lam thi nhin
-	# vao khong biet dang o bac may.
-	var prog := XggLayout.find_by_cls(ui, CLS_REFINE_PROGRESS)
-	if prog != null:
-		for i in range(1, max_refine + 1):
-			var dot := XggLayout.find_by_cls(prog, "CCSprite%d" % i)
-			if dot != null:
-				dot.modulate = Color(1, 1, 1) if i <= lv else Color(0.32, 0.34, 0.38)
-
 	var step := XggLayout.find_by_cls(ui, CLS_REFINE_STEP)
 	var full := XggLayout.find_by_cls(ui, CLS_REFINE_FULL)
 	if step != null:
@@ -685,26 +723,46 @@ func _refresh_refine(it: Dictionary, e: Equipment, mt: int) -> void:
 		full.visible = maxed
 
 	if maxed:
-		_label(_child(full, CLS_GRADE_NOW), "Bac %d" % lv, true)
+		_label(_child(full, CLS_GRADE_NOW), "%s %d" % [word, lv], true)
 		_label(_child(full, CLS_FULL_FORGE), "cao nhat", true)
 		_label(_child(full, CLS_ADD_NOW),
 				"%s %s" % [pname, _num(e.effective_main(), mt)], true)
-		_label(_child(full, CLS_FULL_TIPS), "+%d%%" % int(Equipment.refine_percent(lv)), true)
+		_label(_child(full, CLS_FULL_TIPS), "+%d%%" % int(e.bonus_percent()), true)
 	else:
 		var after := _model(it)
-		after.refine = lv + 1
-		_label(_child(step, CLS_GRADE_NOW), "Bac %d" % lv, true)
-		_label(_child(step, CLS_GRADE_NEXT), "Bac %d" % (lv + 1), true)
+		var nxt_pct := 0.0
+		if exclusive:
+			after.purify = lv + 1
+			# Bang phan tram cua duong chuyen thuoc do MAY CHU giu; client chi
+			# xem truoc mot buoc bang quy luat +5% moi bac cua chinh bang do.
+			nxt_pct = e.bonus_percent() + 5.0
+			after.purify_percent = nxt_pct
+		else:
+			after.refine = lv + 1
+		_label(_child(step, CLS_GRADE_NOW), "%s %d" % [word, lv], true)
+		_label(_child(step, CLS_GRADE_NEXT), "%s %d" % [word, lv + 1], true)
 		_label(_child(step, CLS_ADD_NOW),
 				"%s %s" % [pname, _num(e.effective_main(), mt)], true)
 		_label(_child(step, CLS_ADD_NEXT),
 				"%s %s" % [pname, _num(after.effective_main(), mt)], true)
 
-	# Khoi gia: so tinh hoa can / dang co.
+	# Nhan rong o dinh bang: noi ro dang o duong nao.
+	var head := XggLayout.find_node(ui, "ttfEquipmentUI_IntensifyValue")
+	if head != null:
+		head.visible = true
+		if can_forge:
+			_label(head, "Ren duoc thanh do chuyen thuoc")
+		elif exclusive:
+			_label(head, "Do chuyen thuoc  +%d%%" % int(e.bonus_percent()))
+		else:
+			_label(head, "Tinh luyen  +%d%%" % int(e.bonus_percent()))
+
 	var cost := refine_cost_now()
 	var box := XggLayout.find_by_cls(ui, CLS_REFINE_COST)
 	if box != null:
-		box.visible = not maxed
+		# Ren thanh do chuyen thuoc thi khong ton tinh hoa (ban goc ton nguyen
+		# lieu, ma game moi chua co he vat pham).
+		box.visible = not maxed and not can_forge
 		var labels: Array = []
 		_collect_labels(box, labels)
 		if labels.size() > 0:
@@ -712,22 +770,37 @@ func _refresh_refine(it: Dictionary, e: Equipment, mt: int) -> void:
 		for i in range(1, labels.size()):
 			_label(labels[i], "")
 
+	var maxed_note := XggLayout.find_by_cls(ui, CLS_MAXED)
+	if maxed_note != null:
+		maxed_note.visible = maxed
+		_label(maxed_note, "Da toi bac cao nhat" if maxed else "")
+
 	var btn := XggLayout.find_by_cls(ui, CLS_REFINE_BTN)
 	if btn != null:
 		btn.visible = not maxed
 		for c in btn.get_children():
 			if c is Label:
-				_label(c, "Tinh luyen")
+				_label(c, "Ren chuyen thuoc" if can_forge else "Tinh luyen")
 				(c as Label).horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 				(c as Label).vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 				c.size = btn.size
 				c.position = Vector2.ZERO
-		btn.modulate = Color(1, 1, 1) if concentrate >= cost else Color(0.55, 0.55, 0.55)
+		btn.modulate = Color(1, 1, 1) if (can_forge or concentrate >= cost) 				else Color(0.55, 0.55, 0.55)
 
 	if tab == "refine":
-		_tips.text = "" if maxed or concentrate >= cost else 				"Thieu tinh hoa: can %d, dang co %d" % [cost, concentrate]
+		if can_forge:
+			_tips.text = "Da tay bac 5 — ren duoc thanh do chuyen thuoc"
+		elif maxed:
+			_tips.text = ""
+		elif concentrate < cost:
+			_tips.text = "Thieu tinh hoa: can %d, dang co %d" % [cost, concentrate]
+		elif forge_reason != "" and not exclusive:
+			_tips.text = ""
+		else:
+			_tips.text = ""
 
 
+## Nhan con theo ten lop, tim TRONG mot khoi.
 ## Bang ghep do. Ban goc chia san ba bien the khung theo SO NGUYEN LIEU
 ## (2, 3, 4 mon) — chon dung cai theo bang, y nhu no.
 ##
@@ -740,11 +813,10 @@ func _refresh_forge(it: Dictionary) -> void:
 	if panel == null:
 		return
 
-	# Tat het cac bien the truoc, roi bat dung cai can.
 	for k in CLS_FORGE_CONSUME:
-		var box := XggLayout.find_by_cls(panel, CLS_FORGE_CONSUME[k])
-		if box != null:
-			box.visible = false
+		var b := XggLayout.find_by_cls(panel, CLS_FORGE_CONSUME[k])
+		if b != null:
+			b.visible = false
 	var note := XggLayout.find_node(ui, "lEquipForgeUI_IsMaxLevel")
 	if note != null:
 		note.visible = maxed
@@ -764,12 +836,8 @@ func _refresh_forge(it: Dictionary) -> void:
 	var box := XggLayout.find_by_cls(panel, CLS_FORGE_CONSUME[n])
 	if box != null:
 		box.visible = true
-		# Hai nhan ten/cap cua ban goc cach nhau co 20px (chu cua no ngan
-		# kieu "Vu khi" + "Lv7"), nen chi de mot cai; phan con lai don xuong
-		# dong tips ben duoi vong 300px.
-		# Hai nhan ten/cap cua ban goc cach nhau co 20px (chu cua no ngan
-		# kieu "Vu khi" + "Lv7"), nen gop lam mot; dong tips ben duoi rong
-		# 300px thi de cho cap tuong.
+		# Hai nhan ten/cap cua ban goc cach nhau co 20px (chu cua no ngan kieu
+		# "Vu khi" + "Lv7"), nen gop lam mot; dong tips ben duoi rong 300px.
 		_label(XggLayout.find_by_cls(box, CLS_FORGE_NAME),
 				"%s  cap %d -> %d" % [PART_NAME.get(part, str(part)),
 				int(it.get("level", 1)), int(info.get("nextLevel", 0))], true)
@@ -828,9 +896,8 @@ func _forge_materials(box: Control, mats: Array, n: int) -> void:
 		if i <= mats.size():
 			slot.visible = true
 			_slot_art(slot, "item_%d.png" % int(mats[i - 1][0]))
-			# O nay von co hai sprite con ve de len (nen trong + hinh "?" mac
-			# dinh). Anh vat pham la mot tam tron ca khung nen giau chung di,
-			# khong thi chi thay cai "?".
+			# O nay von co hai sprite con ve de len (nen trong + hinh "?").
+			# Anh vat pham la mot tam tron ca khung nen giau chung di.
 			for c in slot.get_children():
 				if c is TextureRect:
 					c.visible = false
@@ -842,7 +909,6 @@ func _forge_materials(box: Control, mats: Array, n: int) -> void:
 			slot.visible = false
 
 
-## Nhan con theo ten lop, tim TRONG mot khoi.
 func _child(box: Control, cls: String) -> Control:
 	if box == null:
 		return null
@@ -862,6 +928,9 @@ func refine_cost_now() -> int:
 	var it := item()
 	if it.is_empty():
 		return 0
+	if bool(it.get("exclusive", false)):
+		# Duong chuyen thuoc co bang gia rieng, may chu giu — khong tinh lai.
+		return int(it.get("nextPurifyCost", 0))
 	if it.has("nextRefineCost"):
 		return int(it["nextRefineCost"])
 	var lv := int(it.get("refine", 0))
@@ -874,7 +943,16 @@ func _on_refine() -> void:
 	if _busy:
 		return
 	var it := item()
-	if it.is_empty() or int(it.get("refine", 0)) >= max_refine:
+	if it.is_empty():
+		return
+	# Cung mot nut: da tay bac 5 thi no la nut REN thanh do chuyen thuoc.
+	var er = it.get("exclusiveReady")
+	if not bool(it.get("exclusive", false)) and er != null 			and bool(er.get("ready", false)):
+		await _do_forge_exclusive()
+		return
+	var lv := int(it.get("purify", 0)) if bool(it.get("exclusive", false)) 			else int(it.get("refine", 0))
+	var cap_lv := max_purify if bool(it.get("exclusive", false)) else max_refine
+	if lv >= cap_lv:
 		return
 	var cost := refine_cost_now()
 	if concentrate < cost:
@@ -892,6 +970,21 @@ func _on_refine() -> void:
 	_tips.text = "Tinh luyen %d  (+%d%%, ton %d tinh hoa)" % [
 			int(r.data.get("refine", 0)), int(r.data.get("refinePercent", 0)),
 			int(r.data.get("cost", 0))]
+
+
+func _do_forge_exclusive() -> void:
+	_busy = true
+	_tips.text = "dang ren..."
+	var ses := await Game.ensure_session()
+	var r := await ses.forge_exclusive(hero(), part)
+	_busy = false
+	if not r.ok:
+		_tips.text = "khong ren duoc: %s" % str(r.get("error", ""))
+		return
+	await _reload()
+	_tips.text = "Thanh do chuyen thuoc  (+%d%%, co ky nang %s)" % [
+			int(float(r.data.get("purifyPercent", 0))),
+			str(r.data.get("skill", ""))]
 
 
 func _on_synthesize() -> void:

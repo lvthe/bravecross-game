@@ -160,6 +160,19 @@ func _init() -> void:
 			got += 1
 	_check(got >= want - 2, "HUD tra duoc %d/%d anh" % [got, want])
 
+	# --- 6. anh da duoc gan vao node
+	print("\n=== 6. gan anh vao node ===")
+	var no_tex: Array = []
+	var tally := _tally(hud, no_tex)
+	_check(tally[0] > 100, "co %d node duoc gan anh" % tally[0])
+	_check(tally[1] == 0,
+			"anh CO trong kho thi phai gan duoc vao node",
+			", ".join(no_tex.slice(0, 6)))
+	var missing := UiFrames.missing()
+	print("  (%d ten anh yeu cau ma khong co file)" % missing.size())
+	if missing.size() > 0:
+		print("  (%s)" % ", ".join(missing.slice(0, 6)))
+
 	hud.free()
 	print("\n===== dat %d, hong %d =====" % [n_pass, n_fail])
 	quit(0 if n_fail == 0 else 1)
@@ -172,3 +185,24 @@ func _count_nodes(n: Node) -> int:
 	for k in n.get_children():
 		c += _count_nodes(k)
 	return c
+
+## [so node da gan anh, so node ghi 'verified' ma khong nap duoc anh]
+func _tally(n: Node, no_tex: Array) -> Array:
+	var applied := 0
+	var broken := 0
+	if n is Control and n.has_meta("img"):
+		var nm := String(n.get_meta("img"))
+		if n.get_meta("img_applied", false):
+			applied += 1
+		elif String(n.get_meta("img_from", "")) == "verified":
+			# Phan biet "ban goc khong ship anh do" voi "code khong gan duoc".
+			# Chi cai thu hai moi la loi; cai dau la du lieu von the.
+			if UiFrames.has_frame(nm):
+				broken += 1
+				if no_tex.size() < 12:
+					no_tex.append(nm)
+	for c in n.get_children():
+		var r := _tally(c, no_tex)
+		applied += r[0]
+		broken += r[1]
+	return [applied, broken]

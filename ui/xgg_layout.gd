@@ -28,6 +28,14 @@ const DESIGN := Vector2(960, 640)
 ## Ve o mau thay cho anh chua nap duoc. Bat len de soi bo cuc.
 static var debug_boxes := false
 
+## Dung ca nhung ten anh CHUA tu kiem chung duoc.
+##
+## Truong chua ten anh trong ban ghi node moi chi do bang thong ke chu chua
+## doc tu libgame.so, nen ten nao khong doi chieu duoc voi section C thi coi
+## la phong doan. Tren 296 man: 11631 ten xac minh duoc, 360 phong doan.
+## Mac dinh bo qua 360 cai do — hien thieu anh con hon hien nham anh.
+static var use_guessed_images := false
+
 const _DEBUG_COLORS := {
 	"sprite": Color(0.90, 0.45, 0.25, 0.55),
 	"scale9": Color(0.25, 0.55, 0.85, 0.55),
@@ -104,6 +112,11 @@ static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 	var y := float(nd.get("y", 0.0))
 
 	var kind := kind_of(String(nd.get("cls", "")))
+	# Node nao co ANH thi phai la node ve duoc, du ten lop khong noi len dieu
+	# do: CCButton, btnBattleTest... deu mang anh nhung kind_of() xep vao
+	# 'layer'. Khong doi thi set_frame() tu choi va anh bien mat lang le.
+	if kind == "layer" and String(nd.get("img", "")) != "":
+		kind = "sprite"
 	var node: Control
 	match kind:
 		"label":
@@ -140,6 +153,18 @@ static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 	# co kich thuoc khac — ban goc doi anh thi giu DIEM NEO, khong giu goc o.
 	node.set_meta("cocos", Vector4(x, y, ax, ay))
 	node.set_meta("parent_h", parent_size.y)
+
+	# Gan anh neu bo cuc co ghi. 'verified' = ten tu kiem chung duoc bang
+	# section C cua chinh man do (co trong danh sach anh VA dung kich thuoc);
+	# 'guess' = giai ra chuoi hop le nhung khong tu kiem chung duoc, nen mac
+	# dinh KHONG dung — bat bang use_guessed_images neu muon xem thu.
+	var img := String(nd.get("img", ""))
+	var from := String(nd.get("imgFrom", ""))
+	if img != "" and (from == "verified" or (from == "guess" and use_guessed_images)):
+		node.set_meta("img", img)
+		node.set_meta("img_from", from)
+		if UiFrames.set_frame(node, img):
+			node.set_meta("img_applied", true)
 
 	if debug_boxes and w > 0.0 and h > 0.0:
 		var box := ColorRect.new()

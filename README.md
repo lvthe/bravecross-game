@@ -7,6 +7,37 @@ Phần đã xong ở đây là **bộ nạp nhân vật**: đọc thẳng dữ l
 `work/export.py` xuất ra và dựng thành cây `Node2D` + `AnimationPlayer` chạy
 được ngay — không phải dựng tay 397 scene.
 
+## Lần đầu trên một máy mới
+
+Ba bước, làm đúng một lần. Bỏ bước nào cũng ra lỗi khó đoán.
+
+```bash
+# 1. Art tham chiếu — gitignore vì có bản quyền, phải tự sinh từ repo brave-cross
+python ../brave-cross/work/export.py --all --out assets_ref
+
+# 2. Bảng số liệu cho máy chủ — cũng gitignore, cùng lý do
+python sim/export_stats.py
+
+# 3. Nạp project một lần để Godot sinh .godot/
+godot --headless --path . --import
+```
+
+Bước 3 là bước dễ quên nhất. Tên lớp toàn cục (`class_name`) nằm trong
+`.godot/global_script_class_cache.cfg`, mà `.godot/` thì gitignore. Chưa import
+thì `SngRig`, `UiTheme`, `PlayerSession` đều báo **"not declared in the current
+scope"** và không script nào biên dịch nổi — nhìn y như code hỏng nặng, trong
+khi thật ra chỉ thiếu cache.
+
+Nếu `godot` gọi không được sau khi `winget install`: winget **không tạo được
+alias khi cài không có quyền admin** — nó vẫn báo cài thành công. File exe nằm ở
+`%LOCALAPPDATA%\Microsoft\WinGet\Packages\GodotEngine.*\Godot_v*_win64.exe`.
+`tools/check.py` tự dò được chỗ đó, còn gọi tay thì trỏ thẳng đường dẫn, hoặc
+đặt biến môi trường `GODOT`.
+
+Máy chủ cần Docker Desktop **đang chạy**, không chỉ cài. CLI `docker` có sẵn
+ngay cả khi engine chưa bật, nên `docker --version` chạy được không có nghĩa là
+dùng được.
+
 ## Chạy thử
 
 Chơi:

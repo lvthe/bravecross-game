@@ -11,6 +11,7 @@ const ROOT := "res://assets_ref/"
 
 var n_pass := 0
 var n_fail := 0
+var n_static := 0
 
 
 func _check(ok: bool, desc: String, detail: String = "") -> void:
@@ -43,6 +44,17 @@ func _init() -> void:
 		print("\n=== ", char_name, " ===")
 		var raw = JSON.parse_string(
 				FileAccess.get_file_as_string(ROOT + char_name + "/" + char_name + ".json"))
+
+		# Khong phai atlas nao cung la mot rig. EquipGong, EquipJian,
+		# EquipQiang, EquipQin, EquipZhang la art trang bi TINH: 12-13 sprite,
+		# du file anh, nhung groups rong — khong co dong tac nao. SngRig tu
+		# choi chung la dung, nen dem thanh HONG la do nham "du lieu von the"
+		# voi "code hong".
+		if raw is Dictionary and (raw.get("groups", []) as Array).is_empty():
+			n_static += 1
+			print("  bo qua  atlas tinh, khong co dong tac nao")
+			continue
+
 		var rig := SngRig.build(ROOT + char_name)
 		if rig == null:
 			_check(false, "dung duoc nhan vat")
@@ -171,5 +183,7 @@ func _init() -> void:
 
 		rig.free()
 
+	if n_static > 0:
+		print("%d atlas tinh (khong co dong tac) da bo qua" % n_static)
 	print("\n===== dat %d, hong %d =====" % [n_pass, n_fail])
 	quit(0 if n_fail == 0 else 1)

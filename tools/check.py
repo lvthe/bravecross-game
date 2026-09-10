@@ -34,12 +34,44 @@ SCORE = re.compile(r'dat (\d+), hong (\d+)')
 
 
 def find_godot():
-    p = shutil.which('godot')
+    """Tim Godot, ke ca khi winget khong tao duoc alias.
+
+    Cai bang winget MA KHONG co quyen admin thi no bao "Successfully installed"
+    nhung KHONG tao duoc symlink trong WinGet\\Links — exe nam nguyen trong
+    WinGet\\Packages\\<id>\\Godot_vX.Y.Z-stable_win64.exe. Truoc day chi tim
+    'godot' tren PATH va cai alias do, nen may nao cai kieu ay la coi nhu
+    khong co Godot.
+    """
+    p = shutil.which('godot') or shutil.which('godot_console')
     if p:
         return p
+
     guess = os.path.expandvars(
         r'%LOCALAPPDATA%\Microsoft\WinGet\Links\godot.exe')
-    return guess if os.path.isfile(guess) else None
+    if os.path.isfile(guess):
+        return guess
+
+    pkgs = os.path.expandvars(r'%LOCALAPPDATA%\Microsoft\WinGet\Packages')
+    if os.path.isdir(pkgs):
+        # Ban moi nhat truoc, va uu tien ban _console vi tren Windows no moi
+        # chac chan do stdout ve cho tien trinh goi.
+        found = []
+        for d in os.listdir(pkgs):
+            if 'Godot' not in d:
+                continue
+            for f in os.listdir(os.path.join(pkgs, d)):
+                if f.startswith('Godot_v') and f.endswith('.exe'):
+                    found.append(os.path.join(pkgs, d, f))
+        if found:
+            found.sort(key=lambda f: ('_console' not in f, f), reverse=False)
+            found.sort(key=lambda f: os.path.basename(f).split('-')[0], reverse=True)
+            return found[0]
+
+    for env in ('GODOT', 'GODOT4'):
+        p = os.environ.get(env)
+        if p and os.path.isfile(p):
+            return p
+    return None
 
 
 def server_up(url):
@@ -51,6 +83,21 @@ def server_up(url):
         return False
 
 
+SCRIPT_ERR = re.compile(
+    r'^(?:SCRIPT ERROR|ERROR|USER SCRIPT ERROR)[:.] *(.+)$', re.M)
+
+
+def first_script_error(out):
+    """Dong loi dau tien cua Godot, hoac '' neu khong co.
+
+    Dung de phan biet 'chay lau' voi 'crash roi treo'. Godot khong thoat khi
+    script loi trong che do --script, nen khong co cai nay thi ca hai truong
+    hop deu ra QUA GIO nhu nhau.
+    """
+    m = SCRIPT_ERR.search(out or '')
+    return m.group(1).strip()[:70] if m else ''
+
+
 def run(godot, kind, path, extra, url, needs_server):
     argv = [godot, '--headless', '--path', ROOT]
     argv += ['--script', path] if kind == 'script' else [path]
@@ -58,12 +105,24 @@ def run(godot, kind, path, extra, url, needs_server):
     argv += extra
     if needs_server:
         argv += ['--url=' + url]
+    # Gop stderr vao stdout. Godot do 'SCRIPT ERROR' ra stderr; truoc day
+    # capture_output bat rieng roi vut di, nen mot bo crash xong TREO chi hien
+    # ra thanh 'QUA GIO' — dung y het mot bo chay lau, va loi that bi che.
     try:
-        out = subprocess.run(argv, capture_output=True, text=True,
+        out = subprocess.run(argv, stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT, text=True,
                              encoding='utf-8', errors='replace',
                              timeout=600).stdout or ''
-    except subprocess.TimeoutExpired:
-        return 'QUA GIO', True
+    except subprocess.TimeoutExpired as e:
+        out = e.stdout or ''
+        if isinstance(out, bytes):
+            out = out.decode('utf-8', 'replace')
+        err = first_script_error(out)
+        return ('QUA GIO sau khi loi: %s' % err) if err else 'QUA GIO', True
+
+    err = first_script_error(out)
+    if err and not SCORE.search(out):
+        return 'LOI SCRIPT: %s' % err, True
     m = SCORE.search(out)
     if m:
         ok, bad = int(m.group(1)), int(m.group(2))
@@ -82,17 +141,21 @@ def main():
     sys.stdout.reconfigure(encoding='utf-8')
 
     godot = find_godot()
-    if not godot:
-        sys.exit('khong thay godot. Cai bang: winget install GodotEngine.GodotEngine')
     online = server_up(a.url)
 
-    print('\ngodot   : %s' % godot)
+    print('\ngodot   : %s' % (godot or 'KHONG thay'))
     print('may chu : %s  ->  %s\n'
           % (a.url, 'dang chay' if online else 'KHONG noi duoc'))
 
     rows = []
     failed = 0
     for name, kind, path, needs, extra in SUITES:
+        # Thieu Godot thi BO QUA cac bo can Godot, khong thoat han: hai bo
+        # Python o duoi (96 kiem tra) chay duoc ma khong can Godot, va tren
+        # may chi chay phan may chu thi van muon do chung.
+        if not godot:
+            rows.append((name, 'BO QUA (khong co godot)'))
+            continue
         if needs and not online:
             rows.append((name, 'BO QUA (can may chu)'))
             continue
@@ -140,11 +203,14 @@ def main():
     if failed:
         print('%d bo co van de.' % failed)
         return 1
+    if not godot:
+        print('Xong. Cac bo can Godot bi bo qua.')
+        print('Cai Godot:  winget install GodotEngine.GodotEngine')
     if not online:
         print('Xong. Cac bo can may chu bi bo qua.')
         print('Bat may chu:  cd server  &&  docker compose up -d')
-        return 0
-    print('Tat ca xanh.')
+    if godot and online:
+        print('Tat ca xanh.')
     return 0
 
 

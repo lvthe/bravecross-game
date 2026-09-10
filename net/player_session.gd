@@ -21,7 +21,7 @@ extends Node
 
 ## Doi so nay khi cau truc ban luu thay doi, de con biet duong nang cap.
 ## Phai khop SAVE_VERSION ben server/modules/battle.lua.
-const SAVE_VERSION := 8
+const SAVE_VERSION := 9
 
 var client: NakamaClient = null
 var data: Dictionary = {}
@@ -345,6 +345,18 @@ func recast(hero_name: String, part: int) -> Dictionary:
 	if not online:
 		return {"ok": false, "error": "chua noi duoc may chu"}
 	var r := await client.call_rpc("bx.recast",
+			{"hero": hero_name, "part": part})
+	if r.ok:
+		data = _upgrade(r.data.get("save", {}))
+	return r
+
+
+## Nang pham chat mot bac. Ton vang, va doi cap tuong; may chu chot ca hai.
+## Pham chat an vao ca chi so chinh lan thuoc tinh phu.
+func promote_quality(hero_name: String, part: int) -> Dictionary:
+	if not online:
+		return {"ok": false, "error": "chua noi duoc may chu"}
+	var r := await client.call_rpc("bx.promote_quality",
 			{"hero": hero_name, "part": part})
 	if r.ok:
 		data = _upgrade(r.data.get("save", {}))

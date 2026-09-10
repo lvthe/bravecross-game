@@ -175,6 +175,35 @@ function M.synthesis_ready(tbl, equip_type, level, hero_level)
 	return true, ""
 end
 
+-- ---------------------- Nang pham chat (PromoteQualityEquipment)
+-- Bang: KDBGameCommonConfig / GameEquipQualityPromotionConfig, khoa la PHAM
+-- DICH (2..6). Pham chat an vao HAI cho — chi so chinh va thuoc tinh phu —
+-- nen len mot pham la manh len ca hai duong.
+M.MAX_QUALITY = 6
+
+function M.quality_row(tbl, quality)
+	if tbl == nil then
+		return nil
+	end
+	return tbl[tostring(math.floor(quality))]
+end
+
+--- Co nang pham duoc khong. Tra ve (duoc, ly do).
+function M.quality_ready(tbl, quality, hero_level)
+	local q = math.floor(quality or 1)
+	if q >= M.MAX_QUALITY then
+		return false, "da toi pham cao nhat"
+	end
+	local row = M.quality_row(tbl, q + 1)
+	if row == nil then
+		return false, string.format("khong co cong thuc nang len pham %d", q + 1)
+	end
+	if math.floor(hero_level or 1) < math.floor(row.unlockLevel) then
+		return false, string.format("can tuong cap %d", math.floor(row.unlockLevel))
+	end
+	return true, ""
+end
+
 -- ------------------------ Thuoc tinh phu va tay luyen (RecastEquipment)
 -- share_EquipmentPropertyLogic:getAppendPropertyValue
 --

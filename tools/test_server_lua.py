@@ -973,6 +973,80 @@ def main():
             pass
         check(ok, 'thieu vang thi khong tay duoc')
 
+        print('\n=== 10i. nang pham chat ===')
+        qu = 'u-nang-pham'
+        env['store'][qu + '/player/save'] = L.table(
+            version=9, gold=200000, concentrate=0,
+            levels=L.table(MaChao=40),
+            equipment=L.table(MaChao=L.table(
+                L.table(part=1, level=5, intensify=0, quality=3, refine=0,
+                        equipType=1, main=L.table(type=20, value=100.0),
+                        appends=L.table(
+                            L.table(type=1, value=68.0, base=1.0))))))
+        qc = L.table(user_id=qu)
+        eq10 = rpcs['bx.equipment'](qc, None)
+        check(int(eq10['maxQuality']) == 6, 'pham cao nhat la 6',
+              eq10['maxQuality'])
+        it10 = list(dict(eq10['equipment'])['MaChao'].values())[0]
+        qi = it10['qualityUp']
+        check(qi is not None, 'co thong tin nang pham')
+        check(int(qi['nextQuality']) == 4, 'buoc ke la pham 4', qi['nextQuality'])
+        check(int(qi['gold']) == 20000, 'gia len pham 4 dung bang goc', qi['gold'])
+        check(bool(qi['ready']), 'tuong cap 40 thi du dieu kien', qi['reason'])
+
+        main_b = float(it10['mainValue'])
+        cap_b = float(it10['capacity'])
+        gold_b = int(eq10['gold'])
+        r10 = rpcs['bx.promote_quality'](qc, L.table(hero='MaChao', part=1))
+        check(int(r10['quality']) == 4, 'len dung mot pham', r10['quality'])
+        check(int(r10['save']['gold']) == gold_b - 20000, 'tru dung vang')
+        check(float(r10['mainValue']) > main_b,
+              'chi so chinh tinh lai theo pham moi',
+              '%.2f -> %.2f' % (main_b, float(r10['mainValue'])))
+        check(float(r10['capacity']) > cap_b, 'luc chien tang')
+        # Thuoc tinh phu cung phai tinh lai — pham chat an vao ca hai duong.
+        ap10 = r10['item']['appends'][1]
+        check(float(ap10['value']) > 68.0,
+              'thuoc tinh phu cung tinh lai theo pham moi', ap10['value'])
+        check(abs(float(ap10['base']) - 1.0) < 1e-9,
+              'nhung GIU NGUYEN base — nang pham khong phai boc lai',
+              ap10['base'])
+
+        # Pham 5 doi tuong cap 35, pham 6 doi cap 40 — tuong cap 40 qua duoc ca hai.
+        r11 = rpcs['bx.promote_quality'](qc, L.table(hero='MaChao', part=1))
+        check(int(r11['quality']) == 5, 'len pham 5', r11['quality'])
+        r12 = rpcs['bx.promote_quality'](qc, L.table(hero='MaChao', part=1))
+        check(int(r12['quality']) == 6, 'len pham 6', r12['quality'])
+        check(r12['qualityUp'] is None, 'het pham thi khong con buoc ke')
+        ok = True
+        try:
+            rpcs['bx.promote_quality'](qc, L.table(hero='MaChao', part=1))
+            ok = False
+        except lupa.LuaError:
+            pass
+        check(ok, 'pham 6 la het, khong len duoc nua')
+
+        # Tuong cap thap: pham 5 doi cap 35 nen phai tu choi.
+        env['store']['u-pham-thap/player/save'] = L.table(
+            version=9, gold=200000, levels=L.table(MaChao=10),
+            equipment=L.table(MaChao=L.table(
+                L.table(part=1, level=5, intensify=0, quality=4, refine=0,
+                        equipType=1, main=L.table(type=20, value=100.0)))))
+        low_c = L.table(user_id='u-pham-thap')
+        eq11 = rpcs['bx.equipment'](low_c, None)
+        it11 = list(dict(eq11['equipment'])['MaChao'].values())[0]
+        check(not bool(it11['qualityUp']['ready']),
+              'tuong cap 10 chua len duoc pham 5')
+        check('cap 35' in str(it11['qualityUp']['reason']), 'noi ro can cap 35',
+              it11['qualityUp']['reason'])
+        ok = True
+        try:
+            rpcs['bx.promote_quality'](low_c, L.table(hero='MaChao', part=1))
+            ok = False
+        except lupa.LuaError:
+            pass
+        check(ok, 'may chu tu choi khi tuong chua du cap')
+
 
     print('\n=== 10d. ban luu ban thi bo mon do, khong sua cho lanh ===')
     # Ban luu la du lieu ben ngoai. Nhet vao vai mon vo ly roi doc lai.

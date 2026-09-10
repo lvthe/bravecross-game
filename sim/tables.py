@@ -273,6 +273,44 @@ class EquipSynthesis(object):
         return len(self.by_key)
 
 
+class EquipQuality(object):
+    """Nang pham chat trang bi.
+
+    KDBGameCommonConfig, muc ConfigName = "GameEquipQualityPromotionConfig":
+    khoa la PHAM CHAT DICH (2..6), moi dong co UnlockLevel (cap tuong doi
+    hoi), GoldCost, va toi da 4 cap (MaterialID, Count).
+
+    Pham chat an vao HAI cho: chi so chinh (Q trong (L + 10 + Q*6)^1.45) va
+    thuoc tinh phu (base * Q). Nen len mot pham la manh len ca hai duong.
+    """
+
+    def __init__(self, config_dir=DEFAULT_CONFIG):
+        rows = load_json(config_dir, 'KDBGameCommonConfig.xgg')
+        cfg = {}
+        for e in rows:
+            if e.get('ConfigName') == 'GameEquipQualityPromotionConfig':
+                cfg = json.loads(e['ConfigContent'])
+        self.by_quality = {}
+        for k, r in cfg.items():
+            mats = []
+            for i in (1, 2, 3, 4, 5):
+                n = int(r.get('Count%d' % i, 0) or 0)
+                if n > 0:
+                    mats.append((int(r['MaterialID%d' % i]), n))
+            self.by_quality[int(k)] = collections.OrderedDict([
+                ('unlockLevel', int(r.get('UnlockLevel', 1))),
+                ('gold', int(r.get('GoldCost', 0))),
+                ('materials', mats),
+            ])
+        self.max_quality = max(self.by_quality) if self.by_quality else 1
+
+    def get(self, quality):
+        return self.by_quality.get(int(quality))
+
+    def __len__(self):
+        return len(self.by_quality)
+
+
 class ExclusiveEquip(object):
     """Trang bi chuyen thuoc: KDBGameExclusiveEquipConfig.xgg.
 

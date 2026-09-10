@@ -126,6 +126,13 @@ static func main_property_val(prop_type: int, level_coef: float,
 	return 0.0
 
 
+## Nang pham chat (PromoteQualityEquipment). Bang: KDBGameCommonConfig /
+## GameEquipQualityPromotionConfig, khoa la PHAM DICH (2..6).
+##
+## Pham chat an vao HAI cho — chi so chinh va thuoc tinh phu — nen len mot
+## pham la manh len ca hai duong.
+const MAX_QUALITY := 6
+
 ## Thuoc tinh phu va tay luyen (RecastEquipment).
 ## share_EquipmentPropertyLogic:getAppendPropertyValue
 ##

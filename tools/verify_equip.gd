@@ -60,6 +60,9 @@ func _item(part: int, prop: int, value: float, lv: int, intensify: int,
 		"nextRefineCost": e.refine_cost_next(),
 		"levelCoef": 20.0, "recastCost": Equipment.RECAST_COST_GOLD,
 		"appendScore": e.append_score_total(),
+		"qualityUp": {"nextQuality": 3, "gold": 10, "needHeroLevel": 1,
+			"heroLevel": 31, "ready": true, "reason": "",
+			"materials": [[86, 1]]},
 	}
 
 
@@ -124,9 +127,24 @@ func _ready() -> void:
 	_check(main_ui != null and main_ui.visible, "panel mon do duoc bat len")
 	_check(refine != null, "co bang tinh luyen trong bo cuc")
 	_check(forge != null, "co bang ghep do trong bo cuc")
-	# Pham chat (chua co luat) thi van phai an — chi bat cai da co luat.
-	_check(quality_ui != null and not quality_ui.visible,
-			"bang pham chat (chua co luat) van an")
+	# Nam bang hanh dong nam CHONG len nhau trong lEquipmentChildUI. Bat dung
+	# mot cai la luat cua ban goc; bat hai cai la man hinh thanh mot dong
+	# chong cheo. Do bat bien do thay vi do tung bang mot.
+	var panels := ["lEquipmentIntensifyUI", "lEquipmentRefineUI",
+			"lEquipmentForgeUI", "lEquipmentAlterUI",
+			"lEquipmentUpgradeQualityUI"]
+	var missing_panel: Array = []
+	for n in panels:
+		if XggLayout.find_node(scr.ui, n) == null:
+			missing_panel.append(n)
+	_check(missing_panel.is_empty(), "co du 5 bang hanh dong", str(missing_panel))
+	var shown := 0
+	for n in panels:
+		var pn := XggLayout.find_node(scr.ui, n)
+		if pn != null and pn.visible:
+			shown += 1
+	_check(shown == 1, "chi MOT bang duoc bat len mot luc", str(shown))
+	_check(quality_ui != null, "co bang pham chat trong bo cuc")
 
 	print("\n=== 2. do vao thi hien dung so ===")
 	var data := {
@@ -440,6 +458,70 @@ func _ready() -> void:
 	_check(abtn != null and not abtn.visible, "khong co thuoc tinh phu thi giau nut")
 	_check(scr._tips.text.begins_with("Mon nay chua co"), "noi ro vi sao",
 			scr._tips.text)
+
+	scr.set_data(data, ["MaChao", "GanNing"])
+	scr._set_tab("intensify")
+	scr.part = 1
+	scr._refresh()
+
+	print("\n=== 3i. bang nang pham chat ===")
+	scr.set_data(data, ["MaChao", "GanNing"])
+	scr.part = 1
+	scr._set_tab("quality")
+	var pan_q := XggLayout.find_node(scr.ui, "lEquipmentUpgradeQualityUI")
+	_check(pan_q != null and pan_q.visible, "doi sang bang nang pham")
+	_check(pan_al != null and not pan_al.visible, "bang tay luyen an di")
+
+	var now_box := XggLayout.find_node(pan_q, "g_UpgradeQualityActionEndLayer")
+	var next_box := XggLayout.find_node(pan_q, "g_UpgradeQualityActionBeginLayer")
+	_check(now_box != null and next_box != null, "co ca hai khoi truoc/sau")
+	_check(_text_of(scr, scr._child(now_box, "品质")) == "Pham 2",
+			"khoi trai la pham hien tai",
+			_text_of(scr, scr._child(now_box, "品质")))
+	_check(_text_of(scr, scr._child(next_box, "品质")) == "Pham 3",
+			"khoi phai la pham ke",
+			_text_of(scr, scr._child(next_box, "品质")))
+	# Chi so chinh o pham moi phai CAO HON, khong duoc thap hon.
+	var now_txt := _text_of(scr, scr._child(now_box, "主属性"))
+	var next_txt := _text_of(scr, scr._child(next_box, "主属性"))
+	var q_now := now_txt.get_slice(" ", 1).to_float()
+	var q_next := next_txt.get_slice(" ", 1).to_float()
+	_check(q_next > q_now, "nang pham thi chi so chinh cao hon",
+			"%s -> %s" % [now_txt, next_txt])
+
+	var gold_q := XggLayout.find_node(pan_q, "g_EquipQualityUIGoldCost")
+	_check(gold_q != null and gold_q.visible, "hien khoi gia vang")
+	_check(_text_of(scr, XggLayout.find_by_cls(gold_q, scr.CLS_FORGE_GOLD)) == "10",
+			"gia len pham 3 dung bang goc")
+	var qbtn := XggLayout.find_node(pan_q, "snsEquipUpgradeQuality")
+	_check(qbtn != null and qbtn.visible, "co nut nang pham")
+	_check(qbtn != null and qbtn.modulate.r > 0.9, "du vang thi nut sang")
+	var qmat := XggLayout.find_node(pan_q, "g_UpgradeQualityActionMaterialItem")
+	_check(qmat != null and qmat.visible and _text_of(scr, qmat) == "x1",
+			"hien nguyen lieu ban goc doi", _text_of(scr, qmat))
+
+	print("\n=== 3j. het pham / chua du cap tuong ===")
+	var topq := {
+		"gold": 500000, "concentrate": 0, "maxIntensify": 200, "maxRefine": 5,
+		"maxPurify": 20, "maxQuality": 6,
+		"equipment": {"MaChao": [_item(1, Equipment.AP, 100.0, 5, 0)]},
+	}
+	topq["equipment"]["MaChao"][0]["qualityUp"] = null
+	scr.set_data(topq, ["MaChao"])
+	scr.part = 1
+	scr._refresh()
+	_check(qbtn != null and not qbtn.visible, "het pham thi giau nut")
+	var qnote := XggLayout.find_node(pan_q, "lEquipUpgradeQualityUIMaxLevelTips")
+	_check(qnote != null and qnote.visible, "hien dong da toi pham cao nhat")
+
+	var lowq := data.duplicate(true)
+	lowq["equipment"]["MaChao"][0]["qualityUp"]["ready"] = false
+	lowq["equipment"]["MaChao"][0]["qualityUp"]["reason"] = "can tuong cap 35"
+	scr.set_data(lowq, ["MaChao"])
+	scr.part = 1
+	scr._refresh()
+	_check(scr._tips.text.begins_with("Chua nang duoc"),
+			"chua du cap tuong thi noi ro", scr._tips.text)
 
 	scr.set_data(data, ["MaChao", "GanNing"])
 	scr._set_tab("intensify")

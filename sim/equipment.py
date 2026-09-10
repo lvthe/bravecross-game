@@ -160,6 +160,34 @@ VIP_REFINE_DISCOUNT_LEVEL = 10      # HeroLogic:GetUpgradeRefineCost
 VIP_REFINE_DISCOUNT = 0.2
 
 
+# --- Nang pham chat (PromoteQualityEquipment) --------------------------
+# Bang: KDBGameCommonConfig / GameEquipQualityPromotionConfig, khoa la PHAM
+# DICH (2..6). Moi dong co UnlockLevel (cap tuong doi hoi), GoldCost va
+# nguyen lieu.
+#
+# Pham chat an vao HAI cho, nen len mot pham la manh len ca hai duong:
+#   chi so chinh   (L + 10 + Q*6)^1.45
+#   thuoc tinh phu (base * Q - 0.3)
+MAX_QUALITY = 6
+
+
+def quality_row(table, quality):
+    """Mot dong bang nang pham. `table` la {"<pham>": {...}} da xuat."""
+    return (table or {}).get(str(int(quality)))
+
+
+def quality_ready(table, quality, hero_level):
+    """(duoc phep khong, ly do). Chua tinh vang — vang do may chu tru."""
+    if int(quality) >= MAX_QUALITY:
+        return False, 'da toi pham cao nhat'
+    row = quality_row(table, int(quality) + 1)
+    if row is None:
+        return False, 'khong co cong thuc nang len pham %d' % (int(quality) + 1)
+    if int(hero_level) < int(row['unlockLevel']):
+        return False, 'can tuong cap %d' % int(row['unlockLevel'])
+    return True, ''
+
+
 # --- Thuoc tinh phu va tay luyen (RecastEquipment) ---------------------
 # share_EquipmentPropertyLogic:getAppendPropertyValue
 #

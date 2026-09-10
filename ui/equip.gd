@@ -137,6 +137,8 @@ func _ready() -> void:
 			_set_tab("forge")
 		elif "--alter" in OS.get_cmdline_user_args():
 			_set_tab("alter")
+		elif "--quality" in OS.get_cmdline_user_args():
+			_set_tab("quality")
 		if "--part4" in OS.get_cmdline_user_args():
 			part = 4
 			_refresh()
@@ -161,6 +163,9 @@ func _fake() -> Dictionary:
 				"capacity": e.capacity(), "equipType": 1,
 				"nextCost": ceili(Equipment.intensify_cost(iv + 1)),
 				"nextRefineCost": e.refine_cost_next(),
+				"qualityUp": {"nextQuality": 3, "gold": 10, "needHeroLevel": 1,
+					"heroLevel": 31, "ready": true, "reason": "",
+					"materials": [[86, 1]]},
 				"synthesis": {"nextLevel": lv + 1, "gold": 3700,
 					"needHeroLevel": 20, "heroLevel": 31, "ready": true,
 					"reason": "", "materials": [[25, 3], [52, 5]]}}
@@ -209,7 +214,8 @@ func _build() -> void:
 	# CHI ba lop do — bat het thi 5 bang hanh dong ve chong len nhau.
 	for n in ["lEquipmentUI", "lEquipmentMainUI", "lEquipmentChildUI",
 			"lEquipmentIntensifyUI", "lEquipmentRefineUI", "lEquipmentForgeUI",
-			"lEquipmentAlterUI"]:
+			"lEquipmentAlterUI", "lEquipmentUpgradeQualityUI",
+			"lEquipUpgradeQualityMainUI"]:
 		var node := XggLayout.find_node(ui, n)
 		if node != null:
 			XggLayout.show_branch(node, ui)
@@ -246,6 +252,12 @@ func _build() -> void:
 			func(): _set_tab("forge"))
 	_click(XggLayout.find_node(ui, "btnShowEquipmentAlterUI"),
 			func(): _set_tab("alter"))
+	_click(XggLayout.find_node(ui, "btnShowEquipmentPromoteQualityUI"),
+			func(): _set_tab("quality"))
+	_click(XggLayout.find_node(ui, "snsEquipUpgradeQuality"), _on_promote_quality)
+	_button_art(XggLayout.find_node(ui, "snsEquipUpgradeQuality"),
+			"v6/ui_button01.png")
+	_backing(XggLayout.find_node(ui, "lEquipmentUpgradeQualityUI"))
 	_click(XggLayout.find_by_cls(ui, CLS_ALTER_BTN), _on_recast)
 	_button_art(XggLayout.find_by_cls(ui, CLS_ALTER_BTN), "v6/ui_button01.png")
 	_backing(XggLayout.find_node(ui, "lEquipmentAlterUI"))
@@ -275,6 +287,11 @@ func _build() -> void:
 	var auto := XggLayout.find_node(ui, "snsEquipAutoIntensify")
 	if auto != null:
 		auto.visible = false
+
+	# show_branch() o tren bat CA NAM bang hanh dong. Chung nam chong len
+	# nhau, nen phai chot lai dung mot cai ngay tu dau — khong thi mo man ra
+	# la mot dong chong cheo. Bo test bat duoc dung loi nay.
+	_set_tab(tab)
 
 
 ## Nen bo tron dat SAU mot panel cua bo cuc.
@@ -452,6 +469,9 @@ func _set_tab(which: String) -> void:
 		fg.visible = which == "forge"
 	if al != null:
 		al.visible = which == "alter"
+	var qu := XggLayout.find_node(ui, "lEquipmentUpgradeQualityUI")
+	if qu != null:
+		qu.visible = which == "quality"
 	_refresh()
 
 
@@ -585,6 +605,7 @@ func _refresh() -> void:
 	_refresh_refine(it, e, mt)
 	_refresh_forge(it)
 	_refresh_alter(it, e)
+	_refresh_quality(it, e, mt)
 
 
 ## Icon mon do va nen theo pham chat, dung cach dat ten cua ban goc:
@@ -1087,6 +1108,151 @@ func _on_recast() -> void:
 	var after := int(r.data.get("scoreAfter", 0))
 	var verdict := "hon" if after > before else ("kem" if after < before else "hoa")
 	_tips.text = "Tay xong: %d -> %d diem (%s)" % [before, after, verdict]
+
+
+## Bang nang pham chat. Ban goc bay san HAI khoi giong het nhau — trai la
+## trang thai hien tai (g_UpgradeQualityActionEndLayer), phai la sau khi nang
+## (g_UpgradeQualityActionBeginLayer) — moi khoi mot icon, ten, cap, pham va
+## chi so chinh. Hai khoi co con CUNG TEN LOP nen phai tim trong tung khoi.
+func _refresh_quality(it: Dictionary, e: Equipment, mt: int) -> void:
+	var panel := XggLayout.find_node(ui, "lEquipmentUpgradeQualityUI")
+	if panel == null:
+		return
+	var info = it.get("qualityUp")
+	var maxed := info == null
+	var q := int(it.get("quality", 1))
+	var pname: String = PROP_NAME.get(mt, str(mt))
+
+	var now_box := XggLayout.find_node(panel, "g_UpgradeQualityActionEndLayer")
+	var next_box := XggLayout.find_node(panel, "g_UpgradeQualityActionBeginLayer")
+	_fill_quality_box(now_box, it, q, pname, e.effective_main())
+
+	var note := XggLayout.find_node(panel, "lEquipUpgradeQualityUIMaxLevelTips")
+	if note != null:
+		note.visible = maxed
+		_label(note, "Da toi pham cao nhat" if maxed else "", true)
+	if next_box != null:
+		next_box.visible = not maxed
+	var gold_box := XggLayout.find_node(panel, "g_EquipQualityUIGoldCost")
+	if gold_box != null:
+		gold_box.visible = not maxed
+	var mat := XggLayout.find_node(panel, "g_UpgradeQualityActionMaterialItem")
+	if mat != null:
+		mat.visible = not maxed
+	var btn := XggLayout.find_node(panel, "snsEquipUpgradeQuality")
+	if btn != null:
+		btn.visible = not maxed
+	if maxed:
+		if tab == "quality":
+			_tips.text = ""
+		return
+
+	var d: Dictionary = info
+	var nq := int(d.get("nextQuality", q + 1))
+	# Xem truoc chi so chinh o pham moi. Tinh theo TI LE giua hai pham chu
+	# khong lay thang so tuyet doi tu cong thuc: gia tri dang luu con co ca
+	# phan tinh luyen nhan vao, lay so tho se ra THAP HON hien tai.
+	var job := Equipment.equip_job(int(it.get("equipType", 0)))
+	var lc := float(it.get("levelCoef", 0.0))
+	var now_raw := Equipment.main_property_val(mt, lc, float(q), job)
+	var next_raw := Equipment.main_property_val(mt, lc, float(nq), job)
+	var ratio := (next_raw / now_raw) if now_raw > 0.0 else 1.0
+	_fill_quality_box(next_box, it, nq, pname, e.effective_main() * ratio)
+
+	if gold_box != null:
+		_label(XggLayout.find_by_cls(gold_box, CLS_FORGE_GOLD),
+				str(int(d.get("gold", 0))))
+
+	# Nguyen lieu ban goc doi — chua tru duoc, chua co he vat pham.
+	var mats: Array = d.get("materials", [])
+	if mat != null:
+		if mats.is_empty():
+			mat.visible = false
+		else:
+			_slot_art(mat, "item_%d.png" % int(mats[0][0]))
+			for c in mat.get_children():
+				if c is TextureRect:
+					c.visible = false
+			var lb := _ensure_label(mat)
+			lb.text = "x%d" % int(mats[0][1])
+			lb.visible = true
+			lb.position = Vector2(4, mat.size.y - 22)
+
+	var need := int(d.get("needHeroLevel", 1))
+	var ready := bool(d.get("ready", false)) and gold >= int(d.get("gold", 0))
+	if btn != null:
+		for c in btn.get_children():
+			if c is Label:
+				_label(c, "Nang pham")
+				(c as Label).horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				(c as Label).vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+				c.size = btn.size
+				c.position = Vector2.ZERO
+		btn.modulate = Color(1, 1, 1) if ready else Color(0.55, 0.55, 0.55)
+
+	if tab == "quality":
+		if not bool(d.get("ready", false)):
+			_tips.text = "Chua nang duoc: %s (tuong cap %d/%d)" % [
+					str(d.get("reason", "")), int(d.get("heroLevel", 1)), need]
+		elif gold < int(d.get("gold", 0)):
+			_tips.text = "Thieu vang: can %d, dang co %d" % [
+					int(d.get("gold", 0)), gold]
+		else:
+			_tips.text = ""
+
+
+## Do mot khoi "truoc"/"sau" cua bang nang pham.
+func _fill_quality_box(box: Control, it: Dictionary, q: int, pname: String,
+		main_val: float) -> void:
+	if box == null:
+		return
+	_label(_child(box, "装备名字"), "%s cap %d"
+			% [PART_NAME.get(part, str(part)), int(it.get("level", 1))], true)
+	_label(_child(box, "装备等级"), "", true)
+	_label(_child(box, "品质"), "Pham %d" % q, true)
+	_label(_child(box, "品质颜色"), "", true)
+	_label(_child(box, "主属性"), "%s %s" % [pname, _num(main_val,
+			int(it.get("main", {}).get("type", Equipment.AP)))], true)
+	# Icon: nen doi mau theo pham chat, dung y ban goc.
+	for child in box.get_children():
+		if child is TextureRect and String(child.get_meta("cls", "")).begins_with("CCButton"):
+			_slot_art(child, "v6/equipment_b_%d.png" % clampi(q, 2, 6))
+			# O nay co HAI sprite con: mot tam nen 73x73 (an san) va tam icon
+			# 37x55. find_by_cls tra ve cai dau tien — tuc tam an — nen phai
+			# chon theo dung tam dang hien.
+			for inner in child.get_children():
+				if inner is TextureRect and inner.visible 						and inner.name != "_slot":
+					_slot_art(inner, "equip_%d_%d.png" % [(part - 1) % 5 + 1,
+							clampi(int(it.get("level", 1)), 0, 10)])
+					break
+			break
+
+
+func _on_promote_quality() -> void:
+	if _busy:
+		return
+	var it := item()
+	var info = it.get("qualityUp")
+	if it.is_empty() or info == null:
+		return
+	var d: Dictionary = info
+	if not bool(d.get("ready", false)):
+		_tips.text = "Chua nang duoc: %s" % str(d.get("reason", ""))
+		return
+	if gold < int(d.get("gold", 0)):
+		_tips.text = "Thieu vang: can %d, dang co %d" % [int(d.get("gold", 0)), gold]
+		return
+	_busy = true
+	_tips.text = "dang nang pham..."
+	var ses := await Game.ensure_session()
+	var r := await ses.promote_quality(hero(), part)
+	_busy = false
+	if not r.ok:
+		_tips.text = "khong nang duoc: %s" % str(r.get("error", ""))
+		return
+	await _reload()
+	_tips.text = "Len pham %d  (ton %d vang)" % [int(r.data.get("quality", 0)),
+			int(r.data.get("cost", 0))]
 
 
 func _child(box: Control, cls: String) -> Control:

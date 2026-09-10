@@ -22,7 +22,7 @@ import os, re, sys, json, argparse, collections
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from tables import (Heroes, Talents, Armies, Formations, EquipSynthesis,
-                    ExclusiveEquip, TableError, DEFAULT_CONFIG)
+                    ExclusiveEquip, EquipQuality, TableError, DEFAULT_CONFIG)
 from battle import Rules, match
 
 DEFAULT_OUT = os.path.normpath(os.path.join(HERE, '..', 'data_ref', 'battle_data.json'))
@@ -198,6 +198,7 @@ def write_lua(path, doc):
         ('reference', doc['reference']),
         ('equipSynthesis', doc['equipSynthesis']),
         ('exclusiveEquip', doc['exclusiveEquip']),
+        ('equipQuality', doc['equipQuality']),
     ])
     d = os.path.dirname(path)
     if d:
@@ -288,6 +289,11 @@ def main():
                 ('materials', [[int(m['ItemID']), int(m['Count'])]
                                for m in row.get('ItemList', [])]),
             ])
+    # Nang pham chat: khoa la PHAM DICH (2..6).
+    qual = EquipQuality(a.config)
+    qual_out = collections.OrderedDict(
+        (str(k), qual.by_quality[k]) for k in sorted(qual.by_quality))
+
     exc_out = collections.OrderedDict([
         ('heroes', [int(x) for x in exc.heroes]),
         ('forge', forge_out),
@@ -337,6 +343,7 @@ def main():
         # dung de tinh chi so chinh — xem sim/equipment.py.
         ('equipSynthesis', syn_out),
         ('exclusiveEquip', exc_out),
+        ('equipQuality', qual_out),
     ])
 
     out_dir = os.path.dirname(a.out)

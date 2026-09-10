@@ -17,3 +17,7 @@ server/modules/hero_data.lua
 
 # Nakama tu sinh trong thu muc duoc mount
 server/.cookie
+
+# Bo cuc man hinh trich tu ban goc — co ban quyen, sinh lai bang:
+#   python ../brave-cross/work/layout.py --all --out layout_ref
+layout_ref/

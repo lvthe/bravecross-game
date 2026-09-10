@@ -19,6 +19,7 @@ ROOT = os.path.dirname(HERE)
 SUITES = [
     ('rig nhan vat',         'script', 'tools/verify.gd',         False, []),
     ('mo hinh chien dau',    'script', 'tools/verify_battle.gd',  False, []),
+    ('bo cuc man hinh',     'script', 'tools/verify_layout.gd',  False, []),
     ('thien vi san',         'scene',  'battle/battle.tscn',      False,
      ['--sim=300', '--mirror']),
     ('giao van mang',        'script', 'tools/verify_net.gd',     True,  []),

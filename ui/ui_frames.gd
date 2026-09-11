@@ -76,19 +76,61 @@ static func key_of(name: String) -> String:
 	# Ten tran, khong trung: tra bang bi danh.
 	if _alias.has(base):
 		return _alias[base]
-	# Ten tran nhung TRUNG: khong biet lay ban nao. Lay ban dau cho co con
-	# hon khong co, nhung ghi lai de con biet.
+	# Ten tran nhung TRUNG (536 ten). Chon theo hai buoc:
+	#
+	#  1. Uu tien sngSplitData/. Do la khong gian ten cua CHINH
+	#     S_CCSpriteFrameCache: anh giao dien khong nam trong atlas, moi anh la
+	#     mot file .pkm rieng trong sngSplitData/, va ten file trung khit ten
+	#     trong section C cua .xgg (xem uiart.py). Con png/ la anh roi, chi
+	#     duoc goi bang DUONG DAN DAY DU qua initWithFile — ma duong dan day du
+	#     thi da khop o nhanh tren roi. Nen mot cai ten TRAN thi gan nhu chac
+	#     chan la mot khung trong sngSplitData.
+	#
+	#  2. Trong sngSplitData, lay ban NONG NHAT. Thu muc con (v6/,
+	#     background/OneThanOne_v6/...) duoc bo cuc goi kem duong dan
+	#     ('v6/ui_background176.png'), nen ten tran chi con tro ve goc.
+	#
+	# Do duoc: item_4 co hai ban — png/item/ (228x179) va sngSplitData/
+	# (79x79). O phan thuong cua man thanh tuu la 79x79 giong moi icon khac,
+	# ma truoc day ta lay ban 228x179 nen no phinh ra de len ca dong.
 	var ds: Array = _duoi.get(base, [])
-	if ds.size() > 0:
-		if ds.size() > 1:
-			_mo_ho[base] = ds.size()
+	if ds.is_empty():
+		return ""
+	if ds.size() == 1:
 		return ds[0]
-	return ""
+	var khung := []
+	for k in ds:
+		if String(k).begins_with("sngSplitData/"):
+			khung.append(k)
+	if khung.is_empty():
+		_mo_ho[base] = ds.size()
+		return ds[0]
+	var tot: String = khung[0]
+	for k in khung:
+		if String(k).count("/") < tot.count("/"):
+			tot = k
+	if khung.size() > 1:
+		var nong := 0
+		for k in khung:
+			if String(k).count("/") == tot.count("/"):
+				nong += 1
+		if nong > 1:
+			_mo_ho[base] = khung.size()
+	return tot
 
 
 ## Ten tra ra nhieu ban ma bo cuc khong ghi ro duong dan. Dung de biet cho nao
 ## con co the dang hien nham anh.
 static var _mo_ho: Dictionary = {}
+
+## Ten tran nay co nhieu ban trong chi muc khong.
+static func is_ambiguous(name: String) -> bool:
+	_load_index()
+	var s := name.lstrip("@")
+	if s.ends_with(".png") or s.ends_with(".jpg"):
+		s = s.get_basename()
+	return Array(_duoi.get(s.get_file(), [])).size() > 1
+
 
 static func ambiguous() -> Dictionary:
 	return _mo_ho

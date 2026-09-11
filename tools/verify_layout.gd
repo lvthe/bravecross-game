@@ -233,6 +233,56 @@ func _init() -> void:
 		khung.free()
 
 
+	# --- Ten TRAN bi trung: chon ban nao?
+	#
+	# 536 ten anh xuat hien o nhieu thu muc. Khi bo cuc ghi ca duong dan thi
+	# khong co gi phai chon; khi ma goc goi
+	# spriteFrameByName("item_4.png") — mot cai ten tran — thi phai chon.
+	#
+	# Cham diem bang CHINH BANG SPRITE cua tung man (.xgg section C): no ghi
+	# ten KEM KICH THUOC, tuc la cau tra loi do ban goc ghi san. Sai lech 1
+	# pixel duoc bo qua: anh .pkm dung ETC1 nen chieu cao duoc dem cho chia
+	# het 4 (xem uiart.py).
+	print("\n=== chon anh khi ten tran bi trung ===")
+	var dung := 0
+	var sai := 0
+	var vi_du := []
+	var d2 := DirAccess.open(ROOT)
+	d2.list_dir_begin()
+	var f2 := d2.get_next()
+	while f2 != "":
+		if f2.ends_with(".json"):
+			var doc2 = JSON.parse_string(
+					FileAccess.get_file_as_string(ROOT + f2))
+			if doc2 is Dictionary:
+				for r in doc2.get("sprites", []):
+					var ten := String(r.get("name", ""))
+					if ten == "" or ten.contains("/"):
+						continue
+					if not UiFrames.is_ambiguous(ten):
+						continue
+					var tx := UiFrames.get_frame(ten)
+					if tx == null:
+						continue
+					var w := float(r.get("w", 0))
+					var h := float(r.get("h", 0))
+					if absf(tx.get_size().x - w) <= 1.0 \
+							and absf(tx.get_size().y - h) <= 1.0:
+						dung += 1
+					else:
+						sai += 1
+						if vi_du.size() < 4:
+							vi_du.append("%s: xgg %.0fx%.0f, ta %s"
+									% [ten, w, h, tx.get_size()])
+		f2 = d2.get_next()
+	for e in vi_du:
+		print("      lech: %s" % e)
+	_check(dung + sai > 100, "co du mau de cham (%d)" % (dung + sai))
+	# Luat cu (lay ban dau trong danh sach) chi dung 15/183. Luat moi —
+	# uu tien sngSplitData/ roi lay ban nong nhat — dung 178/183.
+	_check(dung >= (dung + sai) * 9 / 10,
+			"chon dung ban anh: %d/%d" % [dung, dung + sai])
+
 	hud.free()
 	print("\n===== dat %d, hong %d =====" % [n_pass, n_fail])
 	quit(0 if n_fail == 0 else 1)

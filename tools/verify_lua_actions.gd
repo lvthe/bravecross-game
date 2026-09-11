@@ -188,8 +188,29 @@ func _kiem_anh(lua: LuaRuntime, n: Control) -> void:
 	var k_v6 := UiFrames.key_of("v6/ui_background176.png")
 	var k_tran := UiFrames.key_of("ui_background176")
 	t("ten co duong dan tra dung ban v6", k_v6.contains("v6/"), k_v6)
-	t("ten tran va ten co duong dan la HAI ban khac nhau", k_v6 != k_tran,
+	# Ca hai dang ten deu phai ra CUNG mot ban, va phai la ban trong
+	# sngSplitData — do la khong gian ten cua S_CCSpriteFrameCache (anh giao
+	# dien khong nam trong atlas, moi anh la mot .pkm rieng trong
+	# sngSplitData/, ten trung khit ten trong section C cua .xgg).
+	#
+	# Truoc day ten tran ra ban `png/book/` 152x155 — anh roi, chi duoc goi
+	# bang duong dan day du qua initWithFile — nen o thanh tuu phinh gap doi.
+	t("ten tran cung ra ban trong sngSplitData",
+			k_tran.begins_with("sngSplitData/"), k_tran)
+	t("hai dang ten ra cung mot ban", k_v6 == k_tran,
 			"%s vs %s" % [k_v6, k_tran])
+	t("khong lay ban png/book", not k_tran.begins_with("png/"), k_tran)
+	var tex_tran := UiFrames.get_frame("ui_background176")
+	t("ten tran ra dung kich thuoc 76x77",
+			tex_tran != null and tex_tran.get_size() == Vector2(76, 77),
+			str(tex_tran.get_size()) if tex_tran != null else "khong co")
+	# item_4 la cho lam lo ra chuyen nay: no co ban png/item/ 228x179 va ban
+	# sngSplitData/ 79x79. O phan thuong cua man thanh tuu la 79x79 nhu moi
+	# icon khac; lay ban to thi no de len ca dong.
+	var tex_item := UiFrames.get_frame("item_4.png")
+	t("item_4 ra ban icon 79x79",
+			tex_item != null and tex_item.get_size() == Vector2(79, 79),
+			str(tex_item.get_size()) if tex_item != null else "khong co")
 	var tex_v6 := UiFrames.get_frame("v6/ui_background176.png")
 	t("ban v6 dung kich thuoc thiet ke 76x77",
 			tex_v6 != null and tex_v6.get_size() == Vector2(76, 77),

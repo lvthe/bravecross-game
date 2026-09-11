@@ -167,10 +167,11 @@ static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 	if respect_visible and not bool(nd.get("visible", true)):
 		node.visible = false
 	node.set_meta("cls", nd.get("cls", ""))
-	# Tag so nguyen cua Cocos. Ma Lua ban goc tro toi node gan nhu chi bang
-	# cai nay (getChildByTag: 9529 lan trong 952 file), nen thieu no thi
-	# khong chay duoc ma goc.
-	node.set_meta("tag", int(nd.get("tag", 0)))
+	# CHUA CO TAG THAT. Ma Lua ban goc tro toi node gan nhu chi bang
+	# getChildByTag (9529 lan), nhung tag so nguyen do KHONG nam trong ban
+	# ghi .xgg — xem chu thich o xgg.py. Day chi la truong 0xA4 chua ro nghia,
+	# giu de doi chieu; dung coi la tag.
+	node.set_meta("u_a4", int(nd.get("u_a4", 0)))
 	node.set_meta("res", nd.get("res", ""))
 	node.set_meta("kind", kind)
 	# Giu nguyen toa do Cocos de set_frame() tinh lai duoc vi tri khi anh moi

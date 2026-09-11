@@ -71,7 +71,10 @@ func _init() -> void:
 	t("thay lAchievementTaskSrollLayer", r != null and bool(r["co_scroll"]))
 	t("thay lAchieveTemplate", r != null and bool(r["co_tpl"]))
 
-	# 4. getChildByTag — API ban goc goi nhieu nhat (9529 lan).
+	# 4. getChildByTag. CHU Y: day CHI la phep thu doc-lai — no chung minh ham
+	#    duyet con chay dung tren truong minh GHI RA, chu KHONG chung minh
+	#    truong do la tag that cua ban goc. Tag that chua tim duoc (xem
+	#    work/xgg.py). Nen dung doc may dong duoi day la "chay dung ma goc".
 	r = lua.run("""
 		local tpl = lAchieveTemplate
 		local canget = tpl:getChildByTag(2)
@@ -86,12 +89,12 @@ func _init() -> void:
 			     and rl:getChildByTag(7):getStringTag() or '',
 		}
 	""", "getChildByTag")
-	t("tag 2 ra canget", r != null and String(r["canget"]) == "canget",
+	t("doc lai: 2 ra canget", r != null and String(r["canget"]) == "canget",
 			"duoc '%s'" % (String(r["canget"]) if r != null else "?"))
-	t("tag 1 ra noget", r != null and String(r["noget"]) == "noget",
+	t("doc lai: 1 ra noget", r != null and String(r["noget"]) == "noget",
 			"duoc '%s'" % (String(r["noget"]) if r != null else "?"))
-	t("tag 11 ra rewardList2", r != null and String(r["rlist"]) == "rewardList2")
-	t("long hai tang ra reward1", r != null and String(r["r1"]) == "reward1")
+	t("doc lai: 11 ra rewardList2", r != null and String(r["rlist"]) == "rewardList2")
+	t("doc lai: long hai tang ra reward1", r != null and String(r["r1"]) == "reward1")
 
 	# 5. Lua SUA duoc node that khong — doi ben Godot phai thay.
 	var canget := _by_tag(XggLayout.find_node(root, "lAchieveTemplate"), 2)
@@ -133,7 +136,7 @@ func _by_tag(parent: Node, tag: int) -> Control:
 	if parent == null:
 		return null
 	for c in parent.get_children():
-		if c.has_meta("tag") and int(c.get_meta("tag")) == tag:
+		if c.has_meta("u_a4") and int(c.get_meta("u_a4")) == tag:
 			return c
 	return null
 

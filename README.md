@@ -434,7 +434,129 @@ nhưng **không dùng** — `login()` đọc mã đã lưu ở `user://device_id
 lần chạy đều vào cùng một tài khoản và số liệu cộng dồn. `start()` nay nhận
 tham số `device`.
 
-## Khung giao diện
+## Chạy thẳng mã Lua của bản gốc
+
+Đây là hướng chính hiện nay, và nó thay cho việc chép tay từng màn sang
+GDScript. Lý do: bản gốc có sẵn 952 file Lua / 518.585 dòng, riêng phần giao
+diện đã ~324.000 dòng. Chép tay thì không bao giờ xong và không bao giờ giống.
+Nên ta **nạp chính mã đó** và chỉ viết phần engine bên dưới nó.
+
+```bash
+godot --path . tools/xem_man.tscn                    # bảng chọn 352 màn
+godot --path . tools/xem_man.tscn -- --mo=Backpack   # mở thẳng một màn
+```
+
+Bấm một cái là gọi đúng một dòng của bản gốc — `<quản lý>:Show(<tên>)` — còn
+lại là mã của nó: nạp bố cục, `onInit`, hoạt cảnh mở, `onShow`,
+`setDialogVisible`, `onVisible`, `Reflesh`. Tab ẩn/hiện bảng chọn, Esc đóng màn.
+
+### Đang ở đâu
+
+| | |
+|---|---|
+| module của bản gốc nạp được | **875/876** |
+| màn đăng ký | 353 |
+| màn mở được | **244** |
+| màn "im" (đòi tham số, không phải hỏng) | 23 |
+| màn hỏng | 86 — trong đó **82 là thiếu dữ liệu người chơi** |
+
+Đo lại bất cứ lúc nào:
+
+```bash
+godot --headless --path . --script tools/quet_show.gd
+```
+
+**Chưa bấm được gì cả.** `setCallbackLuaObject` (325 chỗ) và `setLuaTouchName`
+(318 chỗ) chưa làm, nên 1.712 hàm `onTouchEnd_*` của bản gốc chưa nối. Mọi màn
+hiện giờ là ảnh tĩnh. Đây là việc đáng làm tiếp theo: hai hàm, mở khoá rất
+nhiều.
+
+### Ba mảnh của tầng dưới
+
+* **`game/lua_runtime.gd`** — máy ảo Lua (lua-gdextension, LuaJIT = Lua 5.1,
+  đúng bản Cocos2d-x dùng) + `require` tự viết đọc qua `FileAccess`, vì `sc/`
+  có `.gdignore`. Kèm mấy cầu nối sang Godot: đọc file cấu hình, gán ảnh theo
+  tên khung, nhân bản node, **nạp `.xgg`** (`loadLevelFile`), xếp lại thứ tự vẽ.
+* **`lua/cocos.lua`** — lớp giả lập Cocos2d-x 1.x. Node là **userdata** (bản
+  gốc gọi `KDebug.ProcessNotUserdata` 3.786 lần nên node phải đúng kiểu đó).
+  Kèm `lua/actions.lua` (hệ action viết tay, không dùng Tween của Godot vì
+  ngữ nghĩa khác) và `lua/json.lua`.
+* **`lua/bootstrap.lua`** — khởi động khung sườn, và **bóng**: mỗi biến toàn
+  cục chưa làm được thay bằng một đối tượng ghi lại mọi lượt gọi. Bóng **làm
+  sai hành vi** — nó là dụng cụ ĐO xem còn thiếu gì, không phải giải pháp.
+
+### `boot_goc()` — nạp theo bản kê khai của chính bản gốc
+
+```lua
+local boot = require('bootstrap')
+boot.install_cocos()   -- đặt S_CC*, bảng chữ, cấu hình, loadLevelFile, ProtoRPC
+boot.install()         -- bật bóng cho mọi biến còn lại
+boot.boot_goc()        -- nạp 876 module theo sc/game.lua:174-183
+boot.init_config()     -- 104 bảng cấu hình
+```
+
+**Đừng tự chọn danh sách module ngắn.** Đó từng là gốc rễ của gần hết "màn
+hỏng": cái gì không nạp thì là bóng, mà bóng gọi ra **một** giá trị, nên
+`local bRet, data = G_XLogic:GetY()` cho `data = nil` — và màn hình chết ở dòng
+sau với thông báo trông y hệt thiếu dữ liệu máy chủ. Nạp đủ thì 164 màn đăng ký
+thành 353, và 105 màn mở được thành 244.
+
+`boot_goc()` cài lại lớp giả lập **sau từng bản kê khai**, vì
+`system/engine.lua` là bề mặt ràng buộc C++ (70 biến `S_CC*`) — nạp nó vào là
+đè bóng lên hết những thứ ta làm thật, kể cả `screenWidth`.
+
+### Những chỗ đã mất công tìm ra, đừng tìm lại
+
+* **`+0xA4` trong `.xgg` là `zOrder`**, không phải tag. Kiểm được vì
+  `CUIManager.lua` đặt zOrder cho từng lớp che bằng hằng số viết rõ trong mã:
+  `lNormalDlgMask` 20, lớp chạm 21, `lSubDialogMask` 100, `lSystemMask` 4000,
+  `lNetWorkMask` 6000, `lDebugBoxMask` 9000 — 10/12 trùng khít. Godot chỉ nhận
+  `z_index` trong ±4096 mà bản gốc dùng tới 9000, nên phải **xếp lại anh em**
+  chứ không đặt `z_index`.
+* **Tag thật không nằm trong `.xgg`** — engine sinh lúc nạp. Đo từ chính bản
+  gốc chạy trong máy ảo Android (`work/emu_tags.py`), ghép vào bằng
+  `emu_join.py --ghi`. Phủ 90,7% số cặp (node, tag) mà mã gốc thật sự hỏi.
+* **`CCLayer` bỏ qua điểm neo khi đặt chỗ** (`isRelativeAnchorPoint = false`
+  trong init của nó) — chính chú thích của bản gốc nói thế:
+  *"用左下角是为了支持layer, 因为layer会忽略anchor"*. Cần đúng chỗ này vì hoạt
+  cảnh mở gọi `setAnchorPoint(0.5,0.5)` rồi không trả lại.
+* **Tên ảnh trần tra trong `sngSplitData/`**, lấy bản nông nhất. Đó là không
+  gian tên của `S_CCSpriteFrameCache`: ảnh giao diện không nằm trong atlas, mỗi
+  ảnh là một `.pkm` riêng. Chấm bằng chính bảng sprite của `.xgg`: luật cũ
+  15/183 đúng, luật mới 180/183.
+* **`class(<bóng>)` chạy mãi** — `class()` đi ngược chuỗi cha bằng
+  `while typeSuper ~= nil`. Ba lớp dính lỗi này có lớp cha **không tồn tại**
+  trong 973 file đã ship, tức bản gốc chạy `class(nil)` bình thường.
+  `bootstrap` bọc lại `class` để trả về đúng hành vi đó.
+* **`ProtoRPC`** — đối tượng RPC bên C++, nay là cái ống không nối đi đâu.
+  Phải có thật chứ không được để là bóng: `rpc.lua` ném số thứ tự vào
+  `convertTo32UintString` rồi so với `0x100000000`.
+* **Bản gốc luôn ở trong một cảnh.** `g_CSceneManager.CurrentScene` là `nil`
+  thì `CLevelLoader` không bắn tin `OnLoadXGG` và `onInit` của màn hình không
+  bao giờ chạy. Hiện đặt `"Test"` — chưa dựng cảnh `Main`.
+* **Màn "im" phần lớn là đòi tham số.** `Show(tên, data, kiểu)` truyền `data`
+  xuống `onShow`; màn nào đòi thêm tham số thì thoát ngay dòng đầu. Đo bằng
+  `debug.getinfo(ui.onShow, 'u').nparams`.
+* **Quét liên tiếp phải dọn tay hai chỗ** bản gốc không tự dọn: `IsUILock`
+  (`CloseImmediately` không đặt lại) và hàng đợi hoạt cảnh (`InsertAnimation`
+  chỉ chạy ngay khi hàng đợi đang rỗng).
+
+### Việc tiếp theo, theo thứ tự
+
+1. **Nối chạm** — `setCallbackLuaObject` + `setLuaTouchName`. Hai hàm, 1.712
+   hàm xử lý của bản gốc sống dậy. Rẻ nhất, đổi cảm giác nhiều nhất.
+2. **Dựng cảnh `Main`** — `conf/UI_Main_960_640.xgg` nạp được rồi và node vẽ
+   được, nhưng `CUIMain:InitUI` chết ở `lCommonLoadingDialog:getChildByTag(4)`:
+   node đó nằm trong `UI_MessageBox_Loading_960_640.xgg` (chưa nạp) và con của
+   nó nằm trong 9% số tag chưa đo.
+3. **Trạng thái người chơi mới tinh**, dựng từ chính bảng cấu hình của bản gốc.
+
+## Khung giao diện (các màn viết tay)
+
+Mục này nói về mấy màn **viết tay bằng GDScript** (`ui/equip.tscn`,
+`ui/tasks.tscn`, `battle/`) — làm trước khi có hướng chạy thẳng mã Lua ở trên.
+Chúng vẫn chạy và vẫn có bộ kiểm riêng, nhưng màn mới thì không đi đường này
+nữa.
 
 `game/ui_theme.gd` dựng một `Theme` từ art của bản gốc rồi áp cho cả cây node,
 nên mọi màn theo cùng một kiểu:

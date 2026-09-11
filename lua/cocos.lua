@@ -24,6 +24,7 @@ M.missing = {}        -- API bi goi ma chua lam -> so lan
 M.tag_lookups = 0
 M.tag_misses = 0
 M.tag_miss_log = {}
+M.cell_errors = {}   -- o danh sach dung hong -> de doc ra
 
 local function note(name)
 	M.missing[name] = (M.missing[name] or 0) + 1
@@ -327,10 +328,25 @@ function Node:setContentSize(w, h)
 	raw(self).size = Vector2(w, h)
 end
 
+-- Tra HAI gia tri, giong getContentSize. Thieu no thi CUIHelper:920 lam
+-- 'local fParentAnchorX, fParentAnchorY = parent:getAnchorPoint()' ra nil roi
+-- nhan voi chieu rong — va 30/353 man chet o do hoac o setAnchorPoint(nil).
+function Node:getAnchorPoint()
+	return neo_that(raw(self))
+end
+
+-- Dem tham chieu cua Cocos. Godot tu lo doi song node, nen day chi can khong
+-- hong: sngRetainMgr goi retain()/release() tren node that.
+function Node:retain() return self end
+function Node:release() end
+function Node:autorelease() return self end
+
 function Node:setAnchorPoint(x, y)
 	if y == nil then
+		if type(x) ~= 'table' and type(x) ~= 'userdata' then return end
 		x, y = x.x, x.y
 	end
+	if type(x) ~= 'number' or type(y) ~= 'number' then return end
 	local gd = raw(self)
 	local cx, cy = to_cocos(gd)
 	gd:set_meta('cocos', Vector4(cx, cy, x, y))
@@ -445,8 +461,78 @@ end
 --    node:setDisplayFrame(S_CCSpriteFrameCache:spriteFrameByName("abc.png"))
 -- Day la ly do bo cuc dung khong thi man hinh gan nhu trong tron.
 
+-- Node tao LUC CHAY ------------------------------------------------------
+-- Ban goc tao node ngoai bo cuc o 33 cho. Nhieu nhat la RichLabel: no cat
+-- chuoi thanh tung doan theo dinh dang roi lam mot Label cho moi doan.
+
+function M.new_node(kieu)
+	return wrap(_godot_new_node(kieu))
+end
+
+-- Chu tao luc chay.
+function Node:createWithTTF(txt, _font, size)
+	local gd = raw(self)
+	if gd.text ~= nil then
+		gd.text = tostring(txt)
+		if type(size) == 'number' and size > 0 then
+			gd:add_theme_font_size_override('font_size', size)
+		end
+		gd.size = gd:get_minimum_size()
+	end
+	return self
+end
+
+Node.initWithString = Node.createWithTTF
+Node.setFontSize = function(self, size)
+	local gd = raw(self)
+	if type(size) == 'number' and size > 0 then
+		gd:add_theme_font_size_override('font_size', size)
+	end
+end
+
+-- Bong do va vien chu: Godot lam duoc ca hai qua theme override.
+function Node:enableShadow(r, g, b, a, ox, oy)
+	local gd = raw(self)
+	if gd.text == nil then return end
+	gd:add_theme_color_override('font_shadow_color',
+		Color((r or 0) / 255, (g or 0) / 255, (b or 0) / 255, (a or 255) / 255))
+	gd:add_theme_constant_override('shadow_offset_x', math.floor(ox or 2))
+	-- Truc y nguoc chieu nhau.
+	gd:add_theme_constant_override('shadow_offset_y', -math.floor(oy or -2))
+end
+
+function Node:enableOutline(r, g, b, a, day)
+	local gd = raw(self)
+	if gd.text == nil then return end
+	gd:add_theme_color_override('font_outline_color',
+		Color((r or 0) / 255, (g or 0) / 255, (b or 0) / 255, (a or 255) / 255))
+	gd:add_theme_constant_override('outline_size', math.floor((day or 1) * 2))
+end
+
+-- CHUA LAM: ban goc lay TUNG CHU cua mot label ra lam mot sprite rieng roi
+-- tu xep cho (RichLabel:createSprite_). Godot khong cho voi vao tung chu nhu
+-- vay, va lam lai bang tay thi phai tu do tung chu mot. Tra 0 nghia la khong
+-- co chu nao de lay: doan chu VAN HIEN (Label da duoc addChild o dong tren),
+-- chi khong duoc xep lai tung chu.
+function Node:getLimitShowCount()
+	note('getLimitShowCount')
+	return 0
+end
+
+function Node:getLetterEx(_, _)
+	note('getLetterEx')
+	return nil
+end
+
 local Frame = {}
 Frame.__index = Frame
+
+-- Dem tham chieu cua Cocos, tren cac doi tuong KHONG phai node (khung anh, o
+-- danh sach...). Godot tu lo doi song, nen chi can khong hong: CElementPond
+-- gom lai roi goi sngRetainMgr:retainObj(obj), va ham do goi obj:retain().
+function Frame:retain() return self end
+function Frame:release() end
+function Frame:autorelease() return self end
 
 M.frames = setmetatable({}, { __mode = 'v' })
 
@@ -502,6 +588,11 @@ M.luaFont = {
 
 local Cell = {}
 Cell.__index = Cell
+-- Dem tham chieu cua Cocos: bay man goi sngRetainMgr:retainObj(self.tableView)
+-- va ham do goi obj:retain(). Godot tu lo doi song nen chi can khong hong.
+function Cell:retain() return self end
+function Cell:release() end
+function Cell:autorelease() return self end
 
 function Cell:getView()
 	return self.view
@@ -509,6 +600,11 @@ end
 
 local TableView = {}
 TableView.__index = TableView
+-- Dem tham chieu cua Cocos: bay man goi sngRetainMgr:retainObj(self.tableView)
+-- va ham do goi obj:retain(). Godot tu lo doi song nen chi can khong hong.
+function TableView:retain() return self end
+function TableView:release() end
+function TableView:autorelease() return self end
 
 function TableView:resetNumberOfCellsInTableView(n, _, _)
 	self.count = n or 0
@@ -542,7 +638,17 @@ function TableView:reloadData()
 	for i = 0, self.count - 1 do
 		local w, h = self.delegate:tableCellSizeForIndex(self, i)
 		h = h or 0
-		local cell = self.delegate:tableCellAtIndex(self, i)
+		-- Dung o nao hong thi GHI LAI roi di tiep, dung de chet ca danh sach.
+		-- Ma goc dung mot ham callback cho tung o; mot o thieu du lieu se nem
+		-- loi, va neu de no chay len tren thi nhung o SAU do khong bao gio
+		-- duoc dung, danh sach ngan di ma khong ai biet tai sao.
+		local okc, cell = pcall(function()
+			return self.delegate:tableCellAtIndex(self, i)
+		end)
+		if not okc then
+			M.cell_errors[#M.cell_errors + 1] = 'o ' .. i .. ': ' .. tostring(cell)
+			cell = nil
+		end
 		if cell ~= nil then
 			local v = raw(cell.view or cell)
 			if v ~= nil then
@@ -589,8 +695,17 @@ M.tableViewMgr = {
 -- khong co (doi canh, gui tin cho cua so). Cai duy nhat can that la
 -- getWinSize; cleanTimeAccum thi duong Show goi ngay giua chung
 -- (CUIManager.lua:909) nen khong the de la bong.
+-- Chup lai kich thuoc cua so NGAY LUC NAY. Ban goc co
+-- system/engine.lua:159 'screenWidth, screenHeight = S_CCDirector:getWinSize()'
+-- va ca file do la be mat rang buoc C++ ma ta khong co — nap no vao thi 70
+-- bien S_CC* thanh bong het. Ta nap lai lop gia lap DE LEN sau khi nap ban
+-- goc, nen phai nho san so dung, khong thi doc lai chinh cai bong vua de len.
+local WIN_W = rawget(_G, 'screenWidth') or 960
+local WIN_H = rawget(_G, 'screenHeight') or 640
+M.win_w, M.win_h = WIN_W, WIN_H
+
 M.director = {
-	getWinSize = function() return screenWidth, screenHeight end,
+	getWinSize = function() return WIN_W, WIN_H end,
 	cleanTimeAccum = function() end,
 	setIsTimeAccumEnable = function() end,
 	setDispatchEvents = function() end,

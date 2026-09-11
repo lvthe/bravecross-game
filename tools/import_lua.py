@@ -18,6 +18,7 @@ mối, và UTF-8 là mối đó: ở đây giải GBK rồi ghi lại thành UTF
 
 Mã gốc CÓ BẢN QUYỀN — sc/ nằm trong .gitignore, không đẩy lên.
 """
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -40,6 +41,24 @@ def decode(blob: bytes):
     return blob.decode('gb18030', 'replace'), 'gb18030+thay'
 
 
+# VET CUA BO DICH NGUOC, khong phai loi cua ban goc.
+#
+# Trinh dich nguoc doi khi nuot mat dau cach giua mot so va tu khoa theo sau,
+# nen file ra khong con la Lua hop le. Luat sua la mot luat CHUNG va hep: chi
+# chen lai dau cach giua chu so va mot tu khoa, khong dong vao gi khac.
+#
+# Hien chi mot cho trong ca 973 file dinh phai: apr/CUIAPRCommon.lua:412
+# 'nPointLevel >= 17then' — ca module apr khong nap duoc vi no.
+KEYWORDS = ('then', 'do', 'end', 'and', 'or', 'not', 'else', 'elseif')
+SUA_SO_DINH_TU_KHOA = re.compile(
+    r'(?<![\w.])(\d+)(' + '|'.join(KEYWORDS) + r')(?![\w])')
+
+
+def va_dau_cach(text):
+    """Tra (chuoi da sua, so cho da sua)."""
+    return SUA_SO_DINH_TU_KHOA.subn('\g<1> \g<2>', text)
+
+
 def main() -> int:
     if not SRC.is_dir():
         print('KHONG thay ma goc o %s' % SRC)
@@ -51,6 +70,7 @@ def main() -> int:
     DST.mkdir(parents=True)
 
     stat = {}
+    vet = 0
     lines = 0
     n = 0
     for src in sorted(SRC.rglob('*')):
@@ -63,6 +83,8 @@ def main() -> int:
             shutil.copy2(src, out)
             continue
         text, enc = decode(src.read_bytes())
+        text, nsua = va_dau_cach(text)
+        vet += nsua
         out.write_text(text, encoding='utf-8', newline='')
         stat[enc] = stat.get(enc, 0) + 1
         lines += text.count('\n')
@@ -74,6 +96,9 @@ def main() -> int:
 
     (DST / '.gdignore').write_text('', encoding='utf-8')
     print('%d file lua, %d dong -> %s' % (n, lines, DST))
+    if vet:
+        print('   %d cho vet dich nguoc (so dinh tu khoa) da chen lai dau cach'
+              % vet)
     for enc in sorted(stat):
         print('   nguon %-14s %d file' % (enc, stat[enc]))
     bad = stat.get('gb18030+thay', 0)

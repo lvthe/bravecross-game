@@ -39,6 +39,7 @@ func open() -> bool:
 	state.globals["_godot_frame"] = _frame
 	state.globals["_godot_zsort"] = _zsort
 	state.globals["_godot_load_xgg"] = _load_xgg
+	state.globals["_godot_new_node"] = _new_node
 	state.globals["_godot_text"] = _text
 	state.globals["_godot_co_file"] = _co_file
 	state.globals["_godot_doc_file"] = _doc_file
@@ -57,6 +58,7 @@ func open() -> bool:
 	var r = state.do_string("""
 		local loaded = {}
 		local reading = {}
+		local require_goc = require
 		function require(name)
 			if loaded[name] ~= nil then return loaded[name] end
 			if reading[name] then
@@ -67,6 +69,16 @@ func open() -> bool:
 			local src = _godot_read(path)
 			reading[name] = nil
 			if src == nil then
+				-- LuaJIT co san vai thu vien nap kieu package.preload ma khong
+				-- co file: 'bit' la mot (system/rpc.lua va user/Logical/Device.lua
+				-- deu can). Tim file khong thay thi hoi require that.
+				if require_goc ~= nil then
+					local good, v = pcall(require_goc, name)
+					if good then
+						loaded[name] = v
+						return v
+					end
+				end
 				error("khong tim thay module '" .. name .. "'")
 			end
 			local chunk, err = loadstring(src, '@' .. path .. '.lua')
@@ -171,6 +183,39 @@ static func _gom_ten(n: Node, ds: Array) -> void:
 			ds.append(n)
 	for c in n.get_children():
 		_gom_ten(c, ds)
+
+
+## Dung mot node MOI luc chay. Ban goc tao node ngoai bo cuc o 33 cho:
+## Label:new() 14, CCScale9Sprite:new() 9, CCSprite:new() 7, CCLabelTTF:new() 3
+## — nhieu nhat la RichLabel, no dung mot Label cho tung doan chu co dinh dang
+## rieng.
+##
+## Node moi phai mang du meta nhu node dung tu .xgg, khong thi lop gia lap doi
+## he toa do sai: 'cocos' (x, y, neo) va 'parent_h'.
+func _new_node(kieu: String) -> Control:
+	var n: Control
+	match kieu:
+		"label":
+			var lb := Label.new()
+			lb.add_theme_font_size_override("font_size", 20)
+			n = lb
+		"scale9":
+			var np := NinePatchRect.new()
+			np.draw_center = true
+			n = np
+		"sprite":
+			var tr := TextureRect.new()
+			tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			tr.stretch_mode = TextureRect.STRETCH_SCALE
+			n = tr
+		_:
+			n = Control.new()
+	n.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	n.set_meta("kind", kieu)
+	n.set_meta("type_name", "CCLabelTTF" if kieu == "label" else "CCNode")
+	n.set_meta("cocos", Vector4(0, 0, 0, 0))
+	n.set_meta("parent_h", 640.0)
+	return n
 
 
 ## Xep lai anh em theo zOrder. Ben Lua khong voi toi lop XggLayout duoc, nen
@@ -285,6 +330,13 @@ func tick(dt: float) -> int:
 		return 0
 	var r = state.do_string("return require('cocos').tick(%f)" % dt)
 	if _is_error(r):
+		# Ghi lai chu khong nuot. Ca duong Show cua ban goc di qua day:
+		# OnShowAnimationFinish nam trong mot S_CCCallFunc, nen Reflesh() hong
+		# thi loi chi hien o day — nuot di la man hinh trong ma khong ai biet
+		# tai sao.
+		var m := "tick: %s" % r
+		if not errors.has(m):
+			errors.append(m)
 		return 0
 	return int(r) if typeof(r) in [TYPE_INT, TYPE_FLOAT] else 0
 

@@ -96,39 +96,18 @@ const _KICH_BAN := """
 	local boot = require('bootstrap')
 	local cocos = boot.install_cocos()
 	boot.install()
-	local nap = boot.boot({
-		-- AchieveState nam trong day. Thieu no thi Reflesh loc sach danh
-		-- sach: no so State voi AchieveState.Doing, ma bong thi khong bang
-		-- gi ca, nen moi thanh tuu deu bi bo.
-		'share.Protocol',
-		-- Ba cai nay lo anh phan thuong: PrizeLogic tra cau hinh phan thuong,
-		-- CUIRewardLayer gan anh vao o, CUIHelper dat mau chu.
-		'share.PrizeLogic',
-		'user.Public.CUIPrizeResHelper',
-		'user.UI.CUIRewardLayer',
-		'user.Public.CUIHelper',
-		'share.AchieveLogic',
-		'user.Logical.ClientAchieveLogic',
-		'user.UI.CUIGuildTableViewList',
-		-- Ba cai nay la DUONG SHOW cua ban goc:
-		--   CSceneManager      giu ten canh dang choi, va dang ky xgg da nap
-		--   CLevelLoader       goi loadLevelFile de nap bo cuc cua man hinh
-		--   CUIDialogAnimation chay hoat canh mo roi goi nguoc ve
-		--                      OnShowAnimationFinish -> setDialogVisible
-		'user.Public.CSceneManager',
-		'user.Public.CLevelLoader',
-		'user.Public.CUIDialogAnimation',
-		'user.UI.CUIAchieve',
-	})
+	-- Nap TOAN BO ma goc theo dung bon ban ke khai cua no (876 module). Danh
+	-- sach ngan minh tung chon thi moi thu ngoai do la bong, ma bong goi ra
+	-- MOT gia tri, nen 'local bRet, data = G_XLogic:GetY()' cho data = nil.
+	local bao = boot.boot_goc()
 
 	local out = Dictionary()
 	-- Nap 104 bang cau hinh cua ban goc (~0,4 giay). Khong co no thi
 	-- G_PrizeLogic:GetPrizeWithID tra ve nil, va o phan thuong van la anh
 	-- thiet ke chu khong phai anh that.
 	out['cau hinh'] = boot.init_config()
-	for ten, kq in pairs(nap) do
-		if kq ~= 'ok' then out['NAP ' .. ten] = kq end
-	end
+	out['nap module'] = bao.nap .. '/' .. bao.so
+	for m, e in pairs(bao.hong) do out['NAP HONG ' .. m] = e end
 
 	-- Ban goc luon dang o trong MOT CANH, va CLevelLoader ghi ten xgg da nap
 	-- vao danh sach cua canh do; ten canh la nil thi registerPreloadXgg bo
@@ -138,34 +117,78 @@ const _KICH_BAN := """
 	-- RefreshMainUIControlPanel khong chay: no doi ten canh == "Main".
 	g_CSceneManager.CurrentScene = 'Test'
 
-	-- Do du lieu vao DUNG CHO ma goc doc. AchieveLogic:GetUserAchieveMap()
-	-- tra ve self.UserAchieveMap sau khi Init(); ta dat san roi danh dau da
-	-- init, nen ham goc chay nguyen van ma khong can may chu cu.
-	local AchieveState = rawget(_G, 'AchieveState') or {}
-	local DANG_LAM = AchieveState.Doing or 1
-	local XONG     = AchieveState.Done  or 2
-
-	local mau = {
-		{ t = 101, i = 1, s = DANG_LAM, cur = 1, tot = 3, aw = 1 },
-		{ t = 102, i = 1, s = XONG,     cur = 3, tot = 3, aw = 2 },
-		{ t = 103, i = 1, s = DANG_LAM, cur = 4, tot = 10, aw = 3 },
-		{ t = 104, i = 1, s = DANG_LAM, cur = 2, tot = 5, aw = 4 },
-		{ t = 105, i = 1, s = XONG,     cur = 1, tot = 1, aw = 5 },
-		{ t = 106, i = 1, s = DANG_LAM, cur = 0, tot = 1, aw = 6 },
-	}
+	-- Du lieu thanh tuu lay tu CHINH BANG CAU HINH cua ban goc
+	-- (KDBGameAchieveConfig, 357 muc), khong phai so minh bia. Truoc day minh
+	-- dat AchieveType = 101..106 va Award = {1..6}; ca hai deu sai kieu — loai
+	-- that la so nho (0..21, va 101/102), con Award la danh sach ma phan thuong
+	-- 3 chu so tro len ([401], [501], [601]). Bia sai thi
+	-- CUIPrizeResHelper:getPrizeResInfo tra ve nil va ca dong hong.
+	--
+	-- Bo loai 0 va 1 (Reflesh bo qua), va 3/7/12/15 (nhung loai do con hoi
+	-- g_CGameFuncOpeningManager xem tinh nang da mo chua).
+	local BO_QUA = { [0] = true, [1] = true, [3] = true, [7] = true,
+		[12] = true, [15] = true }
 	local bando = {}
-	for k, v in ipairs(mau) do
-		bando[tostring(k)] = {
-			AchieveType = v.t, AchieveIndex = v.i, State = v.s,
-			Current = v.cur, Total = v.tot, Award = { v.aw },
-		}
+	local dem = 0
+	-- Hoi tung muc mot bang dung ham tra cuu cua ban goc,
+	-- GetAchieveConfig(loai, chi so). Bang tra ve co the long nhieu tang tuy
+	-- ban, nen di thang bang ham chac hon la tu duyet.
+	for loai = 2, 21 do
+		if dem >= 6 then break end
+		if not BO_QUA[loai] then
+			-- Bang cau hinh duoc bam theo CHUOI:
+			-- achieveConfig[tostring(loai)][tostring(chi so)]
+			-- (share_configManager.lua:1034). Truyen so thi tra ve nil.
+			local cfg = G_ConfigManager:GetAchieveConfig(tostring(loai), '1')
+			if type(cfg) == 'table' and cfg.Award ~= nil then
+				local aw = cfg.Award
+				if type(aw) == 'string' then aw = cjson.decode(aw) end
+				-- Chi nhan muc nao co phan thuong TRA CUU DUOC. Vai ma phan
+				-- thuong trong bang tro toi loai vat pham can them du lieu
+				-- may chu (vi du anh hung theo PrizeProperty), va ma goc thi
+				-- tra nil roi hong o CUIRewardLayer:739. Day la chon du lieu
+				-- kiem, khong phai che gia tri.
+				local dung = false
+				if type(aw) == 'table' and aw[1] ~= nil then
+					-- pcall: vai ma phan thuong lam ham tra cuu nem loi chu
+					-- khong chi tra nil.
+					pcall(function()
+						local b1, pc = G_PrizeLogic:GetPrizeWithID(aw[1])
+						if b1 and type(pc) == 'table'
+								and type(pc.PrizeContent) == 'table'
+								and type(pc.PrizeContent[1]) == 'table' then
+							-- Phai tra cuu duoc MOI muc trong PrizeContent,
+							-- khong chi muc dau: CUIAchieve.lua:499 duyet het.
+							dung = true
+							for _, muc in ipairs(pc.PrizeContent) do
+								local b2, ti = g_CUIPrizeResHelper:getPrizeResInfo(muc)
+								if b2 ~= true or type(ti) ~= 'table' then
+									dung = false
+									break
+								end
+							end
+						end
+					end)
+				end
+				if dung then
+					dem = dem + 1
+					bando[tostring(dem)] = {
+						AchieveType = loai, AchieveIndex = 1,
+						State = (dem % 2 == 0) and AchieveState.Done
+								or AchieveState.Doing,
+						Current = 1, Total = 3, Award = { aw[1] },
+					}
+				end
+			end
+		end
 	end
-
+	out['so muc lay tu cau hinh'] = dem
 	local L = rawget(_G, 'G_AchieveLogic')
 	if L ~= nil then
 		L.UserAchieveMap = bando
 		L.bIsInited = true
 	end
+
 
 	-- DUONG SHOW CUA BAN GOC, mot dong. Tu day tro di khong co dong nao cua
 	-- minh nua:

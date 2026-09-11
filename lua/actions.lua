@@ -212,6 +212,10 @@ return function(C)
 		if type(a) ~= 'table' or a.setTag ~= nil then return a end
 		a.setTag = function(self, t) self.tag = t end
 		a.getTag = function(self) return self.tag or -1 end
+		-- Dem tham chieu cua Cocos: Godot tu lo doi song, chi can khong hong.
+		a.retain = function(self) return self end
+		a.release = function() end
+		a.autorelease = function(self) return self end
 		return a
 	end
 

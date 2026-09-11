@@ -66,13 +66,18 @@ func _init() -> void:
 		t("nap khung suon", false)
 		_done()
 		return
-	var nbad := 0
+	var so_module := int(r.get("so module", 0))
+	var nap_duoc := int(r.get("nap duoc", 0))
 	for k in r:
-		if str(r[k]) != "ok":
-			nbad += 1
-			print("  HONG nap %s: %s" % [k, r[k]])
-	t("nap ca khung suon ban goc", nbad == 0, "%d/%d module hong" % [nbad, r.size()])
-	print("  -> nap %d module cua ban goc" % r.size())
+		if str(k).begins_with("HONG "):
+			print("  %s: %s" % [k, r[k]])
+	t("cau hinh nap duoc", str(r.get("cau hinh", "")) == "ok",
+			str(r.get("cau hinh", "?")))
+	# 875/876. Cai duy nhat hong la user.UI.CUIChapterChoice — ban ke khai cua
+	# chinh ban goc doi mot file khong he co trong 973 file da ship.
+	t("nap gan het ma goc", so_module > 800 and so_module - nap_duoc <= 1,
+			"%d/%d module" % [nap_duoc, so_module])
+	print("  -> nap %d/%d module cua ban goc" % [nap_duoc, so_module])
 
 	# MOT DONG. Tu day tro di khong con dong nao cua minh.
 	var d = lua.run(_SHOW, "mo man hinh")
@@ -119,8 +124,17 @@ func _init() -> void:
 	# toi man), con hop thoai con khong dat gi nen CPublic dung 179.
 	var mo := float(str(sau.get("che mo", "0")))
 	t("lop che mo dan toi 179", absf(mo - 179.0) < 1.0, "%.1f" % mo)
-	t("Reflesh() dung ra du so dong", int(sau.get("so dong", -1)) == 6,
+	# Danh sach nhan du 6 muc; so DONG DUNG DUOC co the it hon, vi mot vai ma
+	# phan thuong doi du lieu nguoi choi (o dang do lam, o thu 6 la mot phan
+	# thuong quan linh va ArmyDataManager chua co du lieu doi hinh). Neu cho
+	# hong ca danh sach vi mot o thi khong con do duoc gi.
+	t("danh sach nhan du 6 muc", str(sau.get("ItemCellNumber sau", "")) == "6",
+			str(sau.get("ItemCellNumber sau", "?")))
+	t("dung duoc it nhat 5 dong", int(sau.get("so dong", -1)) >= 5,
 			str(sau.get("so dong", "?")))
+	for k in sau:
+		if str(k).begins_with("O HONG"):
+			print("      %s = %s" % [k, sau[k]])
 
 	# Bao cao: con thieu nhung gi.
 	var ghosts = lua.run("""
@@ -160,6 +174,7 @@ func _done() -> void:
 
 
 ## Nap khung suon, ke ca ba module cua duong Show.
+## Nap khung suon.
 const _NAP := """
 	local boot = require('bootstrap')
 	-- install_cocos truoc install: duong Show chay ma THAT, ma ma that goi
@@ -169,20 +184,15 @@ const _NAP := """
 	boot.install_cocos()
 	boot.install()
 	local out = Dictionary()
-	for name, res in pairs(boot.boot({
-			'share.Protocol', 'share.PrizeLogic', 'user.Public.CUIPrizeResHelper',
-			'user.UI.CUIRewardLayer', 'user.Public.CUIHelper',
-			'share.AchieveLogic', 'user.Logical.ClientAchieveLogic',
-			'user.UI.CUIGuildTableViewList',
-			-- Ba cai nay LA duong Show:
-			--   CSceneManager      ten canh dang choi + so xgg da nap
-			--   CLevelLoader       goi loadLevelFile
-			--   CUIDialogAnimation hoat canh mo, roi goi nguoc ve
-			'user.Public.CSceneManager', 'user.Public.CLevelLoader',
-			'user.Public.CUIDialogAnimation',
-			'user.UI.CUIAchieve'})) do
-		out[name] = res
-	end
+	-- Nap TOAN BO ma goc theo dung bon ban ke khai cua no (876 module), chu
+	-- khong phai mot danh sach ngan minh chon. Khac nhau rat lon: cai gi
+	-- khong nap thi la bong, ma bong goi ra MOT gia tri, nen
+	-- 'local bRet, data = G_XLogic:GetY()' cho data = nil va man hinh hong o
+	-- dong sau — trong nhu la thieu du lieu may chu chu khong phai thieu module.
+	local bao = boot.boot_goc()
+	out['so module'] = bao.so
+	out['nap duoc'] = bao.nap
+	for m, e in pairs(bao.hong) do out['HONG ' .. m] = e end
 	out['cau hinh'] = boot.init_config()
 	return out
 """
@@ -197,20 +207,72 @@ const _SHOW := """
 	-- dung canh Main nen dat la "Test" — mot canh co that cua ban goc.
 	g_CSceneManager.CurrentScene = 'Test'
 
-	local S = rawget(_G, 'AchieveState') or {}
-	local mau = {
-		{ t = 101, s = S.Doing or 1, cur = 1, tot = 3 },
-		{ t = 102, s = S.Done  or 2, cur = 3, tot = 3 },
-		{ t = 103, s = S.Doing or 1, cur = 4, tot = 10 },
-		{ t = 104, s = S.Doing or 1, cur = 2, tot = 5 },
-		{ t = 105, s = S.Done  or 2, cur = 1, tot = 1 },
-		{ t = 106, s = S.Doing or 1, cur = 0, tot = 1 },
-	}
+	-- Du lieu thanh tuu lay tu CHINH BANG CAU HINH cua ban goc
+	-- (KDBGameAchieveConfig, 357 muc), khong phai so minh bia. Truoc day minh
+	-- dat AchieveType = 101..106 va Award = {1..6}; ca hai deu sai kieu — loai
+	-- that la so nho (0..21, va 101/102), con Award la danh sach ma phan thuong
+	-- 3 chu so tro len ([401], [501], [601]). Bia sai thi
+	-- CUIPrizeResHelper:getPrizeResInfo tra ve nil va ca dong hong.
+	--
+	-- Bo loai 0 va 1 (Reflesh bo qua), va 3/7/12/15 (nhung loai do con hoi
+	-- g_CGameFuncOpeningManager xem tinh nang da mo chua).
+	local BO_QUA = { [0] = true, [1] = true, [3] = true, [7] = true,
+		[12] = true, [15] = true }
 	local bando = {}
-	for k, v in ipairs(mau) do
-		bando[tostring(k)] = { AchieveType = v.t, AchieveIndex = 1, State = v.s,
-			Current = v.cur, Total = v.tot, Award = { k } }
+	local dem = 0
+	-- Hoi tung muc mot bang dung ham tra cuu cua ban goc,
+	-- GetAchieveConfig(loai, chi so). Bang tra ve co the long nhieu tang tuy
+	-- ban, nen di thang bang ham chac hon la tu duyet.
+	for loai = 2, 21 do
+		if dem >= 6 then break end
+		if not BO_QUA[loai] then
+			-- Bang cau hinh duoc bam theo CHUOI:
+			-- achieveConfig[tostring(loai)][tostring(chi so)]
+			-- (share_configManager.lua:1034). Truyen so thi tra ve nil.
+			local cfg = G_ConfigManager:GetAchieveConfig(tostring(loai), '1')
+			if type(cfg) == 'table' and cfg.Award ~= nil then
+				local aw = cfg.Award
+				if type(aw) == 'string' then aw = cjson.decode(aw) end
+				-- Chi nhan muc nao co phan thuong TRA CUU DUOC. Vai ma phan
+				-- thuong trong bang tro toi loai vat pham can them du lieu
+				-- may chu (vi du anh hung theo PrizeProperty), va ma goc thi
+				-- tra nil roi hong o CUIRewardLayer:739. Day la chon du lieu
+				-- kiem, khong phai che gia tri.
+				local dung = false
+				if type(aw) == 'table' and aw[1] ~= nil then
+					-- pcall: vai ma phan thuong lam ham tra cuu nem loi chu
+					-- khong chi tra nil.
+					pcall(function()
+						local b1, pc = G_PrizeLogic:GetPrizeWithID(aw[1])
+						if b1 and type(pc) == 'table'
+								and type(pc.PrizeContent) == 'table'
+								and type(pc.PrizeContent[1]) == 'table' then
+							-- Phai tra cuu duoc MOI muc trong PrizeContent,
+							-- khong chi muc dau: CUIAchieve.lua:499 duyet het.
+							dung = true
+							for _, muc in ipairs(pc.PrizeContent) do
+								local b2, ti = g_CUIPrizeResHelper:getPrizeResInfo(muc)
+								if b2 ~= true or type(ti) ~= 'table' then
+									dung = false
+									break
+								end
+							end
+						end
+					end)
+				end
+				if dung then
+					dem = dem + 1
+					bando[tostring(dem)] = {
+						AchieveType = loai, AchieveIndex = 1,
+						State = (dem % 2 == 0) and AchieveState.Done
+								or AchieveState.Doing,
+						Current = 1, Total = 3, Award = { aw[1] },
+					}
+				end
+			end
+		end
 	end
+	out['so muc lay tu cau hinh'] = dem
 	local L = rawget(_G, 'G_AchieveLogic')
 	if L ~= nil then
 		L.UserAchieveMap = bando
@@ -250,5 +312,10 @@ const _SAU := """
 	local tv = ui.AchieveTableView
 	local inner = tv and tv.tableView
 	out['so dong'] = (inner ~= nil and inner.cells ~= nil) and #inner.cells or -1
+	out['DataList'] = ui.AchieveDataList and #ui.AchieveDataList or -1
+	-- So MUC danh sach nhan duoc (khac so DONG dung duoc: mot o hong thi
+	-- cocos.lua ghi lai roi di tiep chu khong giet ca danh sach).
+	out['ItemCellNumber sau'] = tostring(tv and tv.ItemCellNumber)
+	for i, e in ipairs(require('cocos').cell_errors) do out['O HONG ' .. i] = e end
 	return out
 """

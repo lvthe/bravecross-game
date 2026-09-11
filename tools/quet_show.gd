@@ -23,19 +23,19 @@ const _BOOT := """
 	local boot = require('bootstrap')
 	boot.install_cocos()
 	boot.install()
-	boot.boot({'share.Protocol', 'share.PrizeLogic',
-		'user.Public.CUIPrizeResHelper', 'user.UI.CUIRewardLayer',
-		'user.Public.CUIHelper', 'user.UI.CUIGuildTableViewList',
-		'user.Public.CSceneManager', 'user.Public.CLevelLoader',
-		'user.Public.CUIDialogAnimation'})
+	-- Nap TOAN BO ma goc theo dung ban ke khai cua no (876 module), chu khong
+	-- phai mot danh sach ngan minh chon. Khac nhau rat lon: cai gi khong nap
+	-- thi la bong, ma bong goi ra MOT gia tri, nen
+	-- 'local bRet, data = G_XLogic:GetY()' cho data = nil va man hinh hong o
+	-- dong sau, trong nhu la thieu du lieu may chu.
+	boot.boot_goc()
 	boot.init_config()
-	-- Ban goc luon o trong mot canh; ten canh la nil thi CLevelLoader khong
-	-- ban tin OnLoadXGG va onInit khong bao gio chay.
 	g_CSceneManager.CurrentScene = 'Test'
 	_G._QUAN_LY = {'g_CUINormalDlg', 'g_CUISubDialog', 'g_CUIMessageDlg',
 		'g_CUITipsDlg', 'g_CUIMultiLayerDialog'}
 	_G._DA_BIET = {}
 """
+
 
 ## Nap mot module man hinh roi mo moi man MOI ma no vua dang ky.
 const _MOT := """
@@ -122,6 +122,7 @@ func _init() -> void:
 	var mo_ok := 0
 	var mo_im := 0
 	var mo_hong := {}
+	var hong_theo_man := []
 	var im_ly := []
 	var im_loai := {}
 	var tong := 0
@@ -153,6 +154,7 @@ func _init() -> void:
 			else:
 				var ly := v.substr(5)
 				mo_hong[ly] = int(mo_hong.get(ly, 0)) + 1
+				hong_theo_man.append("%s | %s" % [k, ly])
 
 	print("\n%d module man hinh, %d khong nap duoc" % [ds.size(), nap_hong.size()])
 	for e in nap_hong.slice(0, 10):
@@ -163,6 +165,10 @@ func _init() -> void:
 		print("   im: %-28s x%d" % [k, im_loai[k]])
 	for e in im_ly:
 		print("   IM: %s" % e)
+	print("
+TUNG MAN HONG:")
+	for e in hong_theo_man:
+		print("   %s" % e)
 	var xep := []
 	for k in mo_hong:
 		xep.append([int(mo_hong[k]), String(k)])

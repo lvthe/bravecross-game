@@ -59,6 +59,7 @@ end
 
 local bong_cut = {}
 setmetatable(bong_cut, {
+	__bong = true,
 	__index = function() dem_cham_toi_da(); return bong_cut end,
 	__newindex = function() end,
 	__call = function() dem_cham_toi_da(); return bong_cut end,
@@ -83,6 +84,8 @@ make_ghost = function(path)
 	so_bong = so_bong + 1
 	local g = {}
 	setmetatable(g, {
+		-- Dau nhan de nhan ra bong. Xem M.la_bong.
+		__bong = true,
 		__index = function(_, k)
 			local sub = path .. '.' .. tostring(k)
 			note(M.ghosts, sub)
@@ -105,6 +108,44 @@ make_ghost = function(path)
 	return g
 end
 
+-- Co phai bong khong. Can de phan biet "chua lam" voi "khong he co".
+function M.la_bong(v)
+	if type(v) ~= 'table' then return false end
+	local mt = getmetatable(v)
+	return mt ~= nil and rawget(mt, '__bong') == true
+end
+
+
+-- class(super) cua ban goc di nguoc chuoi cha bang
+-- 'while typeSuper ~= nil do ... typeSuper = typeSuper.super end'.
+-- Bong thi khong bao gio bang nil, nen vong do chay mai.
+--
+-- Quan trong: trong game THAT, ba lop duoi day co lop cha KHONG TON TAI trong
+-- ma da ship — GameUerLogic va EpicBattleLogic khong duoc dinh nghia o bat cu
+-- dau trong 973 file, con Login thi nap sau. Tuc la ban goc chay
+-- class(nil) va di qua binh thuong; chi co BONG cua ta moi bien cai nil do
+-- thanh mot thu khac nil. Nen day khong phai doi hanh vi ban goc, ma la tra
+-- lai dung hanh vi cua no.
+--
+--     ClientUserLogic       = class(GameUerLogic)     ClientLogic.lua:1
+--     ClientEpicBattleLogic = class(EpicBattleLogic)  ClientEpicBattleLogic.lua:1
+--     ClientLogin           = class(Login)            ClientLogin.lua:2
+local da_boc_class = false
+
+function M.bao_ve_class()
+	if da_boc_class or type(rawget(_G, 'class')) ~= 'function' then return end
+	da_boc_class = true
+	local goc = _G.class
+	_G.class = function(super)
+		if M.la_bong(super) then
+			note(M.ghosts, 'class(<bong>)')
+			super = nil
+		end
+		return goc(super)
+	end
+end
+
+
 -- Nhung ten KHONG duoc lam bong: de bong len la hong that su.
 -- _G va cac ham chuan cua Lua deu da co san, nen chi can chan vai cai bay.
 local never = {
@@ -122,6 +163,9 @@ function M.install_cocos()
 	g_CNFont = c.luaFont
 	G_CTableViewMgr = c.tableViewMgr
 	S_CCDirector = c.director
+	-- system/engine.lua:159 dat lai hai bien nay tu S_CCDirector cua C++;
+	-- sau khi nap ban goc thi chung la bong, phai tra ve so that.
+	screenWidth, screenHeight = c.director.getWinSize()
 	-- Dat cac thuc the S_CCSequence, S_CCMoveTo... Ban goc goi he action
 	-- qua chung: S_CCSequence 659 lan, S_CCCallFunc 559, S_CCDelayTime 486.
 	c.actions.install()
@@ -197,6 +241,73 @@ function M.install_cocos()
 		end
 	end
 
+	-- Cac lop node cua engine, dung de TAO node luc chay. Ban goc goi
+	-- Label:new() 14 lan, CCScale9Sprite:new() 9, CCSprite:new() 7,
+	-- CCLabelTTF:new() 3 — va system/engine.lua thi khong dinh nghia chung
+	-- (chung la lop C++), nen khong cai thi tat ca deu la bong.
+	local function lop_node(kieu)
+		return { new = function() return c.new_node(kieu) end,
+		         create = function() return c.new_node(kieu) end }
+	end
+	Label = lop_node('label')
+	CCLabelTTF = lop_node('label')
+	CCSprite = lop_node('sprite')
+	CCScale9Sprite = lop_node('scale9')
+	CCNode = lop_node('node')
+
+	-- ProtoRPC: doi tuong RPC ben C++ (system/rpc.lua:337 ProtoRPC:new()).
+	--
+	-- May chu cu da chet, nen day la mot cai ONG KHONG NOI DI DAU: nhan loi
+	-- goi, phat mot so thu tu, khong gui gi ca. Phai co that chu khong duoc de
+	-- la bong, vi rpc.lua nem so thu tu do thang vao
+	-- sngRpcAnalytics:convertTo32UintString, va ham do so no voi 0x100000000 —
+	-- bong thi Lua bao 'attempt to compare table with number', va man hinh nao
+	-- hoi may chu luc mo deu chet o do (28/353 man).
+	--
+	-- Day la tang van chuyen, khong phai du lieu game: man hinh van mo ra
+	-- rong, dung voi su that la khong co may chu tra loi.
+	local rpc_stt = 0
+	local function ban_tin()
+		local t = {}
+		local mt = {
+			__index = function(_, k)
+				if k:sub(1, 3) == 'Set' then return function() end end
+				if k:sub(1, 3) == 'Get' then
+					-- GetInt32/GetInt64/GetUInt64 ra so, GetString ra chuoi.
+					if k:find('String') then return function() return '' end end
+					return function() return 0 end
+				end
+				return function() end
+			end,
+		}
+		return setmetatable(t, mt)
+	end
+
+	ProtoRPC = {
+		new = function()
+			return {
+				CallMethod = function()
+					rpc_stt = rpc_stt + 1
+					return rpc_stt
+				end,
+				NewRequest = function() return ban_tin() end,
+				NewMessage = function() return ban_tin() end,
+				DeleteMessage = function() end,
+				ImportProtoFile = function() return true end,
+				SetID = function() end,
+				GetID = function() return 'GameRPC' end,
+				SetProtoFileRootDir = function() end,
+				SetRpcID = function() end,
+				SetRpcSessionID = function() end,
+				StartRPC = function() return false end,
+				CheckConnection = function() return false end,
+				CleanStackMsg = function() end,
+				Close = function() end,
+				release = function() end,
+			}
+		end,
+	}
+
 	JsonFile = {
 		Load = function(p)
 			local txt = _godot_doc_file(p)
@@ -207,6 +318,63 @@ function M.install_cocos()
 		end,
 	}
 	return c
+end
+
+
+-- Bon ban KE KHAI cua ban goc, dung thu tu trong sc/game.lua:174-183. Day la
+-- danh sach that su cua no chu khong phai danh sach minh chon: 876 module.
+M.KE_KHAI = {
+	'share.share_public_require',
+	'share.share_gameLogic_require',
+	'system.s_require',
+	'user.require',
+}
+
+-- Nap TOAN BO ma goc, theo dung ban ke khai cua no.
+--
+-- Khac M.boot(): boot() nap mot danh sach ngan do minh chon, nen moi thu
+-- khong nam trong do la BONG — va bong thi lam sai hanh vi. Vi du
+-- 'local bRet, data = G_ArenaLogic:GetUserArenaData()' : bong goi ra mot gia
+-- tri, nen data = nil, va man hinh hong o dong sau voi thong bao nhu la
+-- thieu du lieu may chu. Nap that thi G_ArenaLogic la that.
+--
+-- Cuoi cung PHAI cai lai lop gia lap: system/engine.lua la be mat rang buoc
+-- C++ (70 bien S_CC*), nap no vao la de bong len het cac thu ta lam that.
+function M.boot_goc()
+	local ds = {}
+	for _, ten in ipairs(M.KE_KHAI) do
+		local duong = ten:gsub('%.', '/')
+		local src = _godot_read(duong)
+		local nhom = {}
+		if src ~= nil then
+			for m in src:gmatch('require%s*%(%s*"([%w_%.]+)"%s*%)') do
+				nhom[#nhom + 1] = m
+			end
+		end
+		ds[#ds + 1] = nhom
+	end
+	local bao = { so = 0, nap = 0, hong = {} }
+	for _, nhom in ipairs(ds) do
+		bao.so = bao.so + #nhom
+		for _, m in ipairs(nhom) do
+			-- Dat lai bo dem TRUOC TUNG module: bo dem la chung, nen module
+			-- dau tien lam trong vong lap vo tan se lam moi module sau do
+			-- cung bao loi do, va ta doc nham thanh "ba module hong".
+			M.cham = 0
+			local ok, err = pcall(function() require(m) end)
+			if ok then
+				bao.nap = bao.nap + 1
+			else
+				bao.hong[m] = tostring(err)
+			end
+		end
+		-- Cai lai sau TUNG ban ke khai, khong doi den cuoi: system/engine.lua
+		-- nam trong ban thu ba, va cac module cua ban thu tu doc thang
+		-- screenWidth ngay luc nap (vi du user/UI/pet/CUIPetCommon.lua:41).
+		M.install_cocos()
+		M.bao_ve_class()
+	end
+	return bao
 end
 
 

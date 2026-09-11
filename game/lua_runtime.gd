@@ -37,9 +37,20 @@ func open() -> bool:
 	state.globals["_godot_log"] = func(s): print("[lua] ", s)
 	state.globals["_godot_copy"] = _copy
 	state.globals["_godot_frame"] = _frame
+	state.globals["_godot_zsort"] = _zsort
 	state.globals["_godot_text"] = _text
 	state.globals["_godot_co_file"] = _co_file
 	state.globals["_godot_doc_file"] = _doc_file
+	# Kich thuoc cua so. Ban goc doc qua hai bien toan cuc nay
+	# (CPublic:GetWinSize tra thang chung), va SetNodeAdaptWinSize chia cho
+	# chung — de la bong thi bao 'arithmetic on a table value'.
+	var vp := Vector2(960, 640)
+	if Engine.get_main_loop() is SceneTree:
+		var st := Engine.get_main_loop() as SceneTree
+		if st.root != null and st.root.size.x > 0:
+			vp = Vector2(st.root.size)
+	state.globals["screenWidth"] = vp.x
+	state.globals["screenHeight"] = vp.y
 	# require tu viet: doi "a.b.c" ra "res://sc/a/b/c.lua", nho ket qua lai
 	# dung kieu package.loaded cua Lua that (mot module chi chay mot lan).
 	var r = state.do_string("""
@@ -103,6 +114,13 @@ static func _copy_meta(tu: Node, den: Node) -> void:
 	var n: int = mini(tu.get_child_count(), den.get_child_count())
 	for i in range(n):
 		_copy_meta(tu.get_child(i), den.get_child(i))
+
+
+## Xep lai anh em theo zOrder. Ben Lua khong voi toi lop XggLayout duoc, nen
+## phai bac qua day nhu may cai kia.
+func _zsort(cha: Node) -> void:
+	if cha != null:
+		XggLayout.sap_xep_theo_z(cha)
 
 
 ## Gan anh theo ten khung. Ban goc gan anh luc CHAY chu khong ghi trong bo

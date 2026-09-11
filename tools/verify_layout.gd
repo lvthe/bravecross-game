@@ -110,9 +110,13 @@ func _init() -> void:
 	# --- 4. bang ten, dung vai tro cua _G ben ban goc
 	print("\n=== 4. bang ten node (thay cho _G) ===")
 	var idx := XggLayout.index_of(hud)
-	# It hon so node la DUNG: rat nhieu node trung ten (CCSprite, ttfContent),
-	# va cai sau ghi de cai truoc y nhu `_G[ten] = node` ben Lua.
-	_check(idx.size() > 150, "co bang chi muc (%d ten / 629 node)" % idx.size())
+	# It hon HAN so node la DUNG: chi node co TEN INSTANCE moi vao bang, dung
+	# nhu ban goc — no viet `lAchieveTaskUI`, `sngItemIcon`... chu khong goi node
+	# theo ten lop. Tren toan bo 296 man, 30.694/33.472 node khong he co ten
+	# instance. Truoc day ta lay ten lop dap vao cho thieu, va cai ten gia do
+	# de len ca ten that (mot node khong ten mang lop 'lSubDialogMask' da cuop
+	# cho cua chinh lSubDialogMask).
+	_check(idx.size() > 40, "co bang chi muc (%d ten tren 629 node)" % idx.size())
 	_check(idx.has("g_btnAutoCombat"),
 			"tra duoc nut tu dong chien dau bang dung ten cua ban goc")
 	var by_index := XggLayout.find_node(hud, "spBattleStartTime")
@@ -172,6 +176,62 @@ func _init() -> void:
 	print("  (%d ten anh yeu cau ma khong co file)" % missing.size())
 	if missing.size() > 0:
 		print("  (%s)" % ", ".join(missing.slice(0, 6)))
+
+	# Kiem duoc vi CUIManager.lua dat zOrder cho tung lop che bang hang so viet
+	# ro trong ma, ma ten lop che thi biet san. Neu doc sai truong nay thi
+	# khong loi gi ca, chi la lop nay de len lop kia sai cho.
+	print("\n=== zOrder (thu tu ve) ===")
+	var khung := XggLayout.build(ROOT + "UI_NormalDlg_960_640.json")
+	_check(khung != null, "dung duoc khung hop thoai")
+	if khung != null:
+		var z := func(ten: String) -> int:
+			var nd := XggLayout.find_node(khung, ten)
+			return int(nd.get_meta("zorder", -1)) if nd != null else -1
+		# So voi hang so trong sc/user/Public/CUIManager.lua.
+		_check(z.call("lNormalDlgMask") == 20, "lNormalDlgMask = maskZorder 20")
+		_check(z.call("lNormalDlgTouchMask") == 21, "lop cham = maskZorder + 1")
+		_check(z.call("lSubDialogMask") == 100, "lSubDialogMask = 100")
+		_check(z.call("lMessageBoxMask") == 2000, "lMessageBoxMask = 2000")
+		_check(z.call("lSystemMask") == 4000, "lSystemMask = 4000")
+		_check(z.call("lNetWorkMask") == 6000, "lNetWorkMask = 6000")
+		_check(z.call("lDebugBoxMask") == 9000, "lDebugBoxMask = 9000")
+		# Nen canh phai nam DUOI lop giao dien, khong thi anh nen phu kin.
+		_check(z.call("lSceneBackgroundLayer") < z.call("UIRootLayer"),
+				"nen canh nam duoi lop giao dien")
+		# Va cay dung ra phai da xep theo do.
+		var u := XggLayout.find_node(khung, "UIRootLayer")
+		var tang := true
+		var truoc := -999999
+		for c in u.get_children():
+			var zz := int(c.get_meta("zorder", 0))
+			if zz < truoc:
+				tang = false
+			truoc = zz
+		_check(tang, "con cua UIRootLayer da xep theo zOrder")
+
+		# Ghep man hinh vao khung: day la cach ban goc bay \u2014 mot cay duy nhat,
+		# zOrder sap xep. Man thanh tuu (33) phai nam giua lop che (20) va
+		# thanh nut Back (60).
+		var man := XggLayout.build(ROOT + "UI_AchievementTask_960_640.json")
+		if man != null:
+			var da := XggLayout.ghep_vao(khung, man)
+			_check(da > 0, "ghep duoc man hinh vao khung")
+			var ui := XggLayout.find_node(khung, "lAchieveTaskUI")
+			_check(ui != null and ui.get_parent() == u,
+					"man hinh thanh anh em cua lop che")
+			if ui != null:
+				var i_che := u.get_children().find(
+						XggLayout.find_node(khung, "lNormalDlgMask"))
+				var i_ui := u.get_children().find(ui)
+				var i_back := u.get_children().find(
+						XggLayout.find_node(khung, "lDialogControlPanel"))
+				_check(i_che < i_ui and i_ui < i_back,
+						"man hinh ve tren lop che va duoi nut Back")
+			_check(absf(u.position.x) < 0.01 and absf(u.position.y) < 0.01,
+					"lop giao dien duoc dua ve goc toa do")
+			man.free()
+		khung.free()
+
 
 	hud.free()
 	print("\n===== dat %d, hong %d =====" % [n_pass, n_fail])

@@ -127,6 +127,7 @@ static func build(json_path: String) -> Control:
 		var n := _make(r, design)
 		if n != null:
 			root.add_child(n)
+	sap_xep_theo_z(root)
 	var idx := {}
 	_index(root, idx)
 	root.set_meta("index", idx)
@@ -165,12 +166,31 @@ static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 			tr.stretch_mode = TextureRect.STRETCH_SCALE
 			node = tr
 		_:
-			node = Control.new()
+			# CCLayerColorRoundRect co MAU rieng (bon byte R,G,B,A trong ban
+			# ghi). Phan lon la A=0 nen khong ve gi — nhung may lop CHE thi
+			# song nho no: ma goc bat lop che len roi cho S_CCFadeTo dua do mo
+			# tu 0 len 179. Khong co mau thi lop che chi la mot Control rong,
+			# va man hinh phia sau khong bao gio toi di.
+			if nd.has("color"):
+				var cr := ColorRect.new()
+				var c: Array = nd["color"]
+				cr.color = Color8(int(c[0]), int(c[1]), int(c[2]),
+						int(nd.get("opacity", 255)))
+				node = cr
+			else:
+				node = Control.new()
 
-	var nm := String(nd.get("name", ""))
-	if nm == "":
-		nm = String(nd.get("cls", "node"))
-	node.set_meta("xgg_name", nm)      # giu nguyen ten goc, ke ca khi phai lam sach
+	# TEN INSTANCE va TEN LOP la hai thu khac nhau, va chi cai dau moi la cai
+	# ma goc goi toi. 30.694/33.472 node khong co ten instance; truoc day ta lay
+	# ten lop thay vao va dat luon vao xgg_name, thanh ra 30.694 cai ten gia
+	# tron lan voi 2.778 ten that. Ten that thi khong bao gio trung nhau, con
+	# ten gia thi co: mot node khong ten mang lop 'lSubDialogMask' nam trong
+	# lDebugBoxMask da de len chinh lSubDialogMask that trong bang tra cuu.
+	# Ten lop van dung lam TEN NODE cua Godot cho de doc cay.
+	var ten_that := String(nd.get("name", ""))
+	var nm := ten_that if ten_that != "" else String(nd.get("cls", "node"))
+	if ten_that != "":
+		node.set_meta("xgg_name", ten_that)   # giu nguyen, ke ca khi phai lam sach
 	node.name = _safe_name(nm)
 	node.size = Vector2(w, h)
 	# Doi truc: xem chu thich dau file.
@@ -193,7 +213,10 @@ static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 	# tag thi nhung cai sau bi khuat, va ma goc cung khong voi toi chung.
 	if nd.has("tag"):
 		node.set_meta("tag", int(nd["tag"]))
-	node.set_meta("u_a4", int(nd.get("u_a4", 0)))
+	# zOrder cua Cocos: quyet dinh THU TU VE. Godot ve anh em theo thu tu cay
+	# va chi cho z_index trong khoang +-4096, ma ban goc dung toi 9000, nen ta
+	# XEP LAI anh em thay vi dat z_index. Xem sap_xep_theo_z().
+	node.set_meta("zorder", int(nd.get("zOrder", 0)))
 	node.set_meta("res", nd.get("res", ""))
 	node.set_meta("kind", kind)
 	node.set_meta("type_name", tn)
@@ -230,7 +253,73 @@ static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 		var child := _make(c, Vector2(w, h))
 		if child != null:
 			node.add_child(child)
+	sap_xep_theo_z(node)
 	return node
+
+
+## Xep lai con theo zOrder cua Cocos, GIU NGUYEN thu tu goc khi bang nhau
+## (Cocos cung vay: cung zOrder thi ai vao truoc ve truoc).
+##
+## Phai xep chu khong dat z_index: ban goc dung toi zOrder 9000
+## (lDebugBoxMask), con Godot chi nhan z_index trong khoang +-4096.
+static func sap_xep_theo_z(cha: Node) -> void:
+	var ds := []
+	var i := 0
+	for c in cha.get_children():
+		ds.append([int(c.get_meta("zorder", 0)), i, c])
+		i += 1
+	var da_sap := ds.duplicate()
+	da_sap.sort_custom(func(a, b):
+		if a[0] != b[0]:
+			return a[0] < b[0]
+		return a[1] < b[1])
+	var doi := false
+	for j in range(da_sap.size()):
+		if da_sap[j][2] != ds[j][2]:
+			doi = true
+			break
+	if not doi:
+		return
+	for j in range(da_sap.size()):
+		cha.move_child(da_sap[j][2], j)
+
+
+## Dua mot man hinh vao trong khung chung cua hop thoai.
+##
+## Ban goc khong co "hai bo cuc roi nhau": moi thu nam chung mot cay, va zOrder
+## sap xep chung. UI_NormalDlg_960_640 giu lop che (z=20), thanh nut Back
+## (z=60) va nen canh; man hinh cu the (vi du lAchieveTaskUI, z=33) la MOT
+## NGUOI ANH EM nam giua hai cai do. De roi hai cay thi nut Back bi nen phu,
+## va lop che nam sai phia.
+##
+## Chuyen cac goc cua `man` vao `vao_trong` (mac dinh UIRootLayer cua khung),
+## roi xep lai theo zOrder. Tra ve so goc da chuyen.
+static func ghep_vao(khung: Node, man: Node, vao_trong: String = "UIRootLayer") -> int:
+	var cha := find_node(khung, vao_trong)
+	if cha == null:
+		push_error("XggLayout: khong thay %s trong khung" % vao_trong)
+		return 0
+	# Dua lop chua ve goc toa do. Trong file, UIRootLayer nam o (31,6 / 64,2) —
+	# do la cho nguoi thiet ke ke no trong trinh sua. Game chay khong the dat no
+	# o do, va chinh noi dung cua no chung minh: may lop che ben trong deu la
+	# 1366x768 dat tai (-203, -64), tuc la thua deu moi ben cua khung 960x640
+	# ((1366-960)/2 = 203, (768-640)/2 = 64). Canh deu nhu vay chi dung khi lop
+	# chua nam dung goc. De nguyen thi ca giao dien — ke ca nut Back — bi day
+	# len khoi mep tren.
+	if cha is Control:
+		(cha as Control).position = Vector2.ZERO
+	var n := 0
+	for c in man.get_children().duplicate():
+		man.remove_child(c)
+		cha.add_child(c)
+		n += 1
+	sap_xep_theo_z(cha)
+	# Gop bang tra cuu, de find_node tren khung tim duoc ca node cua man.
+	if khung.has_meta("index") and man.has_meta("index"):
+		var idx: Dictionary = khung.get_meta("index")
+		for k in man.get_meta("index"):
+			idx[k] = man.get_meta("index")[k]
+	return n
 
 
 ## Tim node theo ten instance, di sau xuong ca cay.

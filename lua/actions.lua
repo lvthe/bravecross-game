@@ -104,7 +104,7 @@ return function(C)
 	-- Cocos dung do mo 0..255.
 	local function fadeTo(d, o)
 		return lam(d,
-			function(self, n) self.o0 = raw(n).modulate.a * 255.0 end,
+			function(self, n) self.o0 = C.Node.getOpacity(n) end,
 			function(self, n, p)
 				C.Node.setOpacity(n, self.o0 + (o - self.o0) * p)
 			end)

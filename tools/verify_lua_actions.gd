@@ -120,6 +120,26 @@ func _kiem_action(lua: LuaRuntime, n: Control) -> void:
 	var r2 = lua.run("return _dem.so", "dem 2")
 	t("CallFunc goi dung mot lan", int(r2) == 1, "so=%s" % r2)
 
+	# LOP MAU. CCLayerColorRoundRect mang mau cua CHINH no (bon byte R,G,B,A
+	# trong ban ghi .xgg), khong phai mot sac nhuom len anh. Neu setOpacity di
+	# qua modulate nhu moi node khac thi lop che khong bao gio hien duoc: ban
+	# ghi cua no la alpha 0, ma modulate chi NHAN vao mau san.
+	var lop := ColorRect.new()
+	lop.color = Color8(0, 0, 0, 0)
+	lua.state.globals["_lop"] = lop
+	lua.run("lop = require('cocos').wrap(_lop)", "boc lop mau")
+	lua.run("lop:runAction(S_CCFadeTo:create(0.2, 179))", "mo dan lop mau")
+	for i in range(6):
+		lua.tick(0.05)
+	t("FadeTo lam mo duoc lop mau", absf(lop.color.a * 255.0 - 179.0) < 1.0,
+			"a=%.1f" % (lop.color.a * 255.0))
+	t("mo lop mau khong dung toi modulate", absf(lop.modulate.a - 1.0) < 0.001)
+	lua.run("lop:setColor(255, 0, 0)", "doi mau lop")
+	t("setColor doi mau lop ma giu do mo",
+			lop.color.r > 0.99 and absf(lop.color.a * 255.0 - 179.0) < 1.0,
+			str(lop.color))
+	lop.free()
+
 	# Show / Hide
 	lua.run("thu:runAction(S_CCHide:create())", "hide")
 	lua.tick(0.1)

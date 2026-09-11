@@ -338,17 +338,59 @@ function Node:setColor(r, g, b)
 		return
 	end
 	local gd = raw(self)
+	if gd:is_class('ColorRect') then
+		local c = gd.color
+		gd.color = Color(r / 255.0, g / 255.0, b / 255.0, c.a)
+		return
+	end
 	local m = gd.modulate
 	gd.modulate = Color(r / 255.0, g / 255.0, b / 255.0, m.a)
 end
 
+-- Lop mau (CCLayerColorRoundRect) mang mau CUA CHINH NO, khong phai mot sac
+-- do nhuom len anh — nen phai dat vao color chu khong phai modulate. Lam
+-- nhuong thi lop che khong bao gio hien: ban ghi cua no la (0,0,0, A=0), ma
+-- modulate chi NHAN vao mau san, nen 0 nhan gi cung ra 0.
+local function la_lop_mau(gd)
+	return gd:is_class('ColorRect')
+end
+
 function Node:setOpacity(o)
 	local gd = raw(self)
+	if la_lop_mau(gd) then
+		local c = gd.color
+		gd.color = Color(c.r, c.g, c.b, o / 255.0)
+		return
+	end
 	local m = gd.modulate
 	gd.modulate = Color(m.r, m.g, m.b, o / 255.0)
 end
 
-function Node:setZOrder(z) raw(self).z_index = z end
+function Node:getOpacity()
+	local gd = raw(self)
+	if la_lop_mau(gd) then return gd.color.a * 255.0 end
+	return gd.modulate.a * 255.0
+end
+
+-- zOrder cua Cocos la THU TU VE giua anh em, va ban goc dung toi 9000
+-- (lDebugBoxMask) trong khi Godot chi nhan z_index trong khoang +-4096. Nen
+-- dat lai thu tu con that su, chu khong dat z_index.
+--
+-- Day la duong ma goc dua hop thoai len tren lop che: SetOpenZorder goi
+-- setZOrder(self.OpenZorder) — 50 voi hop thoai thuong, tren lop che (20) va
+-- duoi thanh nut Back (60).
+function Node:setZOrder(z)
+	local gd = raw(self)
+	gd:set_meta('zorder', z)
+	local cha = gd:get_parent()
+	if cha ~= nil then _godot_zsort(cha) end
+end
+
+function Node:getZOrder()
+	local gd = raw(self)
+	if gd:has_meta('zorder') then return gd:get_meta('zorder') end
+	return 0
+end
 function Node:setGray(_) end          -- lam mo: chua lam, khong hong gi
 
 -- Chu ----------------------------------------------------------------------

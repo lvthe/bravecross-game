@@ -29,7 +29,11 @@ func _ready() -> void:
 		_note(thieu)
 		return
 
-	XggLayout.respect_visible = false
+	# Khung chung thi TON TRONG co hien/an cua file: may lop che trong do deu
+	# an san, va chinh ma goc bat len (SetMaskIsEnable, SetBackButtonIsVisible).
+	# De hien het thi lFeedsDlgMask va lDebugBoxMask — hai lop den 125/255 —
+	# phu kin man hinh.
+	XggLayout.respect_visible = true
 	# Khung/nen cua hop thoai KHONG nam trong man thanh tuu. No la
 	# lNormalDlgBackGround trong UI_NormalDlg_960_640, va ban goc do anh vao
 	# do bang initWithFile o giua duong mo hop thoai cua CUIManager. Dung lop
@@ -38,11 +42,21 @@ func _ready() -> void:
 	if nen != null:
 		add_child(nen)
 
+	# Con man hinh thi CHUA: phan bat/tat cua no nam o duong Show cua ban goc
+	# (OnShow -> RunOpenAnimation -> onShow), ma duong do ta chua lam.
+	XggLayout.respect_visible = false
 	var root := XggLayout.build("res://layout_ref/UI_AchievementTask_960_640.json")
 	if root == null:
 		_note("khong dung duoc bo cuc")
 		return
-	add_child(root)
+	# Ghep vao trong khung chu khong de thanh hai cay roi nhau: ban goc xep moi
+	# thu bang zOrder trong cung mot cay. lAchieveTaskUI (z=33) phai nam TREN
+	# lop che (20) va DUOI thanh nut Back (60).
+	if nen != null and XggLayout.ghep_vao(nen, root) > 0:
+		root.free()
+		root = nen
+	else:
+		add_child(root)
 
 	# Kiem ngay sau khi dung: XggLayout co gan dung tag khong.
 	var top := XggLayout.find_node(root, "lAchieveTemplateTop")
@@ -160,17 +174,6 @@ const _KICH_BAN := """
 		L.bIsInited = true
 	end
 
-	-- Nen hop thoai: hai dong nay la cua ban goc (CUIManager dong 1672-1679),
-	-- chi la o day goi thang thay vi chay ca duong mo hop thoai — duong do keo
-	-- theo scene manager, thanh cong cu, lop che...
-	local bg = rawget(_G, 'lNormalDlgBackGround')
-	if bg ~= nil then
-		local duong = (g_CUIManager and g_CUIManager.DefultDlgBackGround)
-			or "png/background/v6/ui_background262.jpg"
-		out['nen'] = tostring(bg:initWithFile(duong))
-		bg:setIsVisible(true)
-	end
-
 	local ui
 	local ok, err = pcall(function()
 		ui = CUIAchieve:new()
@@ -179,7 +182,24 @@ const _KICH_BAN := """
 	out['onInit'] = ok and 'ok' or tostring(err)
 	if not ok then return out end
 
-	local ok2, err2 = pcall(function() ui:Reflesh() end)
+	-- Duong MO HOP THOAI cua ban goc. Truoc day minh tu goi Reflesh() va tu
+	-- do anh nen — nay de chinh CUINormalDlg:setDialogVisible lo: no bat lop
+	-- che, do anh nen bang initWithFile, dat nut Back, roi goi onVisible()
+	-- (va onVisible moi goi Reflesh).
+	--
+	-- Nhanh nang nhat cua ham do — RefreshMainUIControlPanel — tu bi bo qua:
+	-- no chi chay khi g_CSceneManager:GetCurrentSceneName() == "Main", ma
+	-- g_CSceneManager con la bong nen phep so khong khop.
+	local dlg = rawget(_G, 'g_CUINormalDlg')
+	out['co_CUINormalDlg'] = tostring(dlg ~= nil)
+	local ok2, err2 = pcall(function()
+		if dlg ~= nil then
+			dlg:setDialogVisible(ui, true)
+		else
+			ui:Reflesh()
+		end
+	end)
+	out['mo hop thoai'] = ok2 and 'ok' or tostring(err2)
 	out['Reflesh'] = ok2 and 'ok' or tostring(err2)
 
 	-- Bao nhieu dong that su duoc dung ra

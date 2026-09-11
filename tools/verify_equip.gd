@@ -86,6 +86,17 @@ func _text_cls(scr: Control, cls: String) -> String:
 	return _text_of(scr, XggLayout.find_by_cls(scr.ui, cls))
 
 
+## Tim trong MOT KHOI. Hai cot "hien tai" va "sau khi cuong hoa" dung y het
+## ten lop cho tung o, nen tim tren ca man hinh thi vo cot nao la tuy thu tu
+## anh em — va thu tu anh em gio da xep theo zOrder cua ban goc. Chinh
+## equip.gd cung tim theo khoi (xem _in()), nen phep kiem phai hoi cung kieu.
+func _text_trong(scr: Control, box_cls: String, cls: String) -> String:
+	var box := XggLayout.find_by_cls(scr.ui, box_cls)
+	if box == null:
+		return "<khong thay khoi %s>" % box_cls
+	return _text_of(scr, XggLayout.find_by_cls(box, cls))
+
+
 func _ready() -> void:
 	var packed := load(SCENE) as PackedScene
 	if packed == null:
@@ -189,10 +200,10 @@ func _ready() -> void:
 	_check(ap1 == "Chi mang +0.17%", "thuoc tinh phu theo diem phan tram", ap1)
 
 	print("\n=== 3. bang cuong hoa: hien tai va sau khi cuong hoa ===")
-	_check(_text_cls(scr, scr.CLS_NOW_LEVEL) == "+3", "cap hien tai",
-			_text_cls(scr, scr.CLS_NOW_LEVEL))
-	_check(_text_cls(scr, scr.CLS_AFTER_LEVEL) == "+4", "cap sau khi cuong hoa",
-			_text_cls(scr, scr.CLS_AFTER_LEVEL))
+	var cap_nay := _text_trong(scr, scr.CLS_NOW_BOX, scr.CLS_NOW_LEVEL)
+	var cap_sau := _text_trong(scr, scr.CLS_AFTER_BOX, scr.CLS_AFTER_LEVEL)
+	_check(cap_nay == "+3", "cap hien tai", cap_nay)
+	_check(cap_sau == "+4", "cap sau khi cuong hoa", cap_sau)
 	var now_main := _text_cls(scr, scr.CLS_NOW_MAIN)
 	var aft_main := _text_cls(scr, scr.CLS_AFTER_MAIN)
 	_check(now_main != aft_main, "cuong hoa lam chi so tang len that",

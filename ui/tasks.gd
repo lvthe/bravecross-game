@@ -257,9 +257,11 @@ func _row(v: Dictionary) -> Control:
 		_art(row, parts[0]["icon"], Rect2(30, 24, 56, 56))
 	_art(row, "v6/ui_background176.png", Rect2(20, 14, 76, 77))
 
+	# Ten va mo ta la hai cot lien nhau. Chua khe thi ten dai vua het 200px la
+	# dinh lien vao mo ta, doc ra "…chuong 2Qua chuong 2". Chua 10px khe.
 	_label(row, "Name", _title(v), Rect2(110, 7, 200, 40),
 			COL_DONE if done else COL_NAME, 20)
-	_label(row, "Desc", _desc(v), Rect2(310, 7, 330, 40),
+	_label(row, "Desc", _desc(v), Rect2(320, 7, 320, 40),
 			COL_DONE if done else COL_DESC, 16)
 	# Tien do "(dang co/can)" nhu ban goc; da dat thi thay bang nut nhan.
 	if not done:
@@ -298,7 +300,9 @@ func _title(v: Dictionary) -> String:
 	var t := int(v.get("type", 0))
 	match String(v.get("kind", "")):
 		"chapter":
-			return "Chinh phuc chuong %d" % int(v.get("target", 0))
+			# Ngan gon: o ten rong 190px, "Chinh phuc chuong 12" khong vua.
+			# Chi tiet da nam o cot mo ta ben canh.
+			return "Chuong %d" % int(v.get("target", 0))
 		"heroLevelCount":
 			return "Tuong cap %d" % int(v.get("arg", 0))
 		"heroLevelTo":

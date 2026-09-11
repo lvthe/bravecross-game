@@ -35,6 +35,9 @@ func open() -> bool:
 	state.open_libraries()
 	state.globals["_godot_read"] = _read
 	state.globals["_godot_log"] = func(s): print("[lua] ", s)
+	state.globals["_godot_copy"] = _copy
+	state.globals["_godot_frame"] = _frame
+	state.globals["_godot_text"] = _text
 	# require tu viet: doi "a.b.c" ra "res://sc/a/b/c.lua", nho ket qua lai
 	# dung kieu package.loaded cua Lua that (mot module chi chay mot lan).
 	var r = state.do_string("""
@@ -76,6 +79,54 @@ func _read(rel: String) -> Variant:
 		if FileAccess.file_exists(p):
 			return FileAccess.get_file_as_string(p)
 	return null
+
+
+## Nhan ban mot node ke ca cay con. Ban goc nhan mau thanh tung dong danh
+## sach, nen thieu cai nay la danh sach rong.
+##
+## Chep META tuong minh. duplicate() cua Godot khong mang theo metadata, ma
+## toan bo cach ma goc tro toi node deu dua vao meta "tag" — ban sao mat tag
+## thi getChildByTag tra ve nil va dong nao cung hong ngay dong dau.
+func _copy(node: Node) -> Node:
+	if node == null:
+		return null
+	var ban := node.duplicate()
+	_copy_meta(node, ban)
+	return ban
+
+
+static func _copy_meta(tu: Node, den: Node) -> void:
+	for k in tu.get_meta_list():
+		den.set_meta(k, tu.get_meta(k))
+	var n: int = mini(tu.get_child_count(), den.get_child_count())
+	for i in range(n):
+		_copy_meta(tu.get_child(i), den.get_child(i))
+
+
+## Gan anh theo ten khung. Ban goc gan anh luc CHAY chu khong ghi trong bo
+## cuc — day la ly do bo cuc dung khong thi man hinh gan nhu trong tron.
+func _frame(node: Control, name: String) -> bool:
+	if node == null or name.is_empty():
+		return false
+	return UiFrames.set_frame(node, name)
+
+
+## Bang chu tieng Viet cua ban goc (data_ref/text_vi.json, 16.894 khoa).
+## Thieu khoa thi tra chinh khoa do, de con nhin thay cho nao chua co chu.
+var _strings: Dictionary = {}
+var _strings_loaded := false
+
+func _text(key: String) -> String:
+	if not _strings_loaded:
+		_strings_loaded = true
+		var p := "res://data_ref/text_vi.json"
+		if FileAccess.file_exists(p):
+			var d = JSON.parse_string(FileAccess.get_file_as_string(p))
+			if d is Dictionary:
+				_strings = d
+		else:
+			push_warning("thieu %s — chay: python ../brave-cross/work/text_table.py" % p)
+	return String(_strings.get(key, key))
 
 
 ## Chay mot doan Lua. Tra ve ket qua, hoac null va ghi vao errors.

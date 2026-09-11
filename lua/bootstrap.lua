@@ -31,10 +31,56 @@ end
 -- mot bong moi: share/EventManager.lua cham EventManagerBase 110.753 lan va
 -- Lua bao 'not enough memory'. Dung chung con lam '==' cu the ra on dinh.
 local cache = {}
+local so_bong = 0
+
+-- Bong CUT: khong nan them bong con, khong ghi them gi. Dung khi da nan qua
+-- nhieu hoac duong dan qua sau.
+--
+-- Can cai nay vi ma goc co nhung cho cham vao bien toan cuc trong VONG LAP.
+-- Moi lan cham lai nan mot bong moi, va moi bong lai nan duoc bong con — Lua
+-- bao 'not enough memory' roi ca file khong nap duoc. Da dinh hai lan:
+-- share/EventManager.lua (110.753 luot) va user/Public/set.lua.
+local CUT_SO = 4000
+local CUT_SAU = 6
+local CHAM_TOI_DA = 200000
+M.cham = 0
+
+-- Cham qua nguong thi NEM LOI chu khong tra ve bong nua. Ly do: co module
+-- viet kieu 'while x ~= nil do x = x.next end'; bong luon khac nil nen vong
+-- do chay mai — treo han, con te hon het bo nho vi it ra het bo nho thi con
+-- bao loi. Nem loi thi pcall ben ngoai bat duoc, module do bao hong, va cac
+-- module khac van nap tiep.
+local function dem_cham_toi_da()
+	M.cham = M.cham + 1
+	if M.cham > CHAM_TOI_DA then
+		error('bong: cham hon ' .. CHAM_TOI_DA .. ' lan, chac la vong lap vo tan')
+	end
+end
+
+local bong_cut = {}
+setmetatable(bong_cut, {
+	__index = function() dem_cham_toi_da(); return bong_cut end,
+	__newindex = function() end,
+	__call = function() dem_cham_toi_da(); return bong_cut end,
+	__tostring = function() return '<bong cut>' end,
+	__concat = function(a, b) return tostring(a) .. tostring(b) end,
+	__len = function() return 0 end,
+})
+M.bong_cut = bong_cut
+
+local function dem_cham(path)
+	local n = 0
+	for _ in path:gmatch('%.') do n = n + 1 end
+	return n
+end
 
 make_ghost = function(path)
 	local hit = cache[path]
 	if hit ~= nil then return hit end
+	if so_bong >= CUT_SO or dem_cham(path) >= CUT_SAU then
+		return bong_cut
+	end
+	so_bong = so_bong + 1
 	local g = {}
 	setmetatable(g, {
 		__index = function(_, k)
@@ -65,6 +111,25 @@ local never = {
 	-- ma goc kiem 'if os.dateServer ~= nil' — phai ra nil that
 	dateServer = true,
 }
+
+-- Dat cac doi tuong toan cuc cua engine ma lop gia lap CO lam that.
+-- Phai goi TRUOC install(), khong thi chung bi lam bong va ma goc se goi vao
+-- bong roi khong ra gi.
+function M.install_cocos()
+	local c = require('cocos')
+	S_CCSpriteFrameCache = c.spriteFrameCache
+	g_CLuaFont = c.luaFont
+	g_CNFont = c.luaFont
+	G_CTableViewMgr = c.tableViewMgr
+
+	-- Hai ham nay ban goc dinh nghia trong user/Public/set.lua, y nguyen ba
+	-- dong duoi day. KHONG nap ca file do: no co vong lap chay mai khi gap
+	-- bong, treo han ca lan chay. Chep ba dong thi vua du vua chac.
+	function GetStringWithKey(k) return g_CLuaFont:GetStringByKey(k) end
+	function GetCNStringWithKey(k) return g_CNFont:GetStringByKey(k) end
+	return c
+end
+
 
 function M.install()
 	local mt = getmetatable(_G) or {}

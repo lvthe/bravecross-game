@@ -83,12 +83,36 @@ M.unwrap = unwrap
 -- XggLayout gan san meta "cocos" = (x, y, anchorX, anchorY) va "parent_h".
 -- Giu lai nguyen ban Cocos nhu vay thi doi qua lai khong bi troi so.
 
-local function anchor_of(gd)
+-- CCLayer dat isRelativeAnchorPoint = false trong init cua chinh no, nen DIEM
+-- NEO khong doi cho dat cua lop — no chi la tam de phong to / xoay. CCSprite
+-- thi nguoc lai (mac dinh cua CCNode la true). Ban goc khong goi
+-- setIsRelativeAnchorPoint o dau ca, nen phai theo mac dinh cua tung lop.
+--
+-- Can dung cai nay vi hoat canh mo hop thoai goi rootUI:setAnchorPoint(0.5,0.5)
+-- roi KHONG tra lai (CUIDialogAnimation.lua:238) — cot de phong to tu giua.
+-- Neu coi neo la doi cho thi ca hop thoai nhay xuong goc trai-duoi.
+--
+-- Bo nap .xgg thi khac: no da dung neo trong file de tinh ra cho dat roi
+-- (lSubDialogMask 960x640 ghi neo 0,5 va toa do 480,320 — chi phu kin man neu
+-- tinh theo neo). Nen XggLayout van dung neo luc dung cay; chi luc CHAY thi
+-- lop moi coi toa do la goc o.
+local function la_lop(gd)
+	if not gd:has_meta('type_name') then return false end
+	local t = tostring(gd:get_meta('type_name'))
+	return t:sub(1, 7) == 'CCLayer' or t:sub(1, 7) == 'CCScene'
+end
+
+local function neo_that(gd)
 	if gd:has_meta('cocos') then
 		local c = gd:get_meta('cocos')
 		return c.z, c.w
 	end
 	return 0.0, 0.0
+end
+
+local function anchor_of(gd)
+	if la_lop(gd) then return 0.0, 0.0 end
+	return neo_that(gd)
 end
 
 local function parent_h(gd)
@@ -310,7 +334,13 @@ function Node:setAnchorPoint(x, y)
 	local gd = raw(self)
 	local cx, cy = to_cocos(gd)
 	gd:set_meta('cocos', Vector4(cx, cy, x, y))
-	self:setPosition(cx, cy)
+	-- Tam phong to / xoay. Cocos giu DIEM NEO dung yen khi phong to; Godot
+	-- phong quanh pivot_offset, ma truc y thi nguoc nhau.
+	local sz = gd.size
+	gd.pivot_offset = Vector2(x * sz.x, (1.0 - y) * sz.y)
+	if not la_lop(gd) then
+		self:setPosition(cx, cy)
+	end
 end
 
 function Node:setScaleX(s) local g = raw(self); g.scale = Vector2(s, g.scale.y) end
@@ -555,6 +585,20 @@ M.tableViewMgr = {
 -- He action ------------------------------------------------------------------
 -- Tach ra lua/actions.lua cho de doc: ca he chay/xep chuoi/lap nam gon mot cho.
 
+-- CCDirector. Ban goc goi 9 phuong thuc, va mot nua la viec cua engine ma ta
+-- khong co (doi canh, gui tin cho cua so). Cai duy nhat can that la
+-- getWinSize; cleanTimeAccum thi duong Show goi ngay giua chung
+-- (CUIManager.lua:909) nen khong the de la bong.
+M.director = {
+	getWinSize = function() return screenWidth, screenHeight end,
+	cleanTimeAccum = function() end,
+	setIsTimeAccumEnable = function() end,
+	setDispatchEvents = function() end,
+	setIsCleanLuaStack = function() end,
+	getNoTouchTime = function() return 0 end,
+	release = function() end,
+}
+
 M.actions = require('actions')(M)
 
 function Node:runAction(a)
@@ -565,8 +609,12 @@ function Node:stopAllActions()
 	M.actions.stopAllActions(self)
 end
 
-function Node:stopActionByTag(_)
-	M.actions.stopAllActions(self)
+function Node:stopActionByTag(tag)
+	M.actions.stopActionByTag(self, tag)
+end
+
+function Node:getActionByTag(tag)
+	return M.actions.getActionByTag(self, tag)
 end
 
 function Node:numberOfRunningActions()

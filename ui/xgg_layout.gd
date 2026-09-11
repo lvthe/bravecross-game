@@ -195,6 +195,11 @@ static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 	node.size = Vector2(w, h)
 	# Doi truc: xem chu thich dau file.
 	node.position = Vector2(x - ax * w, parent_size.y - (y - ay * h) - h)
+	# Tam phong to / xoay. Cocos giu DIEM NEO dung yen khi phong to hay xoay;
+	# Godot lam quanh pivot_offset, mac dinh la goc tren-trai. Co 5.841 node
+	# vua co phong/xoay khac mac dinh vua co neo khac 0 — bay nhieu cho se ve
+	# lech neu bo qua. Truc y nguoc nhau nen phai lat.
+	node.pivot_offset = Vector2(ax * w, (1.0 - ay) * h)
 	node.rotation_degrees = -float(nd.get("rot", 0.0))   # Cocos quay nguoc chieu
 	node.scale = Vector2(float(nd.get("scaleX", 1.0)), float(nd.get("scaleY", 1.0)))
 	node.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -308,17 +313,26 @@ static func ghep_vao(khung: Node, man: Node, vao_trong: String = "UIRootLayer") 
 	# len khoi mep tren.
 	if cha is Control:
 		(cha as Control).position = Vector2.ZERO
+	var n := ghep_vao_node(cha, man)
+	# Gop bang tra cuu, de find_node tren khung tim duoc ca node cua man.
+	if khung.has_meta("index") and man.has_meta("index"):
+		var idx: Dictionary = khung.get_meta("index")
+		for k in man.get_meta("index"):
+			idx[k] = man.get_meta("index")[k]
+	return n
+
+
+## Chuyen cac goc cua `man` vao thang node `cha`, roi xep lai theo zOrder.
+##
+## Day la viec ma loadLevelFile(file, parentNode) cua ban goc lam: nap mot .xgg
+## vao duoi mot node co san. Tra ve so goc da chuyen.
+static func ghep_vao_node(cha: Node, man: Node) -> int:
 	var n := 0
 	for c in man.get_children().duplicate():
 		man.remove_child(c)
 		cha.add_child(c)
 		n += 1
 	sap_xep_theo_z(cha)
-	# Gop bang tra cuu, de find_node tren khung tim duoc ca node cua man.
-	if khung.has_meta("index") and man.has_meta("index"):
-		var idx: Dictionary = khung.get_meta("index")
-		for k in man.get_meta("index"):
-			idx[k] = man.get_meta("index")[k]
 	return n
 
 

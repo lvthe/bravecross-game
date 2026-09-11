@@ -121,6 +121,7 @@ function M.install_cocos()
 	g_CLuaFont = c.luaFont
 	g_CNFont = c.luaFont
 	G_CTableViewMgr = c.tableViewMgr
+	S_CCDirector = c.director
 	-- Dat cac thuc the S_CCSequence, S_CCMoveTo... Ban goc goi he action
 	-- qua chung: S_CCSequence 659 lan, S_CCCallFunc 559, S_CCDelayTime 486.
 	c.actions.install()
@@ -154,6 +155,47 @@ function M.install_cocos()
 		end,
 		encode = function(v) return json.encode(v) end,
 	}
+
+	-- loadLevelFile: bo nap .xgg cua engine. Ban goc goi qua CLevelLoader:
+	--     loader:LoadFiles(tenCanh, self.ResourceXggList, uiRootLayer)
+	-- tuc moi man hinh tu khai bao file bo cuc cua no roi tu nap vao
+	-- UIRootLayer. Sau khi nap, TEN INSTANCE trong file thanh bien toan cuc —
+	-- ma goc viet thang `lAchieveTaskUI`, khong qua bien trung gian nao.
+	function loadLevelFile(duong, cha)
+		local ds = _godot_load_xgg(duong, cha and c.raw(cha) or nil)
+		if ds == nil then return end
+		-- Mang cua Godot sang Lua la userdata: ipairs khong chay, phai hoi
+		-- size()/get(). Mang xen ke [ten, node, ten, node...].
+		local n = ds:size()
+		local i = 0
+		while i + 1 < n do
+			local ten = tostring(ds:get(i))
+			_G[ten] = c.wrap(ds:get(i + 1))
+			i = i + 2
+		end
+		-- Ban tin "da nap xong xgg nay". Day la SUY RA, khong doc duoc tu ma
+		-- goc, nhung ma goc chi coherent neu engine lam the:
+		--
+		--   * CUIPublic:ctor dang ky onLoadUIXggFinish cho su kien OnLoadXGG,
+		--     va chinh ham do moi goi onInit() cua man hinh.
+		--   * Phia Lua, cho duy nhat ban tin do la
+		--     CSceneManager:registerPreloadXgg, ma no CHI ban lan dau moi file
+		--     — "if lcPreloadXggArr[value] == nil then".
+		--   * 193 man khai bao bo cuc, nhung chi 125 file .xgg khac nhau: 68
+		--     man dung chung file voi mot man khac. Neu chi co registerPreloadXgg
+		--     ban tin thi 68 man do khong bao gio chay onInit — ma trong game
+		--     that chung chay binh thuong.
+		--   * Trong CLevelLoader.lua, dong PostUIEvent(...OnLoadXGG) con nam do
+		--     nhung da bi chu thich lai, tuc viec ban tin da chuyen di cho khac.
+		--
+		-- onLoadUIXggFinish tu chan bang "if not self.isInit", nen ban lai
+		-- nhieu lan khong hai gi.
+		local EM = rawget(_G, 'G_EventManager')
+		local UE = rawget(_G, 'EventManagerUIEvent')
+		if EM ~= nil and type(UE) == 'table' and UE.OnLoadXGG ~= nil then
+			pcall(function() EM:PostUIEvent(duong, UE.OnLoadXGG) end)
+		end
+	end
 
 	JsonFile = {
 		Load = function(p)

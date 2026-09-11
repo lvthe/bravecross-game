@@ -1,16 +1,21 @@
-# Chay MOT MAN HINH cua ban goc, khong sua mot chu nao trong ma cua no.
+# Mo MOT MAN HINH cua ban goc bang DUNG DUONG CUA NO, khong sua mot chu nao
+# trong ma cua no.
 #
 #   godot --headless --path . --script tools/verify_lua_screen.gd
 #
-# Buoc truoc (verify_lua_ui.gd) moi chi chung minh doan Lua tro duoc toi node.
-# Buoc nay nap that: share/class.lua -> user/Public/CUIPublic.lua ->
-# user/UI/CUIAchieve.lua, roi goi CUIAchieve:new() va :onInit().
+# Truoc day phep kiem nay tu dung bo cuc, tu goi onInit, tu goi setDialogVisible
+# — tuc minh dong vai bo nap. Nay chi lam dung mot viec cua engine (dung khung
+# chung UI_NormalDlg_960_640, vi no la thu duy nhat co san truoc moi thu khac),
+# roi goi MOT dong:
 #
-# Nhung bien toan cuc cua khung suon ma minh chua lam (g_CPublic,
-# g_CUISubDialog...) duoc thay bang BONG — xem lua/bootstrap.lua. Bong lam sai
-# hanh vi, nen day chua phai man hinh chay that; no tra loi dung mot cau:
+#     g_CUISubDialog:Show('AchieveUI')
 #
-#     ma goc co nap va chay den noi khong, va con thieu chinh xac nhung gi.
+# va ca chuoi con lai la ma goc: nap bo cuc bang loadLevelFile, onInit, hoat
+# canh mo, onShow, setDialogVisible, onVisible, Reflesh.
+#
+# Nhung bien toan cuc cua khung suon ma minh chua lam (g_CUIHelper,
+# G_SoundManager...) van la BONG — xem lua/bootstrap.lua. Bong lam sai hanh vi,
+# nen bao cao cuoi bai liet ke chung ra.
 extends SceneTree
 
 var ok := 0
@@ -36,144 +41,86 @@ func _init() -> void:
 		quit(1)
 		return
 
-	# Khung/nen hop thoai nam o bo cuc KHAC (lNormalDlgBackGround).
+	# Ton trong co hien/an cua file: gio ma goc tu bat len.
+	XggLayout.respect_visible = true
+	# Khung chung cua hop thoai. Bo cuc cua CHINH man thanh tuu thi khong dung
+	# o day — ban goc tu nap no qua loadLevelFile.
 	var nen := XggLayout.build("res://layout_ref/UI_NormalDlg_960_640.json")
-	var path := "res://layout_ref/UI_AchievementTask_960_640.json"
-	var root := XggLayout.build(path)
-	t("dung duoc bo cuc", root != null)
-	if root == null:
+	t("dung duoc khung hop thoai", nen != null)
+	if nen == null:
 		_done()
 		return
-	if nen != null:
-		lua.bind_layout(nen)
-	var n := lua.bind_layout(root)
+	var n := lua.bind_layout(nen)
 	t("dat duoc bien toan cuc", n > 0, "dat %d" % n)
+	var goc := XggLayout.find_node(nen, "UIRootLayer")
+	t("co UIRootLayer", goc != null)
+	if goc == null:
+		_done()
+		return
+	goc.position = Vector2.ZERO
+	lua.set_ui_root(goc)
 
 	# Nap khung suon that, theo dung thu tu ban goc phu thuoc.
-	var r = lua.run("""
-		local boot = require('bootstrap')
-		-- install_cocos truoc install: duong mo hop thoai chay ma THAT, ma ma
-		-- that goi GetStringWithKey roi nem thang ket qua vao string.format.
-		-- De no la bong thi bong tra ve mot cai bang, va format bao
-		-- 'string expected, got table' — loi hien o ma goc chu khong o cho thieu.
-		boot.install_cocos()
-		boot.install()
-		local out = Dictionary()
-		for name, res in pairs(boot.boot({'share.Protocol', 'share.AchieveLogic',
-				'user.Logical.ClientAchieveLogic', 'user.UI.CUIAchieve'})) do
-			out[name] = res
-		end
-		return out
-	""", "nap khung suon")
+	var r = lua.run(_NAP, "nap khung suon")
 	if r == null:
 		t("nap khung suon", false)
 		_done()
 		return
 	var nbad := 0
 	for k in r:
-		if String(r[k]) != "ok":
+		if str(r[k]) != "ok":
 			nbad += 1
 			print("  HONG nap %s: %s" % [k, r[k]])
 	t("nap ca khung suon ban goc", nbad == 0, "%d/%d module hong" % [nbad, r.size()])
 	print("  -> nap %d module cua ban goc" % r.size())
 
-	# Dung doi tuong man hinh va chay vong doi cua no.
-	r = lua.run("""
-		local out = Dictionary()
-		local good, res = pcall(function()
-			local ui = CUIAchieve:new()
-			return ui
-		end)
-		out['new'] = good and 'ok' or tostring(res)
-		if not good then return out end
-		_G._ui = res
-		out['rootUIName'] = tostring(res.RootUIName)
-		out['uiName'] = tostring(res.UIName)
-		local g2, e2 = pcall(function() return _ui:GetRootUI() end)
-		out['getRootUI'] = g2 and (e2 ~= nil and 'co' or 'nil') or tostring(e2)
-		local g3, e3 = pcall(function() _ui:onInit() end)
-		out['onInit'] = g3 and 'ok' or tostring(e3)
-		return out
-	""", "chay man hinh")
-	t("CUIAchieve:new()", r != null and String(r.get("new", "")) == "ok",
-			String(r.get("new", "?")) if r != null else "?")
-	t("RootUIName dung", r != null
-			and String(r.get("rootUIName", "")) == "lAchieveTaskUI",
-			String(r.get("rootUIName", "?")) if r != null else "?")
-	t("GetRootUI() ra node that", r != null and String(r.get("getRootUI", "")) == "co",
-			String(r.get("getRootUI", "?")) if r != null else "?")
-	t("onInit() chay het", r != null and String(r.get("onInit", "")) == "ok",
-			String(r.get("onInit", "?")) if r != null else "?")
+	# MOT DONG. Tu day tro di khong con dong nao cua minh.
+	var d = lua.run(_SHOW, "mo man hinh")
+	t("Show() chay het", d != null and str(d.get("Show", "")) == "ok",
+			str(d.get("Show", "?")) if d != null else "?")
+	if d == null:
+		_done()
+		return
+	t("loadLevelFile nap bo cuc cua man hinh",
+			str(d.get("nap bo cuc", "")) == "true", str(d.get("nap bo cuc", "?")))
+	t("bo cuc duoc nap vao UIRootLayer",
+			str(d.get("nam trong UIRootLayer", "")) == "true",
+			str(d.get("nam trong UIRootLayer", "?")))
+	# onInit chi chay khi su kien OnLoadXGG ban ra — tuc khi CLevelLoader ghi
+	# ten xgg vao danh sach cua canh dang choi. Day la cho de hong nhat: ten
+	# canh la nil thi ca chuoi im lang, khong bao gi.
+	t("onInit() da chay (ScrollLayer duoc dat)",
+			str(d.get("onInit", "")) == "true", str(d.get("onInit", "?")))
+	t("onShow() da chay va bat goc man hinh len",
+			str(d.get("IsUiShow", "")) == "true", str(d.get("IsUiShow", "?")))
 
-	# Duong MO HOP THOAI cua ban goc: CUINormalDlg:setDialogVisible. No bat lop
-	# che, do anh nen bang initWithFile, co gian nen cho vua cua so, dat nut
-	# Back, roi goi onVisible(). Truoc day minh tu viet may buoc do; gio de ma
-	# goc lo, nen phai co phep kiem giu cho no khoi vo lai.
-	var d = lua.run("""
-		local out = Dictionary()
-		-- Cap mot muc du lieu toi thieu: setDialogVisible goi onVisible, ma
-		-- onVisible goi Reflesh — khong co du lieu thi Reflesh hong va ta
-		-- khong biet phan CHROME co chay khong.
-		local S = rawget(_G, 'AchieveState') or {}
-		local L = rawget(_G, 'G_AchieveLogic')
-		if L ~= nil then
-			L.UserAchieveMap = { ['1'] = {
-				AchieveType = 101, AchieveIndex = 1, State = S.Doing or 1,
-				Current = 1, Total = 3, Award = {},
-			} }
-			L.bIsInited = true
-		end
-		local dlg = rawget(_G, 'g_CUINormalDlg')
-		out['co dlg'] = tostring(dlg ~= nil)
-		if dlg == nil then return out end
-		local ok, err = pcall(function() dlg:setDialogVisible(_ui, true) end)
-		out['setDialogVisible'] = ok and 'ok' or tostring(err)
-		local bg = rawget(_G, 'lNormalDlgBackGround')
-		out['nen hien'] = (bg ~= nil) and tostring(bg:getIsVisible()) or 'khong co node'
-		-- Lop che va nut Back: hai buoc con lai cua duong mo hop thoai.
-		local m = rawget(_G, 'lNormalDlgMask')
-		out['che hien'] = (m ~= nil) and tostring(m:getIsVisible()) or 'khong co node'
-		out['che mo dau'] = (m ~= nil) and tostring(m:getOpacity()) or '-'
-		out['che mo dich'] = tostring(dlg.MaskOpacity)
-		local pn = rawget(_G, 'lDialogControlPanel')
-		out['nut Back'] = (pn ~= nil) and tostring(pn:getIsVisible()) or 'khong co node'
-		return out
-	""", "mo hop thoai")
-	t("co g_CUINormalDlg", d != null and String(d.get("co dlg", "")) == "true")
-	t("setDialogVisible chay het",
-			d != null and String(d.get("setDialogVisible", "")) == "ok",
-			String(d.get("setDialogVisible", "?")) if d != null else "?")
-	# Lop che khong dat do mo ngay: ma goc cho S_CCFadeTo dua no toi dich trong
-	# 0,2 giay, nen phai day thoi gian roi moi hoi.
-	#
-	# Dich la MaskOpacity cua chinh hop thoai, va CUINormalDlg dat = 0
-	# (CUIManager.lua:1538). Tuc lop che cua hop thoai thuong KHONG lam toi man
-	# hinh — no chi de nuot cham. Man phia sau bi che bang anh nen dac
-	# (ui_background262.jpg) chu khong bang lop mau. Hop thoai long va tooltip
-	# thi dat 77, nen phep kiem so voi chinh MaskOpacity chu khong voi mot so
-	# minh tu chon.
-	for i in range(10):
+	# Hoat canh mo keo 0,19 giay (PopUp 0,15 + lui 0,04). Phai day thoi gian
+	# roi moi hoi — chinh no goi nguoc ve OnShowAnimationFinish.
+	for i in range(20):
 		lua.tick(0.05)
-	var sau = lua.run("""
-		local out = Dictionary()
-		local m = rawget(_G, 'lNormalDlgMask')
-		out['che mo sau'] = (m ~= nil) and tostring(m:getOpacity()) or '-'
-		return out
-	""", "do mo sau khi chay")
-	var mo := float(String(sau.get("che mo sau", "0"))) if sau != null else 0.0
-	t("lop che hien len", d != null and String(d.get("che hien", "")) == "true",
-			String(d.get("che hien", "?")) if d != null else "?")
-	t("lop che bat dau trong suot",
-			d != null and absf(float(String(d.get("che mo dau", "-1")))) < 0.5,
-			String(d.get("che mo dau", "?")) if d != null else "?")
-	var dich := float(String(d.get("che mo dich", "-1"))) if d != null else -1.0
-	t("lop che mo dan dung toi MaskOpacity cua ban goc", absf(mo - dich) < 1.0,
-			"toi %.1f, ban goc dat %.1f" % [mo, dich])
-	t("nut Back duoc bat len", d != null and String(d.get("nut Back", "")) == "true",
-			String(d.get("nut Back", "?")) if d != null else "?")
-	t("nen hop thoai duoc bat len",
-			d != null and String(d.get("nen hien", "")) == "true",
-			String(d.get("nen hien", "?")) if d != null else "?")
+	var sau = lua.run(_SAU, "sau hoat canh")
+	if sau == null:
+		_done()
+		return
+	t("hoat canh mo xong thi setDialogVisible chay",
+			str(sau.get("IsUiVisible", "")) == "true",
+			str(sau.get("IsUiVisible", "?")))
+	t("goc man hinh ve dung cho cu sau hoat canh",
+			str(sau.get("vi tri", "")) == "110,30", str(sau.get("vi tri", "?")))
+	t("ty le ve 1 sau hoat canh",
+			str(sau.get("ty le", "")) == "1,1", str(sau.get("ty le", "?")))
+	# SetOpenZorder: 150 la CUISubDialog.OpenZorder (CUIManager.lua:1847).
+	t("goc man hinh len dung z = OpenZorder",
+			str(sau.get("zOrder", "")) == str(sau.get("OpenZorder", "x")),
+			"%s / %s" % [sau.get("zOrder", "?"), sau.get("OpenZorder", "?")])
+	t("lop che cua hop thoai con hien len",
+			str(sau.get("che hien", "")) == "true", str(sau.get("che hien", "?")))
+	# Khac han hop thoai thuong: CUINormalDlg dat MaskOpacity = 0 (khong lam
+	# toi man), con hop thoai con khong dat gi nen CPublic dung 179.
+	var mo := float(str(sau.get("che mo", "0")))
+	t("lop che mo dan toi 179", absf(mo - 179.0) < 1.0, "%.1f" % mo)
+	t("Reflesh() dung ra du so dong", int(sau.get("so dong", -1)) == 6,
+			str(sau.get("so dong", "?")))
 
 	# Bao cao: con thieu nhung gi.
 	var ghosts = lua.run("""
@@ -203,10 +150,105 @@ func _init() -> void:
 
 	for e in lua.errors:
 		print("  loi Lua: %s" % e)
-	root.free()
+	nen.free()
 	_done()
 
 
 func _done() -> void:
 	print("\ndat %d, hong %d" % [ok, bad])
 	quit(1 if bad > 0 else 0)
+
+
+## Nap khung suon, ke ca ba module cua duong Show.
+const _NAP := """
+	local boot = require('bootstrap')
+	-- install_cocos truoc install: duong Show chay ma THAT, ma ma that goi
+	-- GetStringWithKey roi nem thang ket qua vao string.format. De no la bong
+	-- thi bong tra ve mot cai bang, va format bao 'string expected, got table'
+	-- — loi hien o ma goc chu khong o cho thieu.
+	boot.install_cocos()
+	boot.install()
+	local out = Dictionary()
+	for name, res in pairs(boot.boot({
+			'share.Protocol', 'share.PrizeLogic', 'user.Public.CUIPrizeResHelper',
+			'user.UI.CUIRewardLayer', 'user.Public.CUIHelper',
+			'share.AchieveLogic', 'user.Logical.ClientAchieveLogic',
+			'user.UI.CUIGuildTableViewList',
+			-- Ba cai nay LA duong Show:
+			--   CSceneManager      ten canh dang choi + so xgg da nap
+			--   CLevelLoader       goi loadLevelFile
+			--   CUIDialogAnimation hoat canh mo, roi goi nguoc ve
+			'user.Public.CSceneManager', 'user.Public.CLevelLoader',
+			'user.Public.CUIDialogAnimation',
+			'user.UI.CUIAchieve'})) do
+		out[name] = res
+	end
+	out['cau hinh'] = boot.init_config()
+	return out
+"""
+
+
+## Do du lieu vao roi goi DUNG MOT dong cua ban goc.
+const _SHOW := """
+	local out = Dictionary()
+	-- Ban goc luon dang o trong MOT CANH, va CLevelLoader ghi ten xgg da nap
+	-- vao danh sach cua canh do; ten canh la nil thi registerPreloadXgg bo
+	-- qua, khong ban tin OnLoadXGG, va onInit khong bao gio chay. Ta chua
+	-- dung canh Main nen dat la "Test" — mot canh co that cua ban goc.
+	g_CSceneManager.CurrentScene = 'Test'
+
+	local S = rawget(_G, 'AchieveState') or {}
+	local mau = {
+		{ t = 101, s = S.Doing or 1, cur = 1, tot = 3 },
+		{ t = 102, s = S.Done  or 2, cur = 3, tot = 3 },
+		{ t = 103, s = S.Doing or 1, cur = 4, tot = 10 },
+		{ t = 104, s = S.Doing or 1, cur = 2, tot = 5 },
+		{ t = 105, s = S.Done  or 2, cur = 1, tot = 1 },
+		{ t = 106, s = S.Doing or 1, cur = 0, tot = 1 },
+	}
+	local bando = {}
+	for k, v in ipairs(mau) do
+		bando[tostring(k)] = { AchieveType = v.t, AchieveIndex = 1, State = v.s,
+			Current = v.cur, Total = v.tot, Award = { k } }
+	end
+	local L = rawget(_G, 'G_AchieveLogic')
+	if L ~= nil then
+		L.UserAchieveMap = bando
+		L.bIsInited = true
+	end
+
+	local ok, err = pcall(function() g_CUISubDialog:Show('AchieveUI') end)
+	out['Show'] = ok and 'ok' or tostring(err)
+
+	local g = rawget(_G, 'lAchieveTaskUI')
+	out['nap bo cuc'] = tostring(g ~= nil)
+	if g ~= nil then
+		local cha = require('cocos').raw(g):get_parent()
+		out['nam trong UIRootLayer'] = tostring(
+			cha ~= nil and tostring(cha:get_meta('xgg_name')) == 'UIRootLayer')
+	end
+	local ui = g_CUISubDialog.UI['AchieveUI']
+	out['onInit'] = tostring(ui ~= nil and ui.ScrollLayer ~= nil)
+	out['IsUiShow'] = tostring(ui ~= nil and ui.IsUiShow == true)
+	return out
+"""
+
+
+## Sau khi day het hoat canh mo.
+const _SAU := """
+	local out = Dictionary()
+	local ui = g_CUISubDialog.UI['AchieveUI']
+	local g = ui:GetRootUI()
+	out['IsUiVisible'] = tostring(ui:IsUIVisible())
+	local px, py = g:getPosition()
+	out['vi tri'] = px .. ',' .. py
+	out['ty le'] = g:getScaleX() .. ',' .. g:getScaleY()
+	out['zOrder'] = tostring(g:getZOrder())
+	out['OpenZorder'] = tostring(g_CUISubDialog.OpenZorder)
+	out['che hien'] = tostring(lSubDialogMask:getIsVisible())
+	out['che mo'] = tostring(lSubDialogMask:getOpacity())
+	local tv = ui.AchieveTableView
+	local inner = tv and tv.tableView
+	out['so dong'] = (inner ~= nil and inner.cells ~= nil) and #inner.cells or -1
+	return out
+"""

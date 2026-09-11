@@ -29,53 +29,32 @@ func _ready() -> void:
 		_note(thieu)
 		return
 
-	# Khung chung thi TON TRONG co hien/an cua file: may lop che trong do deu
-	# an san, va chinh ma goc bat len (SetMaskIsEnable, SetBackButtonIsVisible).
-	# De hien het thi lFeedsDlgMask va lDebugBoxMask — hai lop den 125/255 —
-	# phu kin man hinh.
+	# TON TRONG co hien/an cua file. Truoc day phai hien het de con nhin thay
+	# gi, vi ban goc an san gan nhu moi thu roi moi bat len luc chay. Nay
+	# duong Show cua chinh no lam viec do: onShow -> SetVisible(true) bat goc
+	# man hinh, SetMaskIsEnable bat lop che, SetBackButtonIsVisible bat nut
+	# Back. De hien het thi lFeedsDlgMask va lDebugBoxMask — hai lop den
+	# 125/255 — phu kin man hinh.
 	XggLayout.respect_visible = true
-	# Khung/nen cua hop thoai KHONG nam trong man thanh tuu. No la
-	# lNormalDlgBackGround trong UI_NormalDlg_960_640, va ban goc do anh vao
-	# do bang initWithFile o giua duong mo hop thoai cua CUIManager. Dung lop
-	# do truoc, de duoi cung.
+
+	# Chi dung KHUNG CHUNG. Bo cuc cua chinh man thanh tuu KHONG dung o day
+	# nua: ban goc tu khai bao no trong ResourceXggList roi tu nap vao
+	# UIRootLayer qua loadLevelFile. Xem lua/bootstrap.lua.
 	var nen := XggLayout.build("res://layout_ref/UI_NormalDlg_960_640.json")
-	if nen != null:
-		add_child(nen)
-
-	# Con man hinh thi CHUA: phan bat/tat cua no nam o duong Show cua ban goc
-	# (OnShow -> RunOpenAnimation -> onShow), ma duong do ta chua lam.
-	XggLayout.respect_visible = false
-	var root := XggLayout.build("res://layout_ref/UI_AchievementTask_960_640.json")
-	if root == null:
-		_note("khong dung duoc bo cuc")
+	if nen == null:
+		_note("khong dung duoc khung hop thoai")
 		return
-	# Ghep vao trong khung chu khong de thanh hai cay roi nhau: ban goc xep moi
-	# thu bang zOrder trong cung mot cay. lAchieveTaskUI (z=33) phai nam TREN
-	# lop che (20) va DUOI thanh nut Back (60).
-	if nen != null and XggLayout.ghep_vao(nen, root) > 0:
-		root.free()
-		root = nen
-	else:
-		add_child(root)
-
-	# Kiem ngay sau khi dung: XggLayout co gan dung tag khong.
-	var top := XggLayout.find_node(root, "lAchieveTemplateTop")
-	if top != null:
-		var ds := []
-		for c in top.get_children():
-			ds.append("%s=%s" % [
-				String(c.get_meta("xgg_name", c.name)),
-				str(c.get_meta("tag")) if c.has_meta("tag") else "-"])
-		print("[godot] lAchieveTemplateTop: ", ", ".join(ds))
+	add_child(nen)
 
 	var lua := LuaRuntime.new()
 	_lua = lua
 	if not lua.open():
 		_note("khong mo duoc Lua: %s" % ", ".join(lua.errors))
 		return
-	if nen != null:
-		lua.bind_layout(nen)
-	lua.bind_layout(root)
+	lua.bind_layout(nen)
+	var goc := XggLayout.find_node(nen, "UIRootLayer")
+	goc.position = Vector2.ZERO
+	lua.set_ui_root(goc)
 
 	var r = lua.run(_KICH_BAN, "man thanh tuu")
 	if r == null:
@@ -131,6 +110,14 @@ const _KICH_BAN := """
 		'share.AchieveLogic',
 		'user.Logical.ClientAchieveLogic',
 		'user.UI.CUIGuildTableViewList',
+		-- Ba cai nay la DUONG SHOW cua ban goc:
+		--   CSceneManager      giu ten canh dang choi, va dang ky xgg da nap
+		--   CLevelLoader       goi loadLevelFile de nap bo cuc cua man hinh
+		--   CUIDialogAnimation chay hoat canh mo roi goi nguoc ve
+		--                      OnShowAnimationFinish -> setDialogVisible
+		'user.Public.CSceneManager',
+		'user.Public.CLevelLoader',
+		'user.Public.CUIDialogAnimation',
 		'user.UI.CUIAchieve',
 	})
 
@@ -142,8 +129,14 @@ const _KICH_BAN := """
 	for ten, kq in pairs(nap) do
 		if kq ~= 'ok' then out['NAP ' .. ten] = kq end
 	end
-	out['GetStringWithKey'] = type(rawget(_G, 'GetStringWithKey'))
-	out['thu chu'] = tostring(GetStringWithKey('AchieveUI_Description_101_1'))
+
+	-- Ban goc luon dang o trong MOT CANH, va CLevelLoader ghi ten xgg da nap
+	-- vao danh sach cua canh do; ten canh la nil thi registerPreloadXgg bo
+	-- qua, khong ban tin OnLoadXGG, va onInit cua man hinh khong bao gio chay.
+	-- Ta chua dung canh Main (thanh cong cu, ban do thi tran) nen dat la
+	-- "Test" — mot canh co that cua ban goc. Do cung la ly do nhanh
+	-- RefreshMainUIControlPanel khong chay: no doi ten canh == "Main".
+	g_CSceneManager.CurrentScene = 'Test'
 
 	-- Do du lieu vao DUNG CHO ma goc doc. AchieveLogic:GetUserAchieveMap()
 	-- tra ve self.UserAchieveMap sau khi Init(); ta dat san roi danh dau da
@@ -174,48 +167,30 @@ const _KICH_BAN := """
 		L.bIsInited = true
 	end
 
-	local ui
-	local ok, err = pcall(function()
-		ui = CUIAchieve:new()
-		ui:onInit()
-	end)
-	out['onInit'] = ok and 'ok' or tostring(err)
-	if not ok then return out end
-
-	-- Duong MO HOP THOAI cua ban goc. Truoc day minh tu goi Reflesh() va tu
-	-- do anh nen — nay de chinh CUINormalDlg:setDialogVisible lo: no bat lop
-	-- che, do anh nen bang initWithFile, dat nut Back, roi goi onVisible()
-	-- (va onVisible moi goi Reflesh).
+	-- DUONG SHOW CUA BAN GOC, mot dong. Tu day tro di khong co dong nao cua
+	-- minh nua:
 	--
-	-- Nhanh nang nhat cua ham do — RefreshMainUIControlPanel — tu bi bo qua:
-	-- no chi chay khi g_CSceneManager:GetCurrentSceneName() == "Main", ma
-	-- g_CSceneManager con la bong nen phep so khong khop.
-	local dlg = rawget(_G, 'g_CUINormalDlg')
-	out['co_CUINormalDlg'] = tostring(dlg ~= nil)
-	local ok2, err2 = pcall(function()
-		if dlg ~= nil then
-			dlg:setDialogVisible(ui, true)
-		else
-			ui:Reflesh()
-		end
-	end)
-	out['mo hop thoai'] = ok2 and 'ok' or tostring(err2)
-	out['Reflesh'] = ok2 and 'ok' or tostring(err2)
+	--   CUISubDialog:Show -> CUIManager:Show
+	--     -> SetMaskIsEnable        bat lop che (lSubDialogMask, mo dan toi 179)
+	--     -> objUI:OnShow           CLevelLoader:LoadFiles -> loadLevelFile
+	--                               nap UI_AchievementTask_960_640 vao UIRootLayer
+	--     -> onLoadUIXggFinish      (qua su kien OnLoadXGG) -> onInit
+	--     -> OnloadUI -> OnShow -> RunOpenAnimation
+	--          OnShowAnimationBegin  -> onShow -> SetVisible(true)
+	--          <cho het hoat canh>
+	--          OnShowAnimationFinish -> setDialogVisible -> onVisible -> Reflesh
+	--     -> SetOpenZorder          dat goc man hinh len z = 150
+	--
+	-- Man thanh tuu la HOP THOAI CON: chinh no dang ky voi g_CUISubDialog
+	-- (CUIAchieve.lua:9), khong phai g_CUINormalDlg. Khac han: hop thoai con
+	-- khong do anh nen toan man, no chi lam toi man phia sau bang lop che.
+	local ok, err = pcall(function() g_CUISubDialog:Show('AchieveUI') end)
+	out['Show'] = ok and 'ok' or tostring(err)
 
-	-- Bao nhieu dong that su duoc dung ra
-	local tv = ui.AchieveTableView
-	out['co_TableView'] = tostring(tv ~= nil)
-	if tv ~= nil then
-		out['tv.tableView'] = tostring(tv.tableView)
-		out['tv.ItemCellNumber'] = tostring(tv.ItemCellNumber)
-		out['tv.tItemData'] = tv.tItemData and tostring(#tv.tItemData) or 'nil'
-		out['tv.pCell'] = tostring(tv.pCell)
-		local inner = tv.tableView
-		out['so_dong'] = (inner ~= nil and inner.cells ~= nil) and #inner.cells or -1
-	else
-		out['so_dong'] = -1
-	end
-	out['so_muc_DataList'] = ui.AchieveDataList and tostring(#ui.AchieveDataList) or 'nil'
+	local ui = g_CUISubDialog.UI['AchieveUI']
+	out['co man hinh'] = tostring(ui ~= nil)
+	if ui == nil then return out end
+	out['nap bo cuc'] = tostring(rawget(_G, 'lAchieveTaskUI') ~= nil)
 	for i, d in ipairs(cocos.tag_miss_log) do out['HUT ' .. i] = d end
 	out['tag_hoi'] = cocos.tag_lookups
 	out['tag_hut'] = cocos.tag_misses

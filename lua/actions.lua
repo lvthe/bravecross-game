@@ -205,12 +205,20 @@ return function(C)
 	-- Ban goc goi qua cac thuc the S_CC*, vi du:
 	--     S_CCSequence:create(S_CCDelayTime:create(0.5), S_CCFadeOut:create(0.3))
 
+	-- NHAN cua action. Ban goc danh dau hoat canh mo/dong hop thoai bang
+	-- setTag(5564) roi sau do huy dung cai do bang stopActionByTag — neu huy
+	-- het thi giet ca nhung hoat canh khac dang chay tren cung node.
+	local function gan_nhan(a)
+		if type(a) ~= 'table' or a.setTag ~= nil then return a end
+		a.setTag = function(self, t) self.tag = t end
+		a.getTag = function(self) return self.tag or -1 end
+		return a
+	end
+
 	local function thuc_the(tao)
-		return { create = function(_, ...) return tao(...) end,
-		         actionWithDuration = function(_, ...) return tao(...) end,
-		         actionWithAction = function(_, ...) return tao(...) end,
-		         action = function(_, ...) return tao(...) end,
-		         release = function() end }
+		local f = function(_, ...) return gan_nhan(tao(...)) end
+		return { create = f, actionWithDuration = f, actionWithAction = f,
+		         action = f, release = function() end }
 	end
 
 	local function gom(...)
@@ -280,6 +288,28 @@ return function(C)
 				table.remove(dang_chay, i)
 			end
 		end
+	end
+
+	-- Chi huy action MANG DUNG NHAN do. Ban goc dung de cat hoat canh mo hop
+	-- thoai dang do (CUIManager.lua:801, 1330, 1356) ma khong dung cac hoat
+	-- canh khac tren cung node.
+	function M.stopActionByTag(node, tag)
+		local gd = raw(node)
+		for i = #dang_chay, 1, -1 do
+			local m = dang_chay[i]
+			if raw(m.node) == gd and m.a.tag == tag then
+				table.remove(dang_chay, i)
+			end
+		end
+	end
+
+	function M.getActionByTag(node, tag)
+		local gd = raw(node)
+		for i = 1, #dang_chay do
+			local m = dang_chay[i]
+			if raw(m.node) == gd and m.a.tag == tag then return m.a end
+		end
+		return nil
 	end
 
 	-- Goi moi khung hinh tu GDScript. Tra ve so action con dang chay.

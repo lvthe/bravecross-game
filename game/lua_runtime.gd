@@ -38,6 +38,7 @@ func open() -> bool:
 	state.globals["_godot_copy"] = _copy
 	state.globals["_godot_frame"] = _frame
 	state.globals["_godot_zsort"] = _zsort
+	state.globals["_godot_load_xgg"] = _load_xgg
 	state.globals["_godot_text"] = _text
 	state.globals["_godot_co_file"] = _co_file
 	state.globals["_godot_doc_file"] = _doc_file
@@ -114,6 +115,62 @@ static func _copy_meta(tu: Node, den: Node) -> void:
 	var n: int = mini(tu.get_child_count(), den.get_child_count())
 	for i in range(n):
 		_copy_meta(tu.get_child(i), den.get_child(i))
+
+
+## Nap mot file .xgg vao duoi mot node — dung viec ma loadLevelFile() cua ban
+## goc lam. Ban goc goi no qua CLevelLoader:LoadFiles trong duong Show:
+##
+##     loader:LoadFiles(tenCanh, self.ResourceXggList, uiRootLayer)
+##
+## nghia la moi man hinh tu khai bao file bo cuc cua no (ResourceXggList) va tu
+## nap vao UIRootLayer. Truoc day minh dung tay lam viec nay o phia GDScript;
+## nay de ma goc lo, va nho vay MOI man deu mo duoc bang ten chu khong phai
+## noi day tung cai.
+##
+## Tra ve mot Array xen ke [ten, node, ten, node, ...] de phia Lua dat thanh
+## bien toan cuc — dung cach bo nap cua ban goc lam.
+var _da_nap: Dictionary = {}
+var _goc_ui: Node = null
+
+## Node ma cac man hinh duoc nap vao (UIRootLayer). Dat truoc khi chay Show.
+func set_ui_root(n: Node) -> void:
+	_goc_ui = n
+
+
+func _load_xgg(duong: String, cha = null) -> Array:
+	var ten := duong.get_file().get_basename()
+	if _da_nap.has(ten) and is_instance_valid(_da_nap[ten]):
+		# Ban goc cung khong nap lai: "LoadFilesAsync noi bo khong nap lai xgg".
+		return []
+	var p := "res://layout_ref/%s.json" % ten
+	if not FileAccess.file_exists(p):
+		errors.append("loadLevelFile: khong co bo cuc %s" % p)
+		return []
+	var man := XggLayout.build(p)
+	if man == null:
+		return []
+	var cha_node: Node = cha if cha is Node else _goc_ui
+	var ds: Array = []
+	for c in man.get_children():
+		_gom_ten(c, ds)
+	if cha_node != null:
+		XggLayout.ghep_vao_node(cha_node, man)
+		_da_nap[ten] = cha_node
+		man.free()
+	else:
+		# Chua co cho de: giu nguyen cai boc lam goc.
+		_da_nap[ten] = man
+	return ds
+
+
+static func _gom_ten(n: Node, ds: Array) -> void:
+	if n is Control and n.has_meta("xgg_name"):
+		var nm := String(n.get_meta("xgg_name"))
+		if _is_ident(nm):
+			ds.append(nm)
+			ds.append(n)
+	for c in n.get_children():
+		_gom_ten(c, ds)
 
 
 ## Xep lai anh em theo zOrder. Ben Lua khong voi toi lop XggLayout duoc, nen

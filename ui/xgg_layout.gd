@@ -58,6 +58,24 @@ const _DEBUG_COLORS := {
 ## Quy uoc ten cua ban goc: sp* sprite, s9* scale-9, ttf* chu, bmf* chu phong
 ## bitmap (CCLabelBMFont), l*/g_*/cl* lop. Ten lop Cocos that (CCSprite,
 ## CCScale9Sprite, CCLabelTTF) duoc uu tien vi no chinh xac hon tien to.
+## Loai node THAT, doc tu bang kieu trong libgame.so (xem xgg.py). Truoc day
+## ham nay doan theo tien to cua ten lop — ma ten lop la do nguoi thiet ke dat,
+## nen doan sai la thuong: mot node ten "CCSprite" co the that ra la CCButton.
+const KIND_OF_TYPE := {
+	"CCScale9Sprite": "scale9",
+	"CCSprite": "sprite",
+	"CCLabelTTF": "label",
+	"CCLabelBMFont": "label",
+	"CCRichLabel": "label",
+	"CCEditBox": "label",
+}
+
+
+static func kind_of_type(type_name: String) -> String:
+	return KIND_OF_TYPE.get(type_name, "layer")
+
+
+## Doan theo TEN. Chi con dung khi bo cuc cu chua co truong typeName.
 static func kind_of(cls: String) -> String:
 	if cls.begins_with("CCScale9Sprite") or cls.begins_with("s9"):
 		return "scale9"
@@ -124,7 +142,8 @@ static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 	var x := float(nd.get("x", 0.0))
 	var y := float(nd.get("y", 0.0))
 
-	var kind := kind_of(String(nd.get("cls", "")))
+	var tn := String(nd.get("typeName", ""))
+	var kind := kind_of_type(tn) if tn != "" else kind_of(String(nd.get("cls", "")))
 	# Node nao co ANH thi phai la node ve duoc, du ten lop khong noi len dieu
 	# do: CCButton, btnBattleTest... deu mang anh nhung kind_of() xep vao
 	# 'layer'. Khong doi thi set_frame() tu choi va anh bien mat lang le.
@@ -174,6 +193,7 @@ static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 	node.set_meta("u_a4", int(nd.get("u_a4", 0)))
 	node.set_meta("res", nd.get("res", ""))
 	node.set_meta("kind", kind)
+	node.set_meta("type_name", tn)
 	# Giu nguyen toa do Cocos de set_frame() tinh lai duoc vi tri khi anh moi
 	# co kich thuoc khac — ban goc doi anh thi giu DIEM NEO, khong giu goc o.
 	node.set_meta("cocos", Vector4(x, y, ax, ay))

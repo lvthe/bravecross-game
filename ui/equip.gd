@@ -865,7 +865,13 @@ func _refresh_refine(it: Dictionary, e: Equipment, mt: int) -> void:
 		for i in range(1, labels.size()):
 			_label(labels[i], "")
 
-	var maxed_note := XggLayout.find_by_cls(ui, CLS_MAXED)
+	# CLS_MAXED nam trong bang CUONG HOA, bang tinh luyen khong co node nao
+	# nhu the. Truoc day tim tu goc nen vo phai node cua bang kia roi xoa
+	# trang no — bang cuong hoa het cap ma khong hien duoc dong bao. Loi do
+	# an lau vi _label() duong cu luon bat node cha len du chu rong; tu khi
+	# doc dung loai node (CCLabelTTF -> Label) thi no lo ra.
+	var rmax := XggLayout.find_node(ui, "lEquipmentRefineUI")
+	var maxed_note := XggLayout.find_by_cls(rmax, CLS_MAXED) if rmax != null else null
 	if maxed_note != null:
 		maxed_note.visible = maxed
 		_label(maxed_note, "Da toi bac cao nhat" if maxed else "")

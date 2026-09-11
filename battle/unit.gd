@@ -40,8 +40,18 @@ var sy := 0.0
 var target: BattleUnit = null
 var state: State = State.ADVANCE
 var cooldown := 0.0
+## Huong nhin: +1 la nhin sang PHAI, -1 sang TRAI. Day la huong LOGIC, khong
+## phai scale — xem ART_FACES_LEFT.
 var facing := 1.0
 var visual := true
+
+## Art cua ban goc ve nhan vat QUAY SANG TRAI. Da kiem bang cach dung mot rig
+## o scale.x = +1: giao cua Ma Sieu, kiem cua Cam Ninh va cung cua cung thu
+## deu chia sang trai. Nen muon nhin sang PHAI thi phai LAT, tuc scale.x am.
+##
+## Truoc day mã đặt scale.x = facing, thanh ra doi trai (nhin phai) bi lat
+## nguoc: di sang phai ma quay mat sang trai, danh cung quay lung lai.
+const ART_FACES_LEFT := true
 
 var _rules: Dictionary = {}
 var _rng: Combat.Rng = null
@@ -70,9 +80,14 @@ func setup(f: Combat.Fighter, team_index: int, rules: Dictionary,
 		# logic): chung nam xa than va o day hien suot chu khong loe roi tat.
 		rig = SngRig.build(art_dir, "", true)
 		if rig != null:
-			rig.scale = Vector2(facing * art_scale, art_scale)
+			rig.scale = Vector2(_scale_x(art_scale), art_scale)
 			add_child(rig)
 			_play("Standby")
+
+
+## scale.x cho huong `facing` hien tai, da tinh ca chieu ve cua art.
+func _scale_x(mag: float) -> float:
+	return (-facing if ART_FACES_LEFT else facing) * mag
 
 
 func _play(anim_name: String) -> void:
@@ -149,7 +164,7 @@ func advance(delta: float, enemies: Array, snap: Dictionary) -> BattleUnit:
 		if absf(dx) > 1.0:
 			facing = signf(dx)
 			if rig != null:
-				rig.scale.x = facing * absf(rig.scale.y)
+				rig.scale.x = _scale_x(absf(rig.scale.y))
 		_play("Walk")
 		return null
 

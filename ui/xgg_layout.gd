@@ -208,7 +208,11 @@ static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 	# dinh KHONG dung — bat bang use_guessed_images neu muon xem thu.
 	var img := String(nd.get("img", ""))
 	var from := String(nd.get("imgFrom", ""))
-	if img != "" and (from == "verified" or (from == "guess" and use_guessed_images)):
+	# "size" = khop voi danh sach ANH ROI cua chinh man do theo kich thuoc,
+	# va chi nhan khi khop DUY NHAT. Day la cach duy nhat lay duoc may tam
+	# nen to: chung khong ghi ten anh trong ban ghi node.
+	if img != "" and (from == "verified" or from == "size"
+			or (from == "guess" and use_guessed_images)):
 		node.set_meta("img", img)
 		node.set_meta("img_from", from)
 		if UiFrames.set_frame(node, img):

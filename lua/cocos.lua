@@ -395,6 +395,16 @@ function Node:setDisplayFrame(f)
 	_godot_frame(raw(self), ten)
 end
 
+-- Gan anh theo DUONG DAN TEP, khac voi setDisplayFrame (theo ten khung trong
+-- atlas). Ban goc dung 82 lan, dang chu yeu la anh nen kho lon:
+--    lNormalDlgBackGround:initWithFile("png/background/v6/ui_background262.jpg")
+function Node:initWithFile(path)
+	if path == nil or path == '' then
+		return false
+	end
+	return _godot_frame(raw(self), tostring(path))
+end
+
 M.spriteFrameCache = {
 	spriteFrameByName = function(_, name) return frame(name) end,
 	addSpriteFramesWithFile = function() end,

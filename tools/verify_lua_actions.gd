@@ -174,3 +174,31 @@ func _kiem_anh(lua: LuaRuntime, n: Control) -> void:
 	t("ban v6 dung kich thuoc thiet ke 76x77",
 			tex_v6 != null and tex_v6.get_size() == Vector2(76, 77),
 			str(tex_v6.get_size()) if tex_v6 != null else "khong co")
+
+	# KHOP THEO KICH THUOC. Nhieu tam nen khong ghi ten anh trong ban ghi node
+	# — CCScale9Sprite thi 2.586/2.599 node nhu vay. Nhung .xgg co liet ke anh
+	# roi (section D) va sprite (section C) cua CHINH man do kem kich thuoc, va
+	# danh sach rat ngan. Khop duy nhat thi coi la dung.
+	var doc = JSON.parse_string(FileAccess.get_file_as_string(
+			"res://layout_ref/UI_AchievementTask_960_640.json"))
+	# Duyet TAT CA goc: bo cuc co nhieu goc, va node can tim khong nam o goc
+	# dau tien.
+	var tim = func(roots: Array, w: float, h: float) -> Dictionary:
+		var hang: Array = roots.duplicate()
+		while not hang.is_empty():
+			var x: Dictionary = hang.pop_back()
+			if absf(float(x.get("w", 0)) - w) < 0.5 \
+					and absf(float(x.get("h", 0)) - h) < 0.5:
+				return x
+			for c in x.get("children", []):
+				hang.push_back(c)
+		return {}
+	if doc is Dictionary and doc.get("roots", []).size() > 0:
+		var bong: Dictionary = tim.call(doc["roots"], 946, 567)
+		var bang: Dictionary = tim.call(doc["roots"], 453, 86)
+		t("anh roi 946x567 khop duoc theo kich thuoc",
+				String(bong.get("imgFrom", "")) == "size",
+				String(bong.get("img", "khong thay")))
+		t("bang tieu de 453x86 khop duoc theo kich thuoc",
+				String(bang.get("imgFrom", "")) == "size",
+				String(bang.get("img", "khong thay")))

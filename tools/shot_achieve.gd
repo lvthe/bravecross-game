@@ -30,6 +30,14 @@ func _ready() -> void:
 		return
 
 	XggLayout.respect_visible = false
+	# Khung/nen cua hop thoai KHONG nam trong man thanh tuu. No la
+	# lNormalDlgBackGround trong UI_NormalDlg_960_640, va ban goc do anh vao
+	# do bang initWithFile o giua duong mo hop thoai cua CUIManager. Dung lop
+	# do truoc, de duoi cung.
+	var nen := XggLayout.build("res://layout_ref/UI_NormalDlg_960_640.json")
+	if nen != null:
+		add_child(nen)
+
 	var root := XggLayout.build("res://layout_ref/UI_AchievementTask_960_640.json")
 	if root == null:
 		_note("khong dung duoc bo cuc")
@@ -51,6 +59,8 @@ func _ready() -> void:
 	if not lua.open():
 		_note("khong mo duoc Lua: %s" % ", ".join(lua.errors))
 		return
+	if nen != null:
+		lua.bind_layout(nen)
 	lua.bind_layout(root)
 
 	var r = lua.run(_KICH_BAN, "man thanh tuu")
@@ -148,6 +158,17 @@ const _KICH_BAN := """
 	if L ~= nil then
 		L.UserAchieveMap = bando
 		L.bIsInited = true
+	end
+
+	-- Nen hop thoai: hai dong nay la cua ban goc (CUIManager dong 1672-1679),
+	-- chi la o day goi thang thay vi chay ca duong mo hop thoai — duong do keo
+	-- theo scene manager, thanh cong cu, lop che...
+	local bg = rawget(_G, 'lNormalDlgBackGround')
+	if bg ~= nil then
+		local duong = (g_CUIManager and g_CUIManager.DefultDlgBackGround)
+			or "png/background/v6/ui_background262.jpg"
+		out['nen'] = tostring(bg:initWithFile(duong))
+		bg:setIsVisible(true)
 	end
 
 	local ui

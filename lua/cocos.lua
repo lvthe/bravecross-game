@@ -327,10 +327,19 @@ function Node:getRotation()
 	return -raw(self).rotation_degrees
 end
 
-function Node:setColor(c)
+-- Nhan BA SO ROI: ban goc goi setColor(r, g, b) — hon 300 cho. Ban dau lam ra
+-- nhan mot bang {r,g,b} nen moi cho do deu bao 'arithmetic on field r'.
+-- Van nhan ca dang bang, vi co vai cho truyen tColor.
+function Node:setColor(r, g, b)
+	if type(r) == 'table' then
+		r, g, b = r.r or r.R or r[1], r.g or r.G or r[2], r.b or r.B or r[3]
+	end
+	if type(r) ~= 'number' or type(g) ~= 'number' or type(b) ~= 'number' then
+		return
+	end
 	local gd = raw(self)
 	local m = gd.modulate
-	gd.modulate = Color(c.r / 255.0, c.g / 255.0, c.b / 255.0, m.a)
+	gd.modulate = Color(r / 255.0, g / 255.0, b / 255.0, m.a)
 end
 
 function Node:setOpacity(o)

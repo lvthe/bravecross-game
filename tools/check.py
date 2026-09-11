@@ -23,6 +23,7 @@ SUITES = [
     ('ma Lua ban goc',      'script', 'tools/verify_lua_ui.gd',  False, []),
     ('man hinh Lua ban goc','script', 'tools/verify_lua_screen.gd', False, []),
     ('action + anh (Lua)',  'script', 'tools/verify_lua_actions.gd', False, []),
+    ('tang cau hinh (Lua)', 'script', 'tools/verify_lua_config.gd', False, []),
     ('trang bi (GDScript)',  'script', 'tools/verify_equipment.gd', False, []),
     ('man trang bi',         'scene',  'tools/verify_equip.tscn', False, []),
     ('man nhiem vu',         'scene',  'tools/verify_tasks.tscn', False, []),

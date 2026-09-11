@@ -38,6 +38,8 @@ func open() -> bool:
 	state.globals["_godot_copy"] = _copy
 	state.globals["_godot_frame"] = _frame
 	state.globals["_godot_text"] = _text
+	state.globals["_godot_co_file"] = _co_file
+	state.globals["_godot_doc_file"] = _doc_file
 	# require tu viet: doi "a.b.c" ra "res://sc/a/b/c.lua", nho ket qua lai
 	# dung kieu package.loaded cua Lua that (mot module chi chay mot lan).
 	var r = state.do_string("""
@@ -127,6 +129,29 @@ func _text(key: String) -> String:
 		else:
 			push_warning("thieu %s — chay: python ../brave-cross/work/text_table.py" % p)
 	return String(_strings.get(key, key))
+
+
+## Thu muc chua 104 bang cau hinh cua ban goc (bê bang config_tables.py).
+const CONFIG := "res://data_ref/"
+
+
+## Doi duong dan ma goc yeu cau ("config/share/KDBGamePrizeConfig.xgg") thanh
+## duong dan that. Ban goc giu nguyen cay thu muc nen chi can gan tien to.
+static func _duong(p: String) -> String:
+	if p.begins_with("res://"):
+		return p
+	return CONFIG + p
+
+
+func _co_file(p: String) -> bool:
+	return FileAccess.file_exists(_duong(p))
+
+
+func _doc_file(p: String) -> Variant:
+	var d := _duong(p)
+	if not FileAccess.file_exists(d):
+		return null
+	return FileAccess.get_file_as_string(d)
 
 
 ## Chay mot doan Lua. Tra ve ket qua, hoac null va ghi vao errors.

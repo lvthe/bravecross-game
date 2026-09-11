@@ -24,6 +24,10 @@ python ../brave-cross/work/layout.py --all --out layout_ref
 #     nó (getChildByTag: 9.529 lần). Dữ liệu đo sẵn nằm trong repo brave-cross
 #     nên bước này chỉ ghép, không cần máy ảo.
 python ../brave-cross/work/emu_join.py --ghi
+# 2c. Bảng chữ tiếng Việt và 104 bảng cấu hình của bản gốc — mã gốc đọc
+#     chúng lúc chạy, thiếu là màn hình trống chữ và trống phần thưởng.
+python ../brave-cross/work/text_table.py
+python ../brave-cross/work/config_tables.py
 
 # 3. Bảng số liệu cho máy chủ — cũng gitignore, cùng lý do
 python sim/export_stats.py --all

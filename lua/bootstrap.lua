@@ -130,6 +130,40 @@ function M.install_cocos()
 	-- bong, treo han ca lan chay. Chep ba dong thi vua du vua chac.
 	function GetStringWithKey(k) return g_CLuaFont:GetStringByKey(k) end
 	function GetCNStringWithKey(k) return g_CNFont:GetStringByKey(k) end
+
+	-- Tang cau hinh. Ban goc doc 104 bang cau hinh qua DUNG BA ham nay:
+	--   ClientConfigManager:GetConfigTableWithName(ten)
+	--     -> JsonFile.Load(LGG_GetPathWithFileName("config/share/<ten>.xgg"))
+	-- Lam ba cai nay la ca 5.063 dong ConfigManager cua ban goc tu chay.
+	local json = require('json')
+	DEFAULT_LANGUAGE = DEFAULT_LANGUAGE or 'vi'
+
+	function LGG_GetPathWithFileName(rel) return rel end
+
+	function LGG_IsFileExist(p) return _godot_co_file(p) end
+
+	-- cjson: ban goc goi 436 lan. Quan trong nhat la JSON LONG TRONG JSON —
+	-- vi du PrizeContent cua bang phan thuong la mot chuoi JSON nam trong
+	-- mot file JSON, va share_configManager goi cjson.decode de mo lop thu
+	-- hai. De cjson thanh bong thi PrizeContent van la bong, va moi cho doc
+	-- phan thuong deu hong.
+	cjson = {
+		decode = function(s)
+			local t = json.decode(s)
+			return t
+		end,
+		encode = function(v) return json.encode(v) end,
+	}
+
+	JsonFile = {
+		Load = function(p)
+			local txt = _godot_doc_file(p)
+			if txt == nil then return false, nil end
+			local t, err = json.decode(txt)
+			if t == nil then return false, err end
+			return true, t
+		end,
+	}
 	return c
 end
 
@@ -166,6 +200,11 @@ end
 -- Nap sai thu tu thi lop cha thanh bong, va bong khong the lam lop cha.
 M.FRAMEWORK = {
 	'share.class',                       -- he lop, thuan Lua
+	-- Mo rong cho string (string.split...). PHAI co: addon Lua mo ca API
+	-- cua Godot, nen 'string.split' khong co thi no roi vao ham split cua
+	-- Godot String va tra ve userdata — KDebug goi ipairs len do roi hong,
+	-- ma cho hong lai nam trong duong in loi nen rat kho lan.
+	'share.public',
 	'share.KDebug',                      -- CUIPublic goi khi thieu RootUIName
 	'share.EventManagerBase',
 	'share.EventManager',                -- G_EventManager + bang loai su kien
@@ -176,7 +215,20 @@ M.FRAMEWORK = {
 	'user.Public.CUIManager',            -- g_CUISubDialog
 	'user.Logical.CUIEventStatistics',   -- G_CUIEventStatistics
 	'user.UI.CUIGuildTableViewList',     -- CUIGuildTableView
+	-- Tang cau hinh: 104 bang so cua ban goc. G_ConfigManager chi TON TAI
+	-- sau khi nap ba file nay; con nap DU LIEU thi goi init_config().
+	'share.StarSoul.share_StarSoulLogic',   -- ConfigManager doc hang so o day
+	'share.share_configManager',
+	'user.Logical.ClientConfigManager',
 }
+
+-- Nap du lieu cua 104 bang cau hinh. Tach rieng vi ton ~0,35 giay va
+-- khong phai man nao cung can. Chinh ConfigManager cua ban goc lam,
+-- minh chi bac cau doc file (xem install_cocos).
+function M.init_config()
+	local ok, err = pcall(function() G_ConfigManager:Init() end)
+	return ok and 'ok' or tostring(err)
+end
 
 -- Nap khung suon. Tra ve bang {ten module -> 'ok' hoac loi}, khong nem ra
 -- ngoai: mot module hong khong duoc lam chet ca lan chay, vi con phai bao cao.

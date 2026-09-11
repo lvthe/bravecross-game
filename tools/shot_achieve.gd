@@ -98,6 +98,12 @@ const _KICH_BAN := """
 		-- sach: no so State voi AchieveState.Doing, ma bong thi khong bang
 		-- gi ca, nen moi thanh tuu deu bi bo.
 		'share.Protocol',
+		-- Ba cai nay lo anh phan thuong: PrizeLogic tra cau hinh phan thuong,
+		-- CUIRewardLayer gan anh vao o, CUIHelper dat mau chu.
+		'share.PrizeLogic',
+		'user.Public.CUIPrizeResHelper',
+		'user.UI.CUIRewardLayer',
+		'user.Public.CUIHelper',
 		'share.AchieveLogic',
 		'user.Logical.ClientAchieveLogic',
 		'user.UI.CUIGuildTableViewList',
@@ -105,6 +111,10 @@ const _KICH_BAN := """
 	})
 
 	local out = Dictionary()
+	-- Nap 104 bang cau hinh cua ban goc (~0,4 giay). Khong co no thi
+	-- G_PrizeLogic:GetPrizeWithID tra ve nil, va o phan thuong van la anh
+	-- thiet ke chu khong phai anh that.
+	out['cau hinh'] = boot.init_config()
 	for ten, kq in pairs(nap) do
 		if kq ~= 'ok' then out['NAP ' .. ten] = kq end
 	end
@@ -119,18 +129,18 @@ const _KICH_BAN := """
 	local XONG     = AchieveState.Done  or 2
 
 	local mau = {
-		{ t = 101, i = 1, s = DANG_LAM, cur = 1, tot = 3 },
-		{ t = 102, i = 1, s = XONG,     cur = 3, tot = 3 },
-		{ t = 103, i = 1, s = DANG_LAM, cur = 4, tot = 10 },
-		{ t = 104, i = 1, s = DANG_LAM, cur = 2, tot = 5 },
-		{ t = 105, i = 1, s = XONG,     cur = 1, tot = 1 },
-		{ t = 106, i = 1, s = DANG_LAM, cur = 0, tot = 1 },
+		{ t = 101, i = 1, s = DANG_LAM, cur = 1, tot = 3, aw = 1 },
+		{ t = 102, i = 1, s = XONG,     cur = 3, tot = 3, aw = 2 },
+		{ t = 103, i = 1, s = DANG_LAM, cur = 4, tot = 10, aw = 3 },
+		{ t = 104, i = 1, s = DANG_LAM, cur = 2, tot = 5, aw = 4 },
+		{ t = 105, i = 1, s = XONG,     cur = 1, tot = 1, aw = 5 },
+		{ t = 106, i = 1, s = DANG_LAM, cur = 0, tot = 1, aw = 6 },
 	}
 	local bando = {}
 	for k, v in ipairs(mau) do
 		bando[tostring(k)] = {
 			AchieveType = v.t, AchieveIndex = v.i, State = v.s,
-			Current = v.cur, Total = v.tot, Award = {},
+			Current = v.cur, Total = v.tot, Award = { v.aw },
 		}
 	end
 

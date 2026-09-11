@@ -178,6 +178,17 @@ func bind_layout(root: Node) -> int:
 	return n
 
 
+## Day thoi gian cho he action cua ban goc. Goi moi khung hinh.
+## Tra ve so action con dang chay (0 = da yen).
+func tick(dt: float) -> int:
+	if state == null:
+		return 0
+	var r = state.do_string("return require('cocos').tick(%f)" % dt)
+	if _is_error(r):
+		return 0
+	return int(r) if typeof(r) in [TYPE_INT, TYPE_FLOAT] else 0
+
+
 ## Cac API Cocos bi goi ma minh chua lam — dem duoc, de biet con thieu gi.
 func missing() -> Dictionary:
 	# Dung thang Dictionary cua Godot ben Lua: LuaTable khong co keys(), ma

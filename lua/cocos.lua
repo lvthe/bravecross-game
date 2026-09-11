@@ -491,4 +491,35 @@ M.tableViewMgr = {
 	end,
 }
 
+-- He action ------------------------------------------------------------------
+-- Tach ra lua/actions.lua cho de doc: ca he chay/xep chuoi/lap nam gon mot cho.
+
+M.actions = require('actions')(M)
+
+function Node:runAction(a)
+	return M.actions.runAction(self, a)
+end
+
+function Node:stopAllActions()
+	M.actions.stopAllActions(self)
+end
+
+function Node:stopActionByTag(_)
+	M.actions.stopAllActions(self)
+end
+
+function Node:numberOfRunningActions()
+	local gd = raw(self)
+	local n = 0
+	for _, m in ipairs(M.actions.dang_chay) do
+		if raw(m.node) == gd then n = n + 1 end
+	end
+	return n
+end
+
+-- Goi moi khung hinh tu GDScript.
+function M.tick(dt)
+	return M.actions.tick(dt)
+end
+
 return M

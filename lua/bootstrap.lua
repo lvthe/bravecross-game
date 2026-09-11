@@ -121,6 +121,9 @@ function M.install_cocos()
 	g_CLuaFont = c.luaFont
 	g_CNFont = c.luaFont
 	G_CTableViewMgr = c.tableViewMgr
+	-- Dat cac thuc the S_CCSequence, S_CCMoveTo... Ban goc goi he action
+	-- qua chung: S_CCSequence 659 lan, S_CCCallFunc 559, S_CCDelayTime 486.
+	c.actions.install()
 
 	-- Hai ham nay ban goc dinh nghia trong user/Public/set.lua, y nguyen ba
 	-- dong duoi day. KHONG nap ca file do: no co vong lap chay mai khi gap

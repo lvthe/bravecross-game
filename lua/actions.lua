@@ -1,0 +1,309 @@
+-- He action cua Cocos2d-x, lam lai bang Lua thuan.
+--
+-- Ban goc dung rat nhieu: S_CCSequence 659 lan, S_CCCallFunc 559,
+-- S_CCDelayTime 486, S_CCScaleTo 297, S_CCMoveTo 280... Thieu he nay thi moi
+-- man hinh deu dung hinh — khong hien ra, khong tat di, khong chay gi.
+--
+-- KHONG dung Tween cua Godot. Tween doi node phai nam trong scene tree, ma
+-- ta con dung node ngoai tree (dung bo cuc roi kiem, chup anh). Va Cocos co
+-- nhung thu Tween khong co san: CCSpawn chay song song roi cho tat ca xong,
+-- CCRepeatForever, va CCCallFunc goi method theo TEN. Tu lam thi khop dung
+-- ngu nghia goc, va de doc khi so voi ma goc.
+--
+-- Moi action deu co mot giao dien:
+--     a:tien(node, dt) -> xong chua
+--     a:dat_lai()
+-- Nen xep chuoi, chay song song hay lap lai deu chi la boc lai cai khac.
+
+return function(C)
+	local raw = C.raw
+	local M = {}
+
+	-- Nhung action dang chay: { node = <node Godot>, a = <action> }
+	local dang_chay = {}
+	M.dang_chay = dang_chay
+
+	-- Action co ban ---------------------------------------------------------
+
+	local function co_ban(d)
+		return {
+			d = d or 0, t = 0, bat_dau = false,
+			dat_lai = function(self)
+				self.t = 0
+				self.bat_dau = false
+			end,
+			tien = function(self, node, dt)
+				if not self.bat_dau then
+					self.bat_dau = true
+					if self.khoi then self:khoi(node) end
+				end
+				self.t = self.t + dt
+				local p = 1.0
+				if self.d > 0 then
+					p = self.t / self.d
+					if p > 1 then p = 1 end
+				end
+				if self.giam_toc then p = self.giam_toc(p) end
+				if self.chay then self:chay(node, p) end
+				return self.t >= self.d
+			end,
+		}
+	end
+
+	local function lam(d, khoi, chay)
+		local a = co_ban(d)
+		a.khoi, a.chay = khoi, chay
+		return a
+	end
+
+	-- Di chuyen, co gian, xoay, mo dan ---------------------------------------
+
+	local function moveTo(d, x, y)
+		return lam(d,
+			function(self, n) self.x0, self.y0 = C.Node.getPosition(n) end,
+			function(self, n, p)
+				C.Node.setPosition(n, self.x0 + (x - self.x0) * p,
+				                      self.y0 + (y - self.y0) * p)
+			end)
+	end
+
+	local function moveBy(d, dx, dy)
+		return lam(d,
+			function(self, n) self.x0, self.y0 = C.Node.getPosition(n) end,
+			function(self, n, p)
+				C.Node.setPosition(n, self.x0 + dx * p, self.y0 + dy * p)
+			end)
+	end
+
+	local function scaleTo(d, sx, sy)
+		sy = sy or sx
+		return lam(d,
+			function(self, n)
+				self.a0, self.b0 = C.Node.getScaleX(n), C.Node.getScaleY(n)
+			end,
+			function(self, n, p)
+				C.Node.setScaleX(n, self.a0 + (sx - self.a0) * p)
+				C.Node.setScaleY(n, self.b0 + (sy - self.b0) * p)
+			end)
+	end
+
+	local function rotateTo(d, deg)
+		return lam(d,
+			function(self, n) self.r0 = C.Node.getRotation(n) end,
+			function(self, n, p)
+				C.Node.setRotation(n, self.r0 + (deg - self.r0) * p)
+			end)
+	end
+
+	local function rotateBy(d, deg)
+		return lam(d,
+			function(self, n) self.r0 = C.Node.getRotation(n) end,
+			function(self, n, p) C.Node.setRotation(n, self.r0 + deg * p) end)
+	end
+
+	-- Cocos dung do mo 0..255.
+	local function fadeTo(d, o)
+		return lam(d,
+			function(self, n) self.o0 = raw(n).modulate.a * 255.0 end,
+			function(self, n, p)
+				C.Node.setOpacity(n, self.o0 + (o - self.o0) * p)
+			end)
+	end
+
+	-- Ghep ------------------------------------------------------------------
+
+	local function sequence(ds)
+		local a = { i = 1, ds = ds }
+		function a:dat_lai()
+			self.i = 1
+			for _, x in ipairs(self.ds) do x:dat_lai() end
+		end
+		function a:tien(node, dt)
+			while self.i <= #self.ds do
+				if self.ds[self.i]:tien(node, dt) then
+					self.i = self.i + 1
+					dt = 0      -- phan con lai cua khung nay khong don sang
+				else
+					return false
+				end
+			end
+			return true
+		end
+		return a
+	end
+
+	local function spawn(ds)
+		local a = { ds = ds }
+		function a:dat_lai()
+			self.xong = nil
+			for _, x in ipairs(self.ds) do x:dat_lai() end
+		end
+		function a:tien(node, dt)
+			self.xong = self.xong or {}
+			local het = true
+			for k, x in ipairs(self.ds) do
+				if not self.xong[k] then
+					if x:tien(node, dt) then self.xong[k] = true else het = false end
+				end
+			end
+			return het
+		end
+		return a
+	end
+
+	local function lap(x, n)
+		local a = { x = x, con = n, dau = n }
+		function a:dat_lai() self.con = self.dau; self.x:dat_lai() end
+		function a:tien(node, dt)
+			if self.x:tien(node, dt) then
+				if self.con == nil then           -- lap mai
+					self.x:dat_lai()
+					return false
+				end
+				self.con = self.con - 1
+				if self.con <= 0 then return true end
+				self.x:dat_lai()
+			end
+			return false
+		end
+		return a
+	end
+
+	-- Goi ham theo TEN: S_CCCallFunc:create(doi_tuong, "TenHam", thamso)
+	local function callFunc(doi_tuong, ten, tham)
+		local a = co_ban(0)
+		a.chay = function(self, node)
+			if self.da_goi then return end
+			self.da_goi = true
+			if doi_tuong == nil or ten == nil then return end
+			local f = doi_tuong[ten]
+			if type(f) == 'function' then
+				pcall(f, doi_tuong, tham ~= nil and tham or node)
+			end
+		end
+		local dat_lai_cu = a.dat_lai
+		a.dat_lai = function(self) self.da_goi = false; dat_lai_cu(self) end
+		return a
+	end
+
+	-- Giam toc ---------------------------------------------------------------
+
+	local function boc_giam_toc(x, f)
+		-- Boc mot action co san: chi doi cach thoi gian troi, khong doi dich.
+		x.giam_toc = f
+		return x
+	end
+
+	local vao      = function(p) return p * p end
+	local ra       = function(p) return 1 - (1 - p) * (1 - p) end
+	local vao_ra   = function(p)
+		if p < 0.5 then return 2 * p * p end
+		return 1 - 2 * (1 - p) * (1 - p)
+	end
+
+	-- Dang ky vao bien toan cuc --------------------------------------------
+	-- Ban goc goi qua cac thuc the S_CC*, vi du:
+	--     S_CCSequence:create(S_CCDelayTime:create(0.5), S_CCFadeOut:create(0.3))
+
+	local function thuc_the(tao)
+		return { create = function(_, ...) return tao(...) end,
+		         actionWithDuration = function(_, ...) return tao(...) end,
+		         actionWithAction = function(_, ...) return tao(...) end,
+		         action = function(_, ...) return tao(...) end,
+		         release = function() end }
+	end
+
+	local function gom(...)
+		local ds = {}
+		for _, x in ipairs({ ... }) do
+			if type(x) == 'table' and x.tien then ds[#ds + 1] = x end
+		end
+		return ds
+	end
+
+	function M.install()
+		S_CCDelayTime   = thuc_the(function(d) return co_ban(d) end)
+		S_CCMoveTo      = thuc_the(moveTo)
+		S_CCMoveBy      = thuc_the(moveBy)
+		S_CCScaleTo     = thuc_the(scaleTo)
+		S_CCScaleBy     = thuc_the(function(d, sx, sy) return scaleTo(d, sx, sy) end)
+		S_CCRotateTo    = thuc_the(rotateTo)
+		S_CCRotateBy    = thuc_the(rotateBy)
+		S_CCFadeTo      = thuc_the(fadeTo)
+		S_CCFadeIn      = thuc_the(function(d) return fadeTo(d, 255) end)
+		S_CCFadeOut     = thuc_the(function(d) return fadeTo(d, 0) end)
+		S_CCWhiteFadeTo = thuc_the(fadeTo)
+		S_CCShow        = thuc_the(function()
+			return lam(0, nil, function(_, n) C.Node.setIsVisible(n, true) end)
+		end)
+		S_CCHide        = thuc_the(function()
+			return lam(0, nil, function(_, n) C.Node.setIsVisible(n, false) end)
+		end)
+		S_CCCallFunc    = thuc_the(callFunc)
+		S_CCSequence    = thuc_the(function(...) return sequence(gom(...)) end)
+		S_CCSpawn       = thuc_the(function(...) return spawn(gom(...)) end)
+		S_CCRepeatForever = thuc_the(function(x) return lap(x, nil) end)
+		S_CCRepeat      = thuc_the(function(x, n) return lap(x, n) end)
+
+		for ten, f in pairs({ S_CCEaseIn = vao, S_CCEaseOut = ra,
+		                      S_CCEaseInOut = vao_ra,
+		                      S_CCEaseSineIn = vao, S_CCEaseSineOut = ra,
+		                      S_CCEaseSineInOut = vao_ra,
+		                      S_CCEaseExponentialIn = vao,
+		                      S_CCEaseExponentialOut = ra,
+		                      S_CCEaseExponentialInOut = vao_ra,
+		                      S_CCEaseBackIn = vao, S_CCEaseBackOut = ra,
+		                      S_CCEaseBackInOut = vao_ra,
+		                      S_CCEaseElasticIn = vao, S_CCEaseElasticOut = ra,
+		                      S_CCEaseElasticInOut = vao_ra,
+		                      S_CCEaseBounceIn = vao, S_CCEaseBounceOut = ra,
+		                      S_CCEaseBounceInOut = vao_ra }) do
+			_G[ten] = thuc_the(function(x) return boc_giam_toc(x, f) end)
+		end
+	end
+
+	-- Chay ------------------------------------------------------------------
+
+	function M.runAction(node, a)
+		if a == nil or type(a) ~= 'table' or a.tien == nil then
+			return a
+		end
+		a:dat_lai()
+		dang_chay[#dang_chay + 1] = { node = node, a = a }
+		return a
+	end
+
+	function M.stopAllActions(node)
+		local gd = raw(node)
+		for i = #dang_chay, 1, -1 do
+			if raw(dang_chay[i].node) == gd then
+				table.remove(dang_chay, i)
+			end
+		end
+	end
+
+	-- Goi moi khung hinh tu GDScript. Tra ve so action con dang chay.
+	function M.tick(dt)
+		local i = 1
+		while i <= #dang_chay do
+			local m = dang_chay[i]
+			local gd = raw(m.node)
+			-- is_instance_valid la ham TOAN CUC cua Godot, khong phai phuong
+			-- thuc cua node. Goi kieu gd:is_instance_valid(gd) thi Lua bao
+			-- 'attempt to call a nil value' va ca he action dung im.
+			local bo = gd == nil or not is_instance_valid(gd)
+			if not bo then
+				local ok, xong = pcall(m.a.tien, m.a, m.node, dt)
+				bo = (not ok) or xong
+			end
+			if bo then
+				table.remove(dang_chay, i)
+			else
+				i = i + 1
+			end
+		end
+		return #dang_chay
+	end
+
+	return M
+end

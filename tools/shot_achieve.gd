@@ -13,6 +13,16 @@
 extends Control
 
 
+var _lua: LuaRuntime = null
+
+
+## Day thoi gian cho he action cua ban goc. Khong co cai nay thi moi hieu ung
+## deu dung im o khung dau.
+func _process(dt: float) -> void:
+	if _lua != null:
+		_lua.tick(dt)
+
+
 func _ready() -> void:
 	var thieu := _kiem_du_lieu()
 	if thieu != "":
@@ -37,6 +47,7 @@ func _ready() -> void:
 		print("[godot] lAchieveTemplateTop: ", ", ".join(ds))
 
 	var lua := LuaRuntime.new()
+	_lua = lua
 	if not lua.open():
 		_note("khong mo duoc Lua: %s" % ", ".join(lua.errors))
 		return

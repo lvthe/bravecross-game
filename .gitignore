@@ -25,3 +25,11 @@ layout_ref/
 # Anh giao dien giai tu .pkm — co ban quyen, sinh lai bang:
 #   cd ../brave-cross/work && python uiart.py --out <day>/ui_ref
 ui_ref/
+
+# Ma nguon Lua cua ban goc — CO BAN QUYEN, khong commit. Bê lai bang:
+#   python tools/import_lua.py
+sc/
+
+# Addon Lua (~200 MB, tai ve chu khong commit). Lay lai bang:
+#   python tools/fetch_addons.py
+addons/

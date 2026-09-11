@@ -20,6 +20,7 @@ SUITES = [
     ('rig nhan vat',         'script', 'tools/verify.gd',         False, []),
     ('mo hinh chien dau',    'script', 'tools/verify_battle.gd',  False, []),
     ('bo cuc man hinh',     'script', 'tools/verify_layout.gd',  False, []),
+    ('ma Lua ban goc',      'script', 'tools/verify_lua_ui.gd',  False, []),
     ('trang bi (GDScript)',  'script', 'tools/verify_equipment.gd', False, []),
     ('man trang bi',         'scene',  'tools/verify_equip.tscn', False, []),
     ('man nhiem vu',         'scene',  'tools/verify_tasks.tscn', False, []),

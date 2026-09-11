@@ -9,7 +9,7 @@ Phần đã xong ở đây là **bộ nạp nhân vật**: đọc thẳng dữ l
 
 ## Lần đầu trên một máy mới
 
-Bốn bước, làm đúng một lần. Bỏ bước nào cũng ra lỗi khó đoán.
+Sáu bước, làm đúng một lần. Bỏ bước nào cũng ra lỗi khó đoán.
 
 ```bash
 # 1. Art nhân vật — gitignore vì có bản quyền, phải tự sinh từ repo brave-cross
@@ -22,7 +22,13 @@ python ../brave-cross/work/layout.py --all --out layout_ref
 # 3. Bảng số liệu cho máy chủ — cũng gitignore, cùng lý do
 python sim/export_stats.py --all
 
-# 4. Nạp project một lần để Godot sinh .godot/
+# 4. Mã nguồn Lua của bản gốc — cũng gitignore, cùng lý do
+python tools/import_lua.py
+
+# 5. Máy ảo Lua (addon ~200 MB, tải chứ không commit)
+python tools/fetch_addons.py
+
+# 6. Nạp project một lần để Godot sinh .godot/
 godot --headless --path . --import
 ```
 

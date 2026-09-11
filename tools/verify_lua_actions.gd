@@ -159,3 +159,18 @@ func _kiem_anh(lua: LuaRuntime, n: Control) -> void:
 		t("kich thuoc node theo anh",
 				n.size == (n as TextureRect).texture.get_size(),
 				"%s vs %s" % [n.size, (n as TextureRect).texture.get_size()])
+
+	# TRUNG TEN. Co 536 ten anh xuat hien o nhieu thu muc khac nhau, va anh
+	# khac han nhau. `ui_background176` vua co ban `png/book/` (152x155) vua co
+	# ban `sngSplitData/v6/` (76x77). Bo cuc ghi ro `v6/...`, nen tra cuu ma rut
+	# ve ten tran la lay nham ban to: o thanh tuu phinh gap doi roi de len nhan
+	# ten ben canh. Hai trieu chung, mot nguyen nhan.
+	var k_v6 := UiFrames.key_of("v6/ui_background176.png")
+	var k_tran := UiFrames.key_of("ui_background176")
+	t("ten co duong dan tra dung ban v6", k_v6.contains("v6/"), k_v6)
+	t("ten tran va ten co duong dan la HAI ban khac nhau", k_v6 != k_tran,
+			"%s vs %s" % [k_v6, k_tran])
+	var tex_v6 := UiFrames.get_frame("v6/ui_background176.png")
+	t("ban v6 dung kich thuoc thiet ke 76x77",
+			tex_v6 != null and tex_v6.get_size() == Vector2(76, 77),
+			str(tex_v6.get_size()) if tex_v6 != null else "khong co")

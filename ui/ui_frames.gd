@@ -17,6 +17,8 @@ const INDEX_PATH := "res://ui_ref/index.json"
 const ART_DIR := "res://ui_ref/"
 
 static var _index: Dictionary = {}
+static var _alias: Dictionary = {}      ## ten tran -> khoa day du (khi khong trung)
+static var _duoi: Dictionary = {}       ## ten tran -> [moi khoa cung ten]
 static var _cache: Dictionary = {}
 static var _loaded := false
 static var _misses: Dictionary = {}
@@ -35,18 +37,61 @@ static func _load_index() -> void:
 	var doc = JSON.parse_string(txt)
 	if doc is Dictionary and doc.has("frames"):
 		_index = doc["frames"]
+		_alias = doc.get("alias", {})
+		# Chi muc doi cu chi danh theo ten tran, khong co "alias". Van chay
+		# duoc, chi la khong phan biet duoc cho trung ten.
+		if _alias.is_empty():
+			for k in _index:
+				_alias[k] = k
+		_duoi.clear()
+		for k in _index:
+			var b := String(k).get_file()
+			if not _duoi.has(b):
+				_duoi[b] = []
+			_duoi[b].append(k)
 
 
 ## Ten trong bo cuc co the la 'v6/ui_words86.png', '@v6/ui_words86.png' hoac
 ## chi 'ui_words86'. Chi muc danh theo ten file khong duoi, nen quy ve dang do.
+## Ten trong bo cuc co the la 'v6/ui_words86.png', '@v6/ui_words86.png' hoac
+## chi 'ui_words86'. Tra ve KHOA day du trong chi muc, hoac "" neu khong co.
+##
+## PHAI dung ca phan thu muc khi bo cuc co ghi. Co 26 ten trung ma khac anh —
+## `ui_background176` vua co ban `png/book/` (152x155) vua co ban
+## `sngSplitData/v6/` (76x77). Truoc day rut ve ten tran nen lay nham ban to,
+## va o thanh tuu phinh gap doi roi de len nhan ten ben canh.
 static func key_of(name: String) -> String:
+	_load_index()
 	var s := name.lstrip("@")
-	var slash := s.rfind("/")
-	if slash >= 0:
-		s = s.substr(slash + 1)
 	if s.ends_with(".png") or s.ends_with(".jpg"):
 		s = s.get_basename()
-	return s
+	if _index.has(s):
+		return s
+	var base := s.get_file()
+	# Bo cuc ghi ca thu muc: tim khoa nao ket thuc dung bang duong dan do.
+	if s != base:
+		for k in _duoi.get(base, []):
+			if String(k).ends_with("/" + s) or String(k) == s:
+				return k
+	# Ten tran, khong trung: tra bang bi danh.
+	if _alias.has(base):
+		return _alias[base]
+	# Ten tran nhung TRUNG: khong biet lay ban nao. Lay ban dau cho co con
+	# hon khong co, nhung ghi lai de con biet.
+	var ds: Array = _duoi.get(base, [])
+	if ds.size() > 0:
+		if ds.size() > 1:
+			_mo_ho[base] = ds.size()
+		return ds[0]
+	return ""
+
+
+## Ten tra ra nhieu ban ma bo cuc khong ghi ro duong dan. Dung de biet cho nao
+## con co the dang hien nham anh.
+static var _mo_ho: Dictionary = {}
+
+static func ambiguous() -> Dictionary:
+	return _mo_ho
 
 
 static func has_frame(name: String) -> bool:

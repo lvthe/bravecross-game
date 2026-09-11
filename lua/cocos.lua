@@ -83,13 +83,15 @@ end
 
 -- Cay node -----------------------------------------------------------------
 
--- CHUA DUNG DUOC. Tag so nguyen ma ban goc dung de tro toi node KHONG nam
--- trong file .xgg — da quet het ban ghi, khong offset nao vuot 31%, va gia
--- thuyet 'tag = thu tu con' cung sai (33/52 moc doi tag lon hon so con).
--- Xem chu thich o work/xgg.py.
+-- Tag THAT, do tu chinh engine ban goc. Tag khong nam trong file .xgg —
+-- engine sinh ra luc nap — nen phai chay ban goc trong may ao roi hoi tung
+-- so mot. Xem work/emu_tags.py va work/emu_join.py.
 --
--- Tam thoi do bang truong 0xA4 chua ro nghia. No SE SAI o nhieu man. Dem lai
--- de biet co bao nhieu phan giao dien dang dua tren cho chua chac nay.
+-- Node nao khong co tag la node engine khong tra ve: getChildByTag chi tra
+-- ve cai DAU TIEN mang tag do, nen anh em trung tag thi nhung cai sau bi
+-- khuat — va ma goc cung khong voi toi chung.
+--
+-- Van dem tim hut, de biet con man nao thieu du lieu do.
 M.tag_lookups = 0
 M.tag_misses = 0
 
@@ -98,7 +100,7 @@ function Node:getChildByTag(tag)
 	M.tag_lookups = M.tag_lookups + 1
 	for i = 0, gd:get_child_count() - 1 do
 		local c = gd:get_child(i)
-		if c:has_meta('u_a4') and c:get_meta('u_a4') == tag then
+		if c:has_meta('tag') and c:get_meta('tag') == tag then
 			return wrap(c)
 		end
 	end
@@ -227,9 +229,12 @@ function Node:getPositionY()
 	return y
 end
 
+-- Tra HAI gia tri, khong phai mot bang. Da dem tren ca ma goc: 742 cho viet
+-- 'local w, h = node:getContentSize()', 0 cho dung '.width'. Ban dau lam ra
+-- bang nen moi cho do deu nhan w = bang, h = nil.
 function Node:getContentSize()
 	local s = self._gd.size
-	return { width = s.x, height = s.y }
+	return s.x, s.y
 end
 
 function Node:setContentSize(w, h)

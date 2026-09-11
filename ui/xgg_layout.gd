@@ -186,10 +186,13 @@ static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 	if respect_visible and not bool(nd.get("visible", true)):
 		node.visible = false
 	node.set_meta("cls", nd.get("cls", ""))
-	# CHUA CO TAG THAT. Ma Lua ban goc tro toi node gan nhu chi bang
-	# getChildByTag (9529 lan), nhung tag so nguyen do KHONG nam trong ban
-	# ghi .xgg — xem chu thich o xgg.py. Day chi la truong 0xA4 chua ro nghia,
-	# giu de doi chieu; dung coi la tag.
+	# TAG THAT, do tu chinh engine ban goc chu khong doc tu file: tag khong
+	# nam trong .xgg, engine sinh ra luc nap. Xem work/emu_tags.py va
+	# work/emu_join.py. Node nao engine khong tra ve thi khong co tag —
+	# getChildByTag chi tra ve node DAU TIEN mang tag do, nen anh em trung
+	# tag thi nhung cai sau bi khuat, va ma goc cung khong voi toi chung.
+	if nd.has("tag"):
+		node.set_meta("tag", int(nd["tag"]))
 	node.set_meta("u_a4", int(nd.get("u_a4", 0)))
 	node.set_meta("res", nd.get("res", ""))
 	node.set_meta("kind", kind)

@@ -71,39 +71,44 @@ func _init() -> void:
 	t("thay lAchievementTaskSrollLayer", r != null and bool(r["co_scroll"]))
 	t("thay lAchieveTemplate", r != null and bool(r["co_tpl"]))
 
-	# 4. getChildByTag. CHU Y: day CHI la phep thu doc-lai — no chung minh ham
-	#    duyet con chay dung tren truong minh GHI RA, chu KHONG chung minh
-	#    truong do la tag that cua ban goc. Tag that chua tim duoc (xem
-	#    work/xgg.py). Nen dung doc may dong duoi day la "chay dung ma goc".
+	# 4. getChildByTag voi TAG THAT.
+	#
+	# Cac so duoi day khong phai minh dat ra: chung do duoc tu chinh engine
+	# ban goc chay trong may ao (work/emu_tags.py hoi getChildByTag tung so
+	# mot, work/emu_join.py ghep ket qua vao bo cuc). Tag KHONG nam trong file
+	# .xgg — engine sinh ra luc nap — nen khong the doc ra tu file.
+	#
+	# Va chung khop voi cai ma CUIAchieve.lua mong doi: tag 4 la nut nhan,
+	# tag 6 la khung phan thuong. Trong khung do, reward1/2/3 mang dung tag
+	# 1/2/3.
 	r = lua.run("""
 		local tpl = lAchieveTemplate
-		local canget = tpl:getChildByTag(2)
-		local noget  = tpl:getChildByTag(1)
-		local rl     = tpl:getChildByTag(11)
+		local canget = tpl:getChildByTag(4)
+		local noget  = tpl:getChildByTag(10)
+		local rl     = tpl:getChildByTag(6)
 		return {
 			canget = canget ~= nil and canget:getStringTag() or '',
 			noget  = noget  ~= nil and noget:getStringTag()  or '',
 			rlist  = rl     ~= nil and rl:getStringTag()     or '',
-			-- reward1 nam trong rewardList2, tag 7
-			r1 = (rl ~= nil and rl:getChildByTag(7) ~= nil)
-			     and rl:getChildByTag(7):getStringTag() or '',
+			r1 = (rl ~= nil and rl:getChildByTag(1) ~= nil)
+			     and rl:getChildByTag(1):getStringTag() or '',
 		}
 	""", "getChildByTag")
-	t("doc lai: 2 ra canget", r != null and String(r["canget"]) == "canget",
+	t("tag 4 ra canget", r != null and String(r["canget"]) == "canget",
 			"duoc '%s'" % (String(r["canget"]) if r != null else "?"))
-	t("doc lai: 1 ra noget", r != null and String(r["noget"]) == "noget",
+	t("tag 10 ra noget", r != null and String(r["noget"]) == "noget",
 			"duoc '%s'" % (String(r["noget"]) if r != null else "?"))
-	t("doc lai: 11 ra rewardList2", r != null and String(r["rlist"]) == "rewardList2")
-	t("doc lai: long hai tang ra reward1", r != null and String(r["r1"]) == "reward1")
+	t("tag 6 ra rewardList2", r != null and String(r["rlist"]) == "rewardList2")
+	t("long hai tang: tag 1 ra reward1", r != null and String(r["r1"]) == "reward1")
 
 	# 5. Lua SUA duoc node that khong — doi ben Godot phai thay.
-	var canget := _by_tag(XggLayout.find_node(root, "lAchieveTemplate"), 2)
+	var canget := _by_tag(XggLayout.find_node(root, "lAchieveTemplate"), 4)
 	t("Godot cung thay canget", canget != null)
 	if canget != null:
 		canget.visible = true
-		lua.run("lAchieveTemplate:getChildByTag(2):setIsVisible(false)", "an")
+		lua.run("lAchieveTemplate:getChildByTag(4):setIsVisible(false)", "an")
 		t("setIsVisible(false) an that", not canget.visible)
-		lua.run("lAchieveTemplate:getChildByTag(2):setIsVisible(true)", "hien")
+		lua.run("lAchieveTemplate:getChildByTag(4):setIsVisible(true)", "hien")
 		t("setIsVisible(true) hien lai", canget.visible)
 
 	# 6. Toa do: Cocos lay goc duoi-trai, Godot tren-trai. Doi qua roi doi lai
@@ -112,7 +117,7 @@ func _init() -> void:
 	if name_node != null and name_node.get_child_count() > 0:
 		var before: Vector2 = name_node.get_child(0).position
 		lua.run("""
-			local c = lAchieveTemplate:getChildByTag(10)
+			local c = lAchieveTemplate:getChildByTag(2)
 			if c then local x, y = c:getPosition(); c:setPosition(x, y) end
 		""", "doi toa do")
 		var after: Vector2 = name_node.get_child(0).position
@@ -136,7 +141,7 @@ func _by_tag(parent: Node, tag: int) -> Control:
 	if parent == null:
 		return null
 	for c in parent.get_children():
-		if c.has_meta("u_a4") and int(c.get_meta("u_a4")) == tag:
+		if c.has_meta("tag") and int(c.get_meta("tag")) == tag:
 			return c
 	return null
 

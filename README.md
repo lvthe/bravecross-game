@@ -9,7 +9,7 @@ Phần đã xong ở đây là **bộ nạp nhân vật**: đọc thẳng dữ l
 
 ## Lần đầu trên một máy mới
 
-Sáu bước, làm đúng một lần. Bỏ bước nào cũng ra lỗi khó đoán.
+Bảy bước, làm đúng một lần. Bỏ bước nào cũng ra lỗi khó đoán.
 
 ```bash
 # 1. Art nhân vật — gitignore vì có bản quyền, phải tự sinh từ repo brave-cross
@@ -18,6 +18,12 @@ python ../brave-cross/work/export.py --all --out assets_ref
 # 2. Ảnh giao diện và bố cục màn hình — cũng gitignore, cùng lý do
 python ../brave-cross/work/uiart.py --out ui_ref
 python ../brave-cross/work/layout.py --all --out layout_ref
+# 2b. Nhét tag thật vào bố cục. BẮT BUỘC, và phải chạy SAU layout.py vì
+#     layout.py ghi đè. Tag không nằm trong .xgg — nó đo được từ chính engine
+#     bản gốc chạy trong máy ảo, và mã Lua gốc trỏ tới node gần như chỉ bằng
+#     nó (getChildByTag: 9.529 lần). Dữ liệu đo sẵn nằm trong repo brave-cross
+#     nên bước này chỉ ghép, không cần máy ảo.
+python ../brave-cross/work/emu_join.py --ghi
 
 # 3. Bảng số liệu cho máy chủ — cũng gitignore, cùng lý do
 python sim/export_stats.py --all

@@ -64,8 +64,18 @@ const _MOT := """
 		local obj = m.ql.UI[m.ten]
 		if not ok2 then
 			out[m.khoa] = 'HONG ' .. tostring(err2)
-		elseif obj.IsUiShow ~= true then
-			out[m.khoa] = 'IM khoa=' .. tostring(m.ql.IsUILock)
+		elseif obj.IsUiShow ~= true and obj.IsUiVisible ~= true then
+			-- Hoi CA HAI co. IsUiShow do CUIPublic:onShow dat, ma vai man ghi
+			-- de onShow roi khong goi len lop cha (CUIGuildContestRuleDlg chi
+			-- goi _initUI). Nhung man do van mo that, va co IsUiVisible —
+			-- do setDialogVisible -> onVisible dat — moi la dau hieu dung.
+			-- onShow cua man hinh doi may THAM SO? Ban goc goi
+			-- Show(ten, data, kieu) va truyen data xuong onShow; man nao doi
+			-- them tham so ma ta goi Show tran thi no tu thoat ra ngay dong
+			-- dau. debug.getinfo dem ca 'self'.
+			local inf = debug.getinfo(obj.onShow, 'u')
+			out[m.khoa] = 'IM nparams=' .. tostring(inf and inf.nparams)
+				.. ' khoa=' .. tostring(m.ql.IsUILock)
 				.. ' hientai=' .. tostring(m.ql.CurrentUIName)
 				.. ' goc=' .. tostring(obj.RootUIName)
 				.. ' xgg=' .. tostring(obj.ResourceXggList and obj.ResourceXggList[1])
@@ -147,9 +157,9 @@ func _init() -> void:
 			elif v.begins_with("IM"):
 				mo_im += 1
 				# Phan loai: bo cuc co nap duoc khong, onInit co chay khong.
-				var loai := v.substr(v.find("isInit="))
+				var loai := "nparams=" + v.substr(v.find("nparams=") + 8, 2).strip_edges()
 				im_loai[loai] = int(im_loai.get(loai, 0)) + 1
-				if im_ly.size() < 4:
+				if im_ly.size() < 40:
 					im_ly.append("%s -> %s" % [k, v])
 			else:
 				var ly := v.substr(5)

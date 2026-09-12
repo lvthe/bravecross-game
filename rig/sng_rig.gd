@@ -43,10 +43,10 @@ const MARKER_PREFIXES := ["PlugIn", "Collision", "ShootPoint", "Bone", "Effect"]
 ## hieu ung logic. Chung khong thuoc dang nguoi va nam rat xa than —
 ## MaChao/Fight co "Layer006" cach goc 436 px, to hon ca nhan vat.
 ##
-## Ban goc chi loe chung vai khung roi tat, bang duong doi anh theo khung ma ta
-## CHUA GIAI DUOC. O day anh dau tien duoc giu suot, nen chung thanh nhung vat
-## the bay lo lung. Man tran bat co nay de bo qua; trinh xem rig de tat de con
-## nhin thay het.
+## Ban goc chi loe chung vai khung roi tat. Duong doi anh theo khung nay da giai
+## (chi so anh `d` cua khung, anim.py) va SngRig da lam theo; bo loc van giu
+## cho man tran vi chua do lai xem con lop nao cua nhom nay hien sai. Trinh xem
+## rig de tat de con nhin thay het.
 ##
 ## CHI LOC O TANG NGOAI CUNG, khong truyen xuong rig long nhau. Danh sach bo
 ## phan cua mot nhan vat dat ten co nghia (Head, Body, ArmLeft), nen ten Layer*
@@ -143,11 +143,35 @@ func _richest_variant() -> String:
 	return best
 
 
+## Nhom dong tac cua bien the. TRANG PHUC (Defender_VampirE, Archer_Dong...) la
+## mot BO ANH cho cung bo xuong, KHONG co nhom dong tac rieng: dung dong tac cua
+## nhom co ten la TIEN TO dai nhat. Do tren ca assets_ref: 76 bo phan cap cao
+## khong co nhom rieng, 75 co nhom goc la tien to; xuong cua trang phuc trung
+## xuong ma dong tac nhom goc dieu khien, trung vi 100%. Ca con lai
+## (PlayerEquM001 trong PlayerM) lay nhom nhieu dong tac nhat.
+##
+## Truoc day tra ve rong: linh Defender_VampirE tren san tran KHONG co dong tac
+## nao, dung im o anh dau cua moi xuong — ca xuong hieu ung chi loe khi danh —
+## thanh mot mang vuot do bam theo ca tran.
 func _group() -> Dictionary:
+	var gs := {}
 	for g in data.get("groups", []):
-		if g.get("variant", "") == variant:
-			return g
-	return {}
+		gs[String(g.get("variant", ""))] = g
+	if gs.has(variant):
+		return gs[variant]
+	var s := variant
+	while s.contains("_"):
+		s = s.substr(0, s.rfind("_"))
+		if gs.has(s):
+			return gs[s]
+	var dai := ""
+	for k in gs:
+		if variant.begins_with(k) and String(k).length() > dai.length():
+			dai = k
+	if dai != "":
+		return gs[dai]
+	var giau := _richest_variant()
+	return gs.get(giau, {})
 
 
 ## Thu tu ve: lay tu "parts". Bo phan chi xuat hien trong dong tac thi xep sau.
@@ -182,8 +206,8 @@ func _ordered_parts() -> Array:
 ## lai anh "CaoCao_res-RightArm".
 ##
 ## Mot bo phan co the tro toi NHIEU anh — Archer/Head co 5 net mat, Effect co
-## 6 khung. Ban goc doi anh theo dien bien tran dau; duong doi anh do chua
-## giai duoc, nen o day lay anh dau tien.
+## 6 khung. Moi keyframe chon mot anh bang chi so `d` (xem displays,
+## _doi_anh); ham nay tim anh cho MOT ten.
 ##
 ## Ten bat dau bang "<Ten>_mc_" khong phai anh ma la MOT RIG LONG NHAU (bien
 ## the khac trong cung file). Chua rap duoc, tam bo qua — xem nested_rigs.
@@ -256,6 +280,15 @@ func _make_sprite(info: Dictionary) -> Sprite2D:
 	return spr
 
 
+## Moi xuong -> danh sach CAC THU NO CO THE HIEN, dung thu tu bang lien ket
+## xuong -> anh cua file (header 0x4c): Sprite2D, SngRig long nhau, hoac null
+## (anh khong co trong atlas). Keyframe chon mot o bang chi so `d` (anim.py,
+## +0x2C cua khung); -1 la an. Truoc day moi xuong chi co anh DAU TIEN va hien
+## suot — hieu ung chi loe vai khung (eff010 cua Player000 khi Fight) thanh ra
+## bam theo nhan vat ca tran.
+var displays: Dictionary = {}
+
+
 func _build_bones() -> void:
 	var z := 0
 	for part in _ordered_parts():
@@ -264,28 +297,19 @@ func _build_bones() -> void:
 			continue
 		var refs: Array = part.get("sprites", [])
 		var node: Node2D = null
+		var ds: Array = []
 		if not _is_marker(bone):
-			var info := _sprite_for(refs)
-			var nested := ""
-			if not info.is_empty():
-				node = _make_sprite(info)
-			else:
-				# Bo phan nay co the khong phai mot anh ma la CA MOT RIG KHAC
-				# nam trong cung file — dau cua CaoCao, than cua ZhuGeLiang
-				# deu vay. Dung de quy roi treo vao dung cho; xuong cha van
-				# dieu khien no y het mot Sprite2D.
-				nested = _nested_variant(refs)
-				if nested != "":
-					# KHONG truyen hide_clutter xuong: xem chu thich o
-					# CLUTTER_PREFIXES.
-					var child := _make(data, source_dir, bone, nested, _chain, false)
-					if child != null:
-						var names := child.animations()
-						if not names.is_empty():
-							child.player.play(names[0])
-						nested_rigs.append(bone)
-						node = child
-			if node == null and nested == "":
+			# KHUNG xuong: mang bien doi cua xuong; cac thu co the hien la con.
+			node = Node2D.new()
+			var co := false
+			for r in refs:
+				var d := _display_for(String(r), bone)
+				ds.append(d)
+				if d != null:
+					d.visible = false
+					node.add_child(d)
+					co = true
+			if not co:
 				missing_sprites.append(bone)
 		if node == null:
 			node = Marker2D.new()
@@ -294,6 +318,45 @@ func _build_bones() -> void:
 		z += 1
 		add_child(node)
 		bones[bone] = node
+		displays[bone] = ds
+		# Chua dong tac nao chon thi hien o dau, nhu truoc.
+		_doi_anh(bone, 0)
+
+
+## Mot thu co the hien cua xuong: anh trong atlas, hoac CA MOT RIG KHAC nam
+## trong cung file — dau cua CaoCao, than cua ZhuGeLiang deu vay. Rig long nhau
+## dung de quy va chay dong tac dau cua no.
+func _display_for(ref: String, bone: String) -> Node2D:
+	var info := _sprite_for([ref])
+	if not info.is_empty():
+		return _make_sprite(info)
+	var nested := _nested_variant([ref])
+	if nested == "":
+		return null
+	# KHONG truyen hide_clutter xuong: xem chu thich o CLUTTER_PREFIXES.
+	var child := _make(data, source_dir, nested, nested, _chain, false)
+	if child == null:
+		return null
+	var names := child.animations()
+	if not names.is_empty():
+		child.player.play(names[0])
+	if not nested_rigs.has(bone):
+		nested_rigs.append(bone)
+	return child
+
+
+## Hien o thu `idx` cua xuong, an cac o khac; -1 an het. Chi so ngoai bang
+## (BingYing.xml, XSJiYouHeTiJi.xml — bo cuc khung khac, xem anim.py) thi giu
+## o dau nhu cach cu, khong doan.
+func _doi_anh(bone: String, idx: int) -> void:
+	var ds: Array = displays.get(bone, [])
+	if ds.is_empty():
+		return
+	if idx < -1 or idx >= ds.size():
+		idx = 0
+	for i in ds.size():
+		if ds[i] != null:
+			ds[i].visible = i == idx
 
 
 func _build_animations() -> void:
@@ -327,12 +390,32 @@ func _build_animations() -> void:
 			var bone: String = b.get("name", "")
 			if not bones.has(bone):
 				continue
+			# Doi anh theo khung: MOT duong goi _doi_anh cho MOI xuong. Dung
+			# chung mot duong thi hai xuong co keyframe cung luc se ghi de nhau
+			# (track_insert_key cung thoi diem thay khoa cu) — do duoc: Standby
+			# cua nhan vat dau tien con 537/675 khoa.
+			var t_anh := anim.add_track(Animation.TYPE_METHOD)
+			anim.track_set_path(t_anh, NodePath("."))
 			var t_pos := _add_track(anim, bone, "position")
 			var t_rot := _add_track(anim, bone, "rotation")
 			var t_scl := _add_track(anim, bone, "scale")
-			var i := 0
-			for k in b.get("keys", []):
-				var t := float(i) / FPS
+			# Keyframe BAT DAU o tong so khung giu cua cac keyframe truoc no
+			# (dur, +0x40 cua khung — xem anim.py). Truoc day moi keyframe cach
+			# nhau dung 1 khung: Weapon/Walk cua Player000 giu 3,3,3,2,1 khung
+			# ma bi don vao 5 khung dau. JSON cu chua co dur thi van 1 khung.
+			# Chi tin dur / d khi dung bat bien DO DUOC: xuong >= 2 keyframe thi
+			# tong dur = do dai dong tac (95.416 / 95.431 xuong, anim.py). 15 xuong
+			# sai deu o BingYing.xml — bo cuc khung khac, dur va d o do la rac —
+			# thi quay ve cach cu: moi keyframe 1 khung, anh dau.
+			var ks: Array = b.get("keys", [])
+			var tong := 0
+			for k in ks:
+				tong += int(k.get("dur", 0))
+			var tin := ks.size() < 2 or tong == dur or tong == frames
+			var f := 0
+			for k in ks:
+				var t := float(f) / FPS
+				f += maxi(1, int(k.get("dur", 1))) if tin else 1
 				var y: float = float(k.get("y", 0.0))
 				var r: float = float(k.get("rot", 0.0))
 				anim.track_insert_key(t_pos, t, Vector2(
@@ -340,7 +423,8 @@ func _build_animations() -> void:
 				anim.track_insert_key(t_rot, t, deg_to_rad(-r if NEGATE_ROT else r))
 				anim.track_insert_key(t_scl, t, Vector2(
 						float(k.get("sx", 1.0)), float(k.get("sy", 1.0))))
-				i += 1
+				anim.track_insert_key(t_anh, t,
+						{"method": "_doi_anh", "args": [bone, int(k.get("d", 0)) if tin else 0]})
 
 		lib.add_animation(a.get("name", "?"), anim)
 

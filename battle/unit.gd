@@ -60,7 +60,8 @@ var _death_timer := 0.0
 
 
 func setup(f: Combat.Fighter, team_index: int, rules: Dictionary,
-		rng: Combat.Rng, art_dir: String = "", art_scale := 1.0) -> void:
+		rng: Combat.Rng, art_dir: String = "", art_scale := 1.0,
+		variant := "") -> void:
 	fighter = f
 	team = team_index
 	_rules = rules
@@ -78,7 +79,11 @@ func setup(f: Combat.Fighter, team_index: int, rules: Dictionary,
 	if visual and art_dir != "":
 		# Man tran bo qua cac lop ve tich (ten lop Photoshop, lop hieu ung
 		# logic): chung nam xa than va o day hien suot chu khong loe roi tat.
-		rig = SngRig.build(art_dir, "", true)
+		rig = SngRig.build(art_dir, variant, true)
+		# San tran cua ban goc xin BIEN THE theo ten quan (Player000M03W);
+		# armature khong co bien the do thi lay bien the mac dinh.
+		if rig == null and variant != "":
+			rig = SngRig.build(art_dir, "", true)
 		if rig != null:
 			rig.scale = Vector2(_scale_x(art_scale), art_scale)
 			add_child(rig)
@@ -180,10 +185,11 @@ func advance(delta: float, enemies: Array, snap: Dictionary) -> BattleUnit:
 
 
 ## Pha 2: ra don. Goi sau khi CA HAI ben da chot muc tieu.
-func resolve(victim: BattleUnit) -> void:
+## Tra ve ket qua cua don ({damage, skill, crit}); rong neu khong danh.
+func resolve(victim: BattleUnit) -> Dictionary:
 	if victim == null or fighter == null:
-		return
-	fighter.strike(victim.fighter, _rng, _rules)
+		return {}
+	return fighter.strike(victim.fighter, _rng, _rules)
 
 
 ## Chon muc tieu: gan nhat, nhung khoang cach theo truc y duoc tinh nang hon

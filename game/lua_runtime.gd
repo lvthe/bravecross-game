@@ -27,12 +27,53 @@ var errors: Array[String] = []
 
 
 ## Mo may ao va cai require. Tra ve false neu khong co addon.
+## getSpriteFromSpriteCatch / getUIAnimFromSpriteCatch cua engine: tao mot
+## ARMATURE (hoat anh xuong) theo ten. Ma goc goi 216 + 31 lan, va 440 lan
+## _Lua_playAnimation — nha cua canh Main ("UIBingYing", "UIBaoXiang"...),
+## hieu ung, tuong trong giao dien. Du lieu la chinh armature cua ban goc
+## (map/<ten>.xml) do work/export.py xuat ra assets_ref/<ten>/; SngRig la bo
+## phat da dung cho tran danh.
+##
+## Tra ve mot HOP Control co 0 (de cac API node cua lop gia lap dung duoc),
+## voi SngRig lam con, goc cua rig trung diem dat cua hop — Cocos dat armature
+## theo diem goc cua no. Khong co du lieu thi tra hop rong va ghi ten lai.
+var rig_thieu: Dictionary = {}
+
+func _tao_rig(ten: String) -> Control:
+	var hop := _new_node("node")
+	hop.set_meta("kind", "rig")
+	hop.set_meta("rig_ten", ten)
+	var thu_muc := "res://assets_ref/%s" % ten
+	var bien_the := ""
+	# Ten la BIEN THE nam trong mot file armature khac ten: "UITongYong_ItemLight"
+	# nam trong UITongYong, "Player004M03F" nam trong Player004 (co trong
+	# map/Player004.xml). SngRig dat ten bien the day du dung nhu vay
+	# (Archer_WeaponNormal). Khong co thu muc trung ten thi thu tien to ngan dan,
+	# lay cai DAI NHAT co du lieu, va xin dung bien the do.
+	if not FileAccess.file_exists("%s/%s.json" % [thu_muc, ten]):
+		for i in range(ten.length() - 1, 3, -1):
+			var goc := ten.substr(0, i).trim_suffix("_")
+			if FileAccess.file_exists("res://assets_ref/%s/%s.json" % [goc, goc]):
+				thu_muc = "res://assets_ref/%s" % goc
+				bien_the = ten
+				break
+	var tep := "%s/%s.json" % [thu_muc, thu_muc.get_file()]
+	if FileAccess.file_exists(tep):
+		var rig := SngRig.build(thu_muc, bien_the, true)
+		if rig != null:
+			hop.add_child(rig)
+			return hop
+	rig_thieu[ten] = int(rig_thieu.get(ten, 0)) + 1
+	return hop
+
+
 func open() -> bool:
 	if not ClassDB.class_exists("LuaState"):
 		errors.append("khong co LuaState — chay: python tools/fetch_addons.py")
 		return false
 	state = ClassDB.instantiate("LuaState")
 	state.open_libraries()
+	state.globals["_godot_tao_rig"] = _tao_rig
 	state.globals["_godot_read"] = _read
 	state.globals["_godot_log"] = func(s): print("[lua] ", s)
 	state.globals["_godot_copy"] = _copy
@@ -43,6 +84,21 @@ func open() -> bool:
 	state.globals["_godot_text"] = _text
 	state.globals["_godot_co_file"] = _co_file
 	state.globals["_godot_doc_file"] = _doc_file
+	state.globals["_godot_replace_scene"] = _replace_scene
+	state.globals["_godot_ra_the_gioi"] = _ra_the_gioi
+	state.globals["_godot_vao_node"] = _vao_node
+	state.globals["_godot_bo_xgg"] = _bo_xgg
+	state.globals["_godot_danh_tran"] = _danh_tran
+	state.globals["_godot_tao_tran"] = _tao_tran
+	# LGG_GetSetFilePath (lua/bootstrap.lua): thu muc ghi duoc, dang duong dan
+	# that de io.open cua Lua mo duoc.
+	var ghi := ProjectSettings.globalize_path("user://")
+	if not ghi.ends_with("/"):
+		ghi += "/"
+	state.globals["_godot_thu_muc_ghi"] = ghi
+	state.globals["_godot_doc_ngoai"] = _doc_ngoai
+	state.globals["_godot_ghi_ngoai"] = _ghi_ngoai
+	state.globals["_godot_xoa_ngoai"] = _xoa_ngoai
 	# Kich thuoc cua so. Ban goc doc qua hai bien toan cuc nay
 	# (CPublic:GetWinSize tra thang chung), va SetNodeAdaptWinSize chia cho
 	# chung — de la bong thi bao 'arithmetic on a table value'.
@@ -51,8 +107,12 @@ func open() -> bool:
 		var st := Engine.get_main_loop() as SceneTree
 		if st.root != null and st.root.size.x > 0:
 			vp = Vector2(st.root.size)
+	# Cua so ENGINE (don vi thiet ke), neu cong cu canh dat — xem cua_so_engine.
+	if cua_so_engine != Vector2.ZERO:
+		vp = cua_so_engine
 	state.globals["screenWidth"] = vp.x
 	state.globals["screenHeight"] = vp.y
+	_cao_the_gioi = vp.y
 	# require tu viet: doi "a.b.c" ra "res://sc/a/b/c.lua", nho ket qua lai
 	# dung kieu package.loaded cua Lua that (mot module chi chay mot lan).
 	var r = state.do_string("""
@@ -149,6 +209,61 @@ func set_ui_root(n: Node) -> void:
 	_goc_ui = n
 
 
+## San khau: noi cac CANH duoc nap vao va thay nhau. Ban goc nap file cua canh
+## voi cha = nil (CSceneManager:sngLoadXggAsync -> LoadFilesAsync(..., nil)),
+## tuc goc cua file — mot CCScene nhu g_MainUIScene — dung rieng, roi
+## S_CCDirector:replaceScene chon canh nao dang chay. Chua dat san khau thi
+## cha = nil van roi vao UIRootLayer nhu truoc.
+var _san: Node = null
+
+func set_stage(n: Node) -> void:
+	_san = n
+
+
+func _replace_scene(canh: Node) -> void:
+	if _san == null or canh == null:
+		return
+	if canh.get_parent() != _san:
+		if canh.get_parent() != null:
+			canh.get_parent().remove_child(canh)
+		_san.add_child(canh)
+	for c in _san.get_children():
+		if c is CanvasItem:
+			c.visible = (c == canh)
+
+
+## convertToWorldSpace / convertToNodeSpace cua Cocos. Khong gian cua mot node
+## lay goc o goc DUOI-TRAI cua o node, y huong len; the gioi lay goc o goc
+## duoi-trai cua cua so. Di qua chuoi bien doi cua Godot (_bien_doi) chu khong
+## tu cong toa do: phong to va xoay cua cha deu phai tinh.
+var _cao_the_gioi := 640.0
+
+func _ra_the_gioi(n: Node, x: float, y: float) -> Vector2:
+	if not (n is Control):
+		return Vector2(x, y)
+	var p := _bien_doi(n) * Vector2(x, (n as Control).size.y - y)
+	return Vector2(p.x, _cao_the_gioi - p.y)
+
+
+func _vao_node(n: Node, x: float, y: float) -> Vector2:
+	if not (n is Control):
+		return Vector2(x, y)
+	var q := _bien_doi(n).affine_inverse() * Vector2(x, _cao_the_gioi - y)
+	return Vector2(q.x, (n as Control).size.y - q.y)
+
+
+## sngXggMgrPool_popXgg: quen file da nap de lan sau nap lai duoc (xem
+## lua/bootstrap.lua). Chua giai phong node.
+func _bo_xgg(duong: String) -> void:
+	_da_nap.erase(duong.get_file().get_basename())
+
+
+## Cua so cua ENGINE, don vi thiet ke — dat TRUOC open(). Zero = dung co cua
+## so Godot nhu truoc (cac cong cu xem man). Cong cu canh dat cao 768, rong
+## theo ti le man: may ao do duoc ca 13 CCScene cua ban goc la 1429x768.
+var cua_so_engine := Vector2.ZERO
+
+
 func _load_xgg(duong: String, cha = null) -> Array:
 	var ten := duong.get_file().get_basename()
 	if _da_nap.has(ten) and is_instance_valid(_da_nap[ten]):
@@ -161,10 +276,55 @@ func _load_xgg(duong: String, cha = null) -> Array:
 	var man := XggLayout.build(p)
 	if man == null:
 		return []
-	var cha_node: Node = cha if cha is Node else _goc_ui
+	var cha_node: Node = cha if cha is Node else (_san if _san != null else _goc_ui)
 	var ds: Array = []
 	for c in man.get_children():
 		_gom_ten(c, ds)
+	# CANH len san khau: engine dat CCScene tai goc cua so, co bang cua so. May
+	# ao do duoc ca 13 CCScene 1429x768 tai (0,0), trong khi file ghi (1,-1),
+	# neo 0,5, co 1366x768 — CCScene bo qua neo khi dat cho. Dung theo file thi
+	# ca canh Main lech sang trai 682 px va xuong 257 px, ra ngoai khung.
+	if cha_node != null and cha_node == _san and _san is Control:
+		for c in man.get_children():
+			if c is Control and String(c.get_meta("type_name", "")) == "CCScene":
+				c.position = Vector2.ZERO
+				c.size = (_san as Control).size
+				c.set_meta("parent_h", (_san as Control).size.y)
+				c.set_meta("cocos", Vector4(0, 0, 0, 0))
+				# Con TRUC TIEP cua canh da dat theo co trong FILE. g_GameUIScene
+				# (canh Battle) ghi 40x40, nen g_BattleFieldLayer — (0,0), neo 0 —
+				# dung o y = 40 - 40 = 0: MEP TREN, va ca san tran nam ngoai khung
+				# (goc nut tran do duoc o y = 33 tren man). Cocos dat con theo goc
+				# DUOI-trai cua cha: dat lai theo chieu cao that. g_MainUIScene ghi
+				# san 768 nen khong doi gi.
+				var h_canh := (_san as Control).size.y
+				for k in c.get_children():
+					if k is Control and k.has_meta("cocos"):
+						var v: Vector4 = k.get_meta("cocos")
+						if XggLayout.bo_qua_neo(String(k.get_meta("type_name", ""))):
+							v.z = 0.0
+							v.w = 0.0
+						var sz: Vector2 = (k as Control).size
+						k.position = Vector2(v.x - v.z * sz.x, h_canh - (v.y - v.w * sz.y) - sz.y)
+						k.set_meta("parent_h", h_canh)
+	# Bo cuc nap vao MOT CHA KHAC: node cap cao nhat duoc dung theo khung thiet
+	# ke 960x640, nhung toa do Cocos cua no la tuong doi voi CHA THAT (goc
+	# duoi-trai). Doi lai theo chieu cao that cua cha, giu nguyen toa do Cocos
+	# — nhu Node:addChild. Truoc day khung hop thoai (UI_NormalDlg) nap vao
+	# g_MainUIScene cao 768 van giu parent_h = 640, nen UIRootLayer dat cao hon
+	# 128, phong 1,2 quanh goc duoi-trai, va dai nut tren cung bi cat mat.
+	elif cha_node is Control and (cha_node as Control).size.y > 0.0:
+		var h_cha := (cha_node as Control).size.y
+		for c in man.get_children():
+			if c is Control and c.has_meta("cocos") \
+					and absf(float(c.get_meta("parent_h", h_cha)) - h_cha) > 0.5:
+				var v: Vector4 = c.get_meta("cocos")
+				if XggLayout.bo_qua_neo(String(c.get_meta("type_name", ""))):
+					v.z = 0.0
+					v.w = 0.0
+				var sz: Vector2 = (c as Control).size
+				c.position = Vector2(v.x - v.z * sz.x, h_cha - (v.y - v.w * sz.y) - sz.y)
+				c.set_meta("parent_h", h_cha)
 	if cha_node != null:
 		XggLayout.ghep_vao_node(cha_node, man)
 		_da_nap[ten] = cha_node
@@ -203,6 +363,13 @@ func _new_node(kieu: String) -> Control:
 			var np := NinePatchRect.new()
 			np.draw_center = true
 			n = np
+		"mau":
+			# CCLayerColorRoundRect tao luc chay: cung ColorRect nhu lop mau
+			# nap tu .xgg (xgg_layout.gd), de setColor/setOpacity cua
+			# cocos.lua (la_lop_mau) doi dung mau cua chinh no.
+			var cr := ColorRect.new()
+			cr.color = Color(0, 0, 0, 0)
+			n = cr
 		"sprite":
 			var tr := TextureRect.new()
 			tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -212,10 +379,32 @@ func _new_node(kieu: String) -> Control:
 			n = Control.new()
 	n.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	n.set_meta("kind", kieu)
-	n.set_meta("type_name", "CCLabelTTF" if kieu == "label" else "CCNode")
+	# type_name quyet dinh cach dat vi tri: lop (CCLayer*, CCScene) bo qua
+	# diem neo nhu Cocos (cocos.lua la_lop).
+	n.set_meta("type_name", {"label": "CCLabelTTF", "mau": "CCLayerColorRoundRect",
+			"lop": "CCLayer"}.get(kieu, "CCNode"))
 	n.set_meta("cocos", Vector4(0, 0, 0, 0))
 	n.set_meta("parent_h", 640.0)
 	return n
+
+
+const _TRAN_GOC := preload("res://battle/tran_goc.gd")
+
+## Tran cua g_BattleField gia (lua/san_tran.lua). Tra CHUOI JSON — Lua giai
+## bang cjson; Dictionary cua Godot sang Lua khong doc duoc nhu bang.
+func _danh_tran(ta_json, dich_json, hat) -> String:
+	return _TRAN_GOC.danh(str(ta_json), str(dich_json), int(hat) if hat != null else 0)
+
+
+const _SAN_TRAN_VE := preload("res://battle/san_tran_ve.gd")
+
+## Tran CO HINH (lua/san_tran.lua): mot Node2D gan vao node g_BattleField. Lua
+## goi thang bat_dau / buoc / chot / dung tren doi tuong tra ve.
+func _tao_tran(cha) -> Node2D:
+	var t: Node2D = _SAN_TRAN_VE.new()
+	if cha is Node:
+		(cha as Node).add_child(t)
+	return t
 
 
 ## Xep lai anh em theo zOrder. Ben Lua khong voi toi lop XggLayout duoc, nen
@@ -272,6 +461,36 @@ func _doc_file(p: String) -> Variant:
 	if not FileAccess.file_exists(d):
 		return null
 	return FileAccess.get_file_as_string(d)
+
+
+## Doc / ghi / xoa file theo DUONG DAN THAT, cho io.open cua Lua (xem
+## lua/bootstrap.lua). io.open cua LuaJIT tren Windows goi fopen voi trang ma
+## ANSI, nen duong dan co ky tu ngoai ASCII khong mo duoc — ma thu muc user://
+## cua du an nay mang ten "BraveCross — game moi", co dau gach dai. FileAccess
+## cua Godot thi mo duoc.
+func _doc_ngoai(p: String) -> Variant:
+	if not FileAccess.file_exists(p):
+		return null
+	return FileAccess.get_file_as_string(p)
+
+
+func _ghi_ngoai(p: String, s: String, noi: bool) -> bool:
+	var f: FileAccess = null
+	if noi and FileAccess.file_exists(p):
+		f = FileAccess.open(p, FileAccess.READ_WRITE)
+		if f != null:
+			f.seek_end()
+	else:
+		f = FileAccess.open(p, FileAccess.WRITE)
+	if f == null:
+		return false
+	f.store_string(s)
+	f.close()
+	return true
+
+
+func _xoa_ngoai(p: String) -> bool:
+	return DirAccess.remove_absolute(p) == OK
 
 
 ## Chay mot doan Lua. Tra ve ket qua, hoac null va ghi vao errors.
@@ -339,6 +558,131 @@ func tick(dt: float) -> int:
 			errors.append(m)
 		return 0
 	return int(r) if typeof(r) in [TYPE_INT, TYPE_FLOAT] else 0
+
+
+## Cham. Engine ban goc tu tim node bi cham roi goi ham Lua cua no; o day
+## GDScript tim node (vi can bien doi toa do cua Godot), con goi ham nao voi
+## doi so gi thi o lua/cocos.lua (M.cham).
+##
+## Node bi cham la node TREN CUNG — ve sau thi nam tren — co ten cham, dang
+## bat (setEnableLuaTouch), dang hien, va diem cham nam trong o cua no. Node
+## da nhan Begin thi giu cham toi luc tha tay, du tay da truot ra ngoai:
+## chinh vi the ma goc moi co doi so bTouchInSide.
+var _goc_cham: Node = null
+var _dang_cham: Control = null
+
+## Goc de do cham (mac dinh la UIRootLayer). Nen dat la ca khung, vi lop che
+## va nut Back cua hop thoai nam ngoai UIRootLayer.
+func set_touch_root(n: Node) -> void:
+	_goc_cham = n
+
+
+## Nhan mot su kien chuot. Tra ve true neu mot node cua ban goc nhan no.
+## Chi nghe chuot: Godot mac dinh doi cham man hinh thanh chuot
+## (emulate_mouse_from_touch), nghe ca hai thi mot cai cham thanh hai.
+func touch(e: InputEvent) -> bool:
+	if e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT:
+		return touch_at("Begin" if e.pressed else "End", e.position)
+	if e is InputEventMouseMotion and (e.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
+		return touch_at("Move", e.position)
+	return false
+
+
+## Cham tai diem p (toa do canvas). pha: Begin / Move / End.
+func touch_at(pha: String, p: Vector2) -> bool:
+	var goc: Node = _goc_cham if _goc_cham != null else _goc_ui
+	if state == null or goc == null:
+		return false
+	var c := _toa_do_cocos(goc, p)
+	if pha == "Begin":
+		_dang_cham = null
+		var ds: Array = []
+		_ung_vien(goc, p, ds)
+		for n in ds:
+			if _goi_cham("Begin", n, c.x, c.y, null):
+				_dang_cham = n
+				return true
+		return false
+	if _dang_cham == null or not is_instance_valid(_dang_cham):
+		_dang_cham = null
+		return false
+	var trong := _trung(_dang_cham, p)
+	if pha == "Move":
+		_goi_cham("Move", _dang_cham, trong, c.x, c.y)
+		return true
+	var n := _dang_cham
+	_dang_cham = null
+	_goi_cham("End", n, trong, c.x, c.y)
+	return true
+
+
+func _goi_cham(pha: String, n: Node, a, b, c) -> bool:
+	state.globals["_cham_node"] = n
+	state.globals["_cham_a"] = a
+	state.globals["_cham_b"] = b
+	state.globals["_cham_c"] = c
+	var r = state.do_string("""
+		return require('cocos').cham('%s', _cham_node, _cham_a, _cham_b, _cham_c)
+	""" % pha)
+	state.globals["_cham_node"] = null
+	if _is_error(r):
+		errors.append("cham %s: %s" % [pha, r])
+		return false
+	return r == true
+
+
+## Moi node nhan cham duoi diem p, tu TREN xuong: con ve sau nam tren con ve
+## truoc, con nam tren cha. Nhanh bi an thi bo ca nhanh; o cat xen
+## (clip_contents, vd danh sach cuon) thi diem ngoai o khong cham duoc con.
+func _ung_vien(n: Node, p: Vector2, ds: Array) -> void:
+	if n is CanvasItem and not n.visible:
+		return
+	if n is Control and n.clip_contents and not _trung(n, p):
+		return
+	var con: Array = []
+	for i in range(n.get_child_count()):
+		con.append(n.get_child(i))
+	# z_index do addChild(con, z) dat: Godot ve z lon hon len tren.
+	con.sort_custom(func(x, y):
+		var zx: int = x.z_index if x is CanvasItem else 0
+		var zy: int = y.z_index if y is CanvasItem else 0
+		if zx != zy:
+			return zx > zy
+		return x.get_index() > y.get_index())
+	for k in con:
+		_ung_vien(k, p, ds)
+	if n is Control and n.has_meta("touch") and String(n.get_meta("touch")) != "" \
+			and bool(n.get_meta("lua_touch", true)) and _trung(n, p):
+		ds.append(n)
+
+
+## p (toa do canvas) co nam trong o cua n khong. Tu nhan bien doi len theo
+## chuoi cha thay vi get_global_transform(): cay dung trong phep kiem khong
+## nam trong SceneTree, ma get_global_transform doi phai nam trong.
+static func _trung(n: Control, p: Vector2) -> bool:
+	if n.size.x <= 0.0 or n.size.y <= 0.0:
+		return false
+	return Rect2(Vector2.ZERO, n.size).has_point(_bien_doi(n).affine_inverse() * p)
+
+
+static func _bien_doi(n: CanvasItem) -> Transform2D:
+	var t := n.get_transform()
+	var p := n.get_parent()
+	while p is CanvasItem:
+		t = (p as CanvasItem).get_transform() * t
+		p = p.get_parent()
+	return t
+
+
+## Doi diem canvas ra toa do Cocos cua goc: goc duoi-trai, y huong len.
+static func _toa_do_cocos(goc: Node, p: Vector2) -> Vector2:
+	var q := p
+	var h := 640.0
+	if goc is Control:
+		q = _bien_doi(goc).affine_inverse() * p
+		if goc.size.y > 0.0:
+			h = goc.size.y
+	return Vector2(q.x, h - q.y)
 
 
 ## Cac API Cocos bi goi ma minh chua lam — dem duoc, de biet con thieu gi.

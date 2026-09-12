@@ -25,6 +25,9 @@ M.tag_lookups = 0
 M.tag_misses = 0
 M.tag_miss_log = {}
 M.cell_errors = {}   -- o danh sach dung hong -> de doc ra
+-- Lop RIENG theo ten node trong .xgg: node mang ten nay tra ham o bang nay
+-- truoc (bang do tu __index ve Node). g_BattleField: lua/san_tran.lua.
+M.lop_rieng = {}
 
 local function note(name)
 	M.missing[name] = (M.missing[name] or 0) + 1
@@ -63,7 +66,8 @@ local function wrap(gd)
 	if u == nil then
 		u = newproxy(true)
 		local mt = getmetatable(u)
-		mt.__index = Node
+		local ten = gd:has_meta('xgg_name') and tostring(gd:get_meta('xgg_name')) or nil
+		mt.__index = (ten ~= nil and M.lop_rieng[ten]) or Node
 		mt.__tostring = function() return '<CCNode>' end
 		gd_of[u] = gd
 		boxed[id] = u
@@ -127,14 +131,27 @@ local function parent_h(gd)
 	return 0.0
 end
 
-local function to_godot(gd, x, y)
+-- Diem neo phai la HAI SO. Khong phai thi van nem loi (khong bia hanh vi cho
+-- engine) nhung kem cho goi: loi trong coroutine doi canh chi con lai mot
+-- dong ('sngLoadingNext : cocos.lua:140: ... ax (a table value)') va khong ai
+-- biet node nao, ai goi.
+local function neo_so(gd)
 	local ax, ay = anchor_of(gd)
+	if type(ax) ~= 'number' or type(ay) ~= 'number' then
+		error(string.format('diem neo khong phai so (%s, %s) cua %s%s', type(ax), type(ay),
+			tostring(gd), debug.traceback('', 3)), 3)
+	end
+	return ax, ay
+end
+
+local function to_godot(gd, x, y)
+	local ax, ay = neo_so(gd)
 	local sz = gd.size
 	return x - ax * sz.x, parent_h(gd) - (y - ay * sz.y) - sz.y
 end
 
 local function to_cocos(gd)
-	local ax, ay = anchor_of(gd)
+	local ax, ay = neo_so(gd)
 	local sz = gd.size
 	local p = gd.position
 	return p.x + ax * sz.x, parent_h(gd) - p.y - sz.y + ay * sz.y
@@ -210,6 +227,106 @@ function Node:setStringTag(s)
 	raw(self):set_meta('cls', s)
 end
 
+-- Cham ---------------------------------------------------------------------
+-- Engine ban goc goi ham xu ly theo khuon ten co san trong chinh libgame.so:
+-- 'onTouchEnd_%s', 'onTouchBegin_%s', 'onTouchMove_%s', va '%s_%s' ghep voi
+-- 'onTouchEndEx' (chuoi o 0x7b10fd..0x7b1130). Ten cham va doi tuong nhan
+-- den tu hai cho:
+--   * ban ghi node trong .xgg (+0x0C ten cham, +0x14 TEN BIEN TOAN CUC cua
+--     doi tuong — xem work/xgg.py), 2.005 node; XggLayout gan thanh meta
+--     'touch' va 'touch_obj';
+--   * luc chay: setLuaTouchName (318 cho) va setCallbackLuaObject (325 cho).
+--
+-- Doi so, dem tu chu ky ham trong ma goc:
+--   onTouchBegin_X(node)                 203 ham
+--   onTouchMove_X(node, bTrongO, x, y)    11 ham
+--   onTouchEnd_X(node, bTouchInSide)     cap tren 1.500 ham
+--   onTouchEndEx_X(node, x, y)            68 ham
+-- EndEx KHONG goi sau End: 33/66 ham EndEx tu goi lai End(node, false) cua
+-- chinh no (vd CUIAchieve.lua:597) — neu engine goi ca hai thi End chay hai
+-- lan. Nen EndEx la loi ra khi cham bi tuot mat (danh sach cuon cuop cham),
+-- khong phai khi tha tay. Ta chua co cuon bang cham nen chua goi EndEx.
+--
+-- Gia tri tra ve cua Begin KHONG quyet dinh co nhan cham hay khong: ham End
+-- tu kiem lai dung dieu kien ma Begin da kiem (CUIAchieve.lua:532 va :569),
+-- va 42 lop chi co Begin ma khong co End.
+
+M.doi_tuong_cham = {}   -- id node Godot -> doi tuong Lua (gan luc chay)
+M.nhat_ky_cham = {}     -- ten ham da goi (toi da 64), de phep kiem doc lai
+M.loi_cham = {}
+
+local function doi_tuong_cua(gd)
+	local o = M.doi_tuong_cham[gd:get_instance_id()]
+	if o ~= nil then return o end
+	if gd:has_meta('touch_obj') then
+		local ten = tostring(gd:get_meta('touch_obj'))
+		-- rawget: bien chua co thi la nil that, khong phai bong.
+		if ten ~= '' then return rawget(_G, ten) end
+	end
+	return nil
+end
+
+function Node:setCallbackLuaObject(obj)
+	M.doi_tuong_cham[raw(self):get_instance_id()] = obj
+end
+
+function Node:getCallbackLuaObject()
+	return doi_tuong_cua(raw(self))
+end
+
+function Node:setLuaTouchName(ten)
+	raw(self):set_meta('touch', tostring(ten or ''))
+end
+
+function Node:getLuaTouchName()
+	local gd = raw(self)
+	return gd:has_meta('touch') and tostring(gd:get_meta('touch')) or ''
+end
+
+function Node:setEnableLuaTouch(b)
+	raw(self):set_meta('lua_touch', b ~= false)
+end
+
+-- Mac dinh la BAT: 187 lan ma goc goi setEnableLuaTouch, gan het la de TAT
+-- tam roi bat lai (CUIGame.lua: false d.97, true d.258).
+function Node:getEnableLuaTouch()
+	local gd = raw(self)
+	if gd:has_meta('lua_touch') then return gd:get_meta('lua_touch') end
+	return true
+end
+
+-- Goi tu GDScript (LuaRuntime.touch_at) khi node gd bi cham. Tra ve true neu
+-- node co doi tuong nhan — tuc engine co dang ky no — du doi tuong co ham cho
+-- pha nay hay khong: node da dang ky thi nuot cham, nen nut o duoi khong an.
+function M.cham(pha, gd, a, b, c)
+	local ten = gd:has_meta('touch') and tostring(gd:get_meta('touch')) or ''
+	if ten == '' then return false end
+	local obj = doi_tuong_cua(gd)
+	if type(obj) ~= 'table' then return false end
+	local k = 'onTouch' .. pha .. '_' .. ten
+	-- pcall: lop cua ban goc co the dat __index nem loi khi thieu khoa.
+	local co, f = pcall(function() return obj[k] end)
+	if co and type(f) == 'function' then
+		local sender = wrap(gd)
+		local ok, err
+		if pha == 'Begin' then
+			ok, err = pcall(f, obj, sender)
+		elseif pha == 'Move' then
+			ok, err = pcall(f, obj, sender, a, b, c)
+		elseif pha == 'End' then
+			ok, err = pcall(f, obj, sender, a)
+		else
+			ok, err = pcall(f, obj, sender, a, b)
+		end
+		if #M.nhat_ky_cham >= 64 then table.remove(M.nhat_ky_cham, 1) end
+		M.nhat_ky_cham[#M.nhat_ky_cham + 1] = k
+		if not ok then
+			M.loi_cham[#M.loi_cham + 1] = k .. ': ' .. tostring(err)
+		end
+	end
+	return true
+end
+
 function Node:getTag()
 	local gd = raw(self)
 	if gd:has_meta('tag') then
@@ -233,15 +350,32 @@ end
 function Node:addChild(child, z, tag)
 	local c = unwrap(child)
 	local p = c:get_parent()
+	-- Cocos: addChild KHONG doi toa do cua node — van la (x, y) tuong doi voi
+	-- cha, goc duoi-trai. O Godot toa do phu thuoc CHIEU CAO CHA (parent_h),
+	-- nen phai doi lai. Truoc day node tao luc chay (_new_node) giu
+	-- parent_h = 640 mai: nha cua canh Main (armature, addChild vao nut nha roi
+	-- setPosition(rong/2, 0) — day nut) roi thap hon ~480 px, ra ngoai khung.
+	local la_o = c:is_class('Control')
+	local cx, cy
+	if la_o then cx, cy = to_cocos(c) end
 	if p ~= nil then
 		p:remove_child(c)
 	end
-	raw(self):add_child(c)
+	local cha = raw(self)
+	cha:add_child(c)
+	if la_o and cha:is_class('Control') then
+		c:set_meta('parent_h', cha.size.y)
+		local gx, gy = to_godot(c, cx, cy)
+		c.position = Vector2(gx, gy)
+	end
 	if tag ~= nil then
 		c:set_meta('tag', tag)
 	end
+	-- zOrder cua Cocos: XEP LAI anh em nhu setZOrder, khong dat z_index. Ban goc
+	-- truyen toi 99999 (CUISubtitle:AddToParent) ma Godot chi nhan +-4096.
 	if z ~= nil then
-		c.z_index = z
+		c:set_meta('zorder', z)
+		_godot_zsort(cha)
 	end
 end
 
@@ -283,6 +417,12 @@ end
 
 function Node:setPosition(x, y)
 	if y == nil then
+		-- setPosition(so, nil): ma goc tinh ra y = nil. Van nem loi (khong
+		-- bia hanh vi cho engine), nhung kem cho goi — loi trong coroutine doi
+		-- canh chi con lai mot dong, khong co stack.
+		if type(x) ~= 'table' then
+			error('setPosition(' .. tostring(x) .. ', nil)' .. debug.traceback('', 2), 2)
+		end
 		x, y = x.x, x.y
 	end
 	local gd = raw(self)
@@ -312,6 +452,20 @@ end
 function Node:getPositionY()
 	local _, y = to_cocos(raw(self))
 	return y
+end
+
+-- Doi toa do giua khong gian node va the gioi. Ma goc goi 237 lan, LUON voi
+-- hai so (x, y) va LUON nhan ve hai so (211 cho gan 'x, y = ...'), nen chi
+-- lam dang do. Thieu hai ham nay thi ket qua la nil, va CUIMain:InitUI chet
+-- o CUIChatting.lua:279 — btnChatting:setPositionY(nil).
+function Node:convertToWorldSpace(x, y)
+	local v = _godot_ra_the_gioi(raw(self), x, y)
+	return v.x, v.y
+end
+
+function Node:convertToNodeSpace(x, y)
+	local v = _godot_vao_node(raw(self), x, y)
+	return v.x, v.y
 end
 
 -- Tra HAI gia tri, khong phai mot bang. Da dem tren ca ma goc: 742 cho viet
@@ -563,6 +717,28 @@ function Node:initWithFile(path)
 	return _godot_frame(raw(self), tostring(path))
 end
 
+-- Phat mot dong tac cua armature (hop do _godot_tao_rig tao, con la SngRig).
+-- Ma goc goi 440 lan, vd nha cua canh Main: pDeco:_Lua_playAnimation("Play").
+function Node:_Lua_playAnimation(ten)
+	local gd = raw(self)
+	for i = 0, gd:get_child_count() - 1 do
+		local r = gd:get_child(i)
+		if r:has_method('animations') and r:has_method('play') then
+			return r:play(tostring(ten))
+		end
+	end
+	return false
+end
+
+-- Gan anh theo TEN KHUNG (giong setDisplayFrame(spriteFrameByName(ten))). Ma
+-- goc goi 69 lan luc vao canh Main: khung chon, chan dung, tab, bieu tuong.
+function Node:initWithSpriteFrameName(ten)
+	if ten == nil or ten == '' then
+		return false
+	end
+	return _godot_frame(raw(self), tostring(ten))
+end
+
 M.spriteFrameCache = {
 	spriteFrameByName = function(_, name) return frame(name) end,
 	addSpriteFramesWithFile = function() end,
@@ -577,6 +753,11 @@ M.luaFont = {
 		if key == nil then return '' end
 		return _godot_text(tostring(key))
 	end,
+	-- initGameConfig (set.lua:505) goi g_CLuaFont:LoadFile("conf/text_vi.xgg").
+	-- Bang chu nay DA nap san tu data_ref/text_vi.json — do text_table.py dung
+	-- tu chinh file do — nen chi can bao thanh cong. Thieu ham nay thi
+	-- initGameConfig chet ngay dong do, bo do phan con lai cua no.
+	LoadFile = function() return true end,
 }
 
 -- Danh sach cuon ------------------------------------------------------------
@@ -621,6 +802,7 @@ function TableView:reloadData()
 		end
 	end
 	self.cells = {}
+	self.theo_so = {}
 	if self.delegate == nil then
 		return
 	end
@@ -659,6 +841,7 @@ function TableView:reloadData()
 				v.position = Vector2(self.le_trai, y)
 				v.visible = true
 				self.cells[#self.cells + 1] = cell
+				self.theo_so[i] = cell
 			end
 			y = y + h
 		end
@@ -667,6 +850,14 @@ end
 
 function TableView:dequeueCell(_)
 	return nil          -- luon tao moi; dung nhung cham hon, khong sai
+end
+
+-- O thu idx (tinh tu 0, nhu CCTableView) — hoac nil neu o do chua dung.
+-- CUIGuildTableView:GetItem (CUIGuildTableViewList.lua:376) tru 1 tu chi so
+-- Lua roi goi day, lay :getView(); man xep tuong (CUIBattleDeploy
+-- :getItemByHeroID) di qua cho nay moi khi bam vao mot tuong.
+function TableView:cellAtIndex(idx)
+	return self.theo_so[idx]
 end
 
 function TableView:getContentOffset() return 0, 0 end
@@ -679,7 +870,7 @@ M.tableViewMgr = {
 		-- goc khac — lay sang thi ca danh sach truot thang sang phai.
 		return setmetatable({
 			container = container, delegate = delegate,
-			count = 0, cells = {}, le_trai = 0.0,
+			count = 0, cells = {}, theo_so = {}, le_trai = 0.0,
 		}, TableView)
 	end,
 	CreateTableViewCell = function(_, _, mau)
@@ -711,6 +902,14 @@ M.director = {
 	setDispatchEvents = function() end,
 	setIsCleanLuaStack = function() end,
 	getNoTouchTime = function() return 0 end,
+	-- Thay canh dang chay. 8 cho trong ma goc, quan trong nhat la
+	-- CSceneManager:OnLoadNextScene (d.633). Canh nam tren SAN KHAU cua
+	-- LuaRuntime (set_stage); thay canh = chi hien canh do.
+	replaceScene = function(_, canh)
+		M.canh_dang_chay = canh
+		if _godot_replace_scene ~= nil then _godot_replace_scene(M.raw(canh)) end
+	end,
+	getRunningScene = function() return M.canh_dang_chay end,
 	release = function() end,
 }
 
@@ -741,9 +940,113 @@ function Node:numberOfRunningActions()
 	return n
 end
 
--- Goi moi khung hinh tu GDScript.
+-- Hen gio (S_CCSchedule) ----------------------------------------------------
+-- system/engine.lua:22 'S_CCSchedule = CCSchedule:new()' la lop C++, nen
+-- khong cai thi ca bo hen gio la bong va moi thu chay theo nhip dung im:
+-- CSceneManager doi canh bang mot coroutine chi di tiep khi scheduleOnce goi
+-- lai sngLoadingNext, va CTimerManager:BeginTimer (CTimerManager.lua:128) dat
+-- nhip 1/24 giay cho moi hen gio cua ma goc. Ma goc goi scheduleOnce 106 lan,
+-- schedule 57, scheduleUpdate 12.
+--
+-- Ngu nghia theo chu thich cua chinh ban goc (CTimerManager.lua:102-117):
+--   timer = schedule(obj, ten_ham, khoang = 0, dung = false)
+--   timer = schedule(ten_ham_toan_cuc, khoang = 0, dung = false)
+--   timer = scheduleUpdate(obj, uu_tien = 0, dung = false)  -> obj:update(dt)
+--   timer:pause() / resume() / stop()
+-- Khoang 0 la moi khung hinh. Nhu CCTimer cua Cocos 1.x: du khoang thi goi
+-- MOT lan roi dem lai tu 0, khong goi bu.
+local lich = { ds = {} }
+M.lich = lich
+M.loi_hen = {}
+
+local function goi_hen(h, dt)
+	local f, obj
+	if type(h.obj) == 'string' then
+		f = rawget(_G, h.obj)
+	else
+		obj = h.obj
+		local co, v = pcall(function() return obj[h.ham] end)
+		f = co and v or nil
+	end
+	if type(f) ~= 'function' then return end
+	local ok, err
+	if obj ~= nil then ok, err = pcall(f, obj, dt) else ok, err = pcall(f, dt) end
+	if not ok then
+		if #M.loi_hen >= 64 then table.remove(M.loi_hen, 1) end
+		M.loi_hen[#M.loi_hen + 1] = tostring(h.ham or h.obj) .. ': ' .. tostring(err)
+	end
+end
+
+local Hen = {}
+Hen.__index = Hen
+function Hen:pause() self.dung = true end
+function Hen:resume() self.dung = false end
+function Hen:stop() self.het = true end
+function Hen:retain() return self end
+function Hen:release() end
+
+local function them(obj, ham, khoang, dung, mot_lan)
+	local h = setmetatable({ obj = obj, ham = ham, khoang = tonumber(khoang) or 0,
+		dung = dung == true, mot_lan = mot_lan, da_qua = 0 }, Hen)
+	lich.ds[#lich.ds + 1] = h
+	return h
+end
+
+function lich:schedule(obj, ham, khoang, dung)
+	if type(obj) == 'string' then return them(obj, nil, ham, khoang, false) end
+	return them(obj, ham, khoang, dung, false)
+end
+
+function lich:scheduleUpdate(obj, _, dung)
+	return them(obj, 'update', 0, dung, false)
+end
+
+-- Goi MOT lan, o khung hinh SAU du tre = 0. CSceneManager dua vao dung dieu
+-- nay de nhuong coroutine: goi lai ngay thi no resume chinh coroutine dang
+-- chay, va Lua bao 'cannot resume non-suspended coroutine'.
+function lich:scheduleOnce(obj, ham, tre)
+	if type(obj) == 'string' then return them(obj, nil, ham, nil, true) end
+	return them(obj, ham, tre, nil, true)
+end
+
+function lich:release() end
+
+-- So hen MOT LAN con cho: canh dang doi, man hinh dang doi goi lai.
+function lich.cho()
+	local n = 0
+	for _, h in ipairs(lich.ds) do
+		if h.mot_lan and not h.het then n = n + 1 end
+	end
+	return n
+end
+
+function lich.tick(dt)
+	-- Chup danh sach truoc: hen dat trong luc goi thi chay tu khung sau.
+	local ds = lich.ds
+	lich.ds = {}
+	local con = {}
+	for _, h in ipairs(ds) do
+		if not h.het and not h.dung then
+			h.da_qua = h.da_qua + dt
+			if h.da_qua >= h.khoang then
+				goi_hen(h, h.da_qua)
+				h.da_qua = 0
+				if h.mot_lan then h.het = true end
+			end
+		end
+		if not h.het then con[#con + 1] = h end
+	end
+	for _, h in ipairs(lich.ds) do con[#con + 1] = h end
+	lich.ds = con
+end
+
+-- Goi moi khung hinh tu GDScript. Action truoc, hen gio sau — dung thu tu
+-- cua CCScheduler (bo quan ly action la mot hen gio uu tien cao hon).
+-- Tra ve so viec con dang do: action dang chay + hen mot lan con cho.
 function M.tick(dt)
-	return M.actions.tick(dt)
+	local n = M.actions.tick(dt) or 0
+	lich.tick(dt)
+	return n + lich.cho()
 end
 
 return M

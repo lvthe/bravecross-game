@@ -20,10 +20,18 @@ import os, sys, io, argparse
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 
+# Chon DUNG Lua 5.1: Nakama chay module Lua bang gopher-lua, tuc Lua 5.1.
+# `lupa.LuaRuntime` tron thi lupa tu lay ban moi nhat (5.5) — vua sai doi,
+# vua co may chan han file lua55 (Windows Application Control: "DLL load
+# failed ... blocked this file") trong khi lua51 van nap duoc. Phai lay CA
+# module con, vi `lupa.LuaError` tron cung keo lua55 vao.
 try:
-    import lupa
+    import lupa.lua51 as lupa
 except ImportError:
-    sys.exit('thieu lupa:  pip install lupa')
+    try:
+        import lupa
+    except ImportError:
+        sys.exit('thieu lupa:  pip install lupa')
 
 # `nakama` gia. Giu dung nhung ham ma battle.lua dung toi.
 STUB = r'''
@@ -67,7 +75,7 @@ return { rpcs = rpcs, hooks = hooks, store = store, clock = clock }
 PRELOAD_EQUIP = """
     local src = ...
     package.preload["equipment"] = function()
-        return assert(load(src, "equipment"))()
+        return assert((loadstring or load)(src, "equipment"))()
     end
 """
 
@@ -102,7 +110,7 @@ def main():
     L.execute('''
         local src = ...
         package.preload["hero_data"] = function()
-            return assert(load(src, "hero_data"))()
+            return assert((loadstring or load)(src, "hero_data"))()
         end
     ''', io.open(a.data, encoding='utf-8').read())
 

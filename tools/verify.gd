@@ -82,7 +82,13 @@ func _init() -> void:
 				var bone: String = c["name"]
 				if not rig.bones.has(bone):
 					continue
-				if rig.bones[bone] is Sprite2D or rig.bones[bone] is SngRig:
+				# Xuong la KHUNG; cac thu no co the hien (anh / rig long) la con,
+				# giu trong rig.displays theo chi so anh cua file.
+				var co_hien := false
+				for d in rig.displays.get(bone, []):
+					if d != null:
+						co_hien = true
+				if co_hien:
 					continue
 				var part_names := {}
 				for p2 in raw["parts"]:
@@ -113,12 +119,13 @@ func _init() -> void:
 		# --- anh that su nap duoc
 		var n_tex := 0
 		var n_null := 0
-		for b in rig.bones.values():
-			if b is Sprite2D:
-				if b.texture == null:
-					n_null += 1
-				else:
-					n_tex += 1
+		for ds in rig.displays.values():
+			for b in ds:
+				if b is Sprite2D:
+					if b.texture == null:
+						n_null += 1
+					else:
+						n_tex += 1
 		_check(n_null == 0, "moi Sprite2D deu co texture (%d anh)" % n_tex,
 				"%d node khong nap duoc anh" % n_null)
 
@@ -144,12 +151,13 @@ func _init() -> void:
 			var want_loop: bool = a.get("loop", false)
 			if (anim.loop_mode != Animation.LOOP_NONE) != want_loop:
 				bad_loop.append(a["name"])
-			# moi xuong tham gia: 3 duong (vi tri, xoay, ti le) x so keyframe;
-			# cong moi xuong cua rig mot khoa an/hien
+			# moi xuong tham gia: 3 duong (vi tri, xoay, ti le) x so keyframe,
+			# cong mot khoa doi anh moi keyframe (duong _doi_anh); cong moi
+			# xuong cua rig mot khoa an/hien
 			var want_keys := rig.bones.size()
 			for b in a["bones"]:
 				if rig.bones.has(b["name"]):
-					want_keys += (b["keys"] as Array).size() * 3
+					want_keys += (b["keys"] as Array).size() * 4
 			var got_keys := 0
 			for t in anim.get_track_count():
 				got_keys += anim.track_get_key_count(t)
@@ -183,7 +191,39 @@ func _init() -> void:
 
 		rig.free()
 
+	_doi_anh_theo_khung()
+
 	if n_static > 0:
 		print("%d atlas tinh (khong co dong tac) da bo qua" % n_static)
 	print("\n===== dat %d, hong %d =====" % [n_pass, n_fail])
 	quit(0 if n_fail == 0 else 1)
+
+
+## Doi anh theo khung, so voi so DO trong file (anim.py): Player000M03W/Fight,
+## xuong eff010 = (-1,8) (0,3) (0,1) (-1,2) — an 8 khung, hien anh 0 bon khung,
+## an 2. Keyframe bat dau o tong dur truoc no: khung 0, 8, 11, 12.
+func _doi_anh_theo_khung() -> void:
+	print("\n=== doi anh theo khung (Player000M03W) ===")
+	var rig := SngRig.build(ROOT + "Player000", "Player000M03W")
+	if rig == null:
+		_check(false, "dung duoc Player000M03W")
+		return
+	var anim := rig.player.get_animation("Fight")
+	var got := []
+	if anim != null:
+		for t in anim.get_track_count():
+			if anim.track_get_type(t) != Animation.TYPE_METHOD:
+				continue
+			for k in anim.track_get_key_count(t):
+				var args: Array = anim.method_track_get_params(t, k)
+				if args.size() == 2 and args[0] == "eff010":
+					got.append([roundi(anim.track_get_key_time(t, k) * SngRig.FPS), int(args[1])])
+	_check(got == [[0, -1], [8, 0], [11, 0], [12, -1]],
+			"eff010/Fight doi anh dung khung (-1 @0, 0 @8, 0 @11, -1 @12)", str(got))
+	rig._doi_anh("eff010", -1)
+	var hien := 0
+	for d in rig.displays.get("eff010", []):
+		if d != null and d.visible:
+			hien += 1
+	_check(hien == 0, "_doi_anh(-1) an het cac anh cua xuong", "%d con hien" % hien)
+	rig.free()

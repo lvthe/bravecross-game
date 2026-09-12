@@ -69,6 +69,20 @@ func _init() -> void:
 		_check(t.position.is_equal_approx(want),
 				"node neo giua doi dung toa do", "%s, mong doi %s" % [t.position, want])
 
+	# lBattleSkill: CCLayer 270,75 520x140 neo (0.5,0.5) — lop BO QUA neo khi
+	# dat cho (XggLayout.bo_qua_neo), nen goc duoi-trai o dung 270,75:
+	#   y = 640 - 75 - 140 = 425
+	# Neo van phai con trong meta: fixListViewPosition doc getAnchorPoint() de
+	# tru di, va chi ra nut thuc tinh dung cho khi ca hai cung dung.
+	var bs := XggLayout.find_node(hud, "lBattleSkill")
+	_check(bs != null, "tim thay lBattleSkill")
+	if bs != null:
+		_check(bs.position.is_equal_approx(Vector2(270, 425)),
+				"lop bo qua neo khi dat cho", "%s, mong doi (270, 425)" % bs.position)
+		var c: Vector4 = bs.get_meta("cocos", Vector4.ZERO)
+		_check(is_equal_approx(c.z, 0.5) and is_equal_approx(c.w, 0.5),
+				"lop van giu neo that trong meta", str(c))
+
 	# --- 2. du node tren moi man hinh
 	print("\n=== 2. du node tren moi man hinh ===")
 	var files := dir.get_files()

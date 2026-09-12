@@ -35,6 +35,23 @@ func _process(dt: float) -> void:
 		_lua.tick(dt)
 
 
+## Bam vao man hinh thi dua cho ma goc: engine cua no goi
+## <doi tuong>:onTouchEnd_<ten>(node, bTrongO). Bam vao bang chon thi de bang.
+func _input(e: InputEvent) -> void:
+	if _lua == null or not (e is InputEventMouse):
+		return
+	if e is InputEventMouseButton and e.pressed and _bang.visible \
+			and _bang.get_global_rect().has_point(e.position):
+		return
+	if not _lua.touch(e):
+		return
+	get_viewport().set_input_as_handled()
+	if e is InputEventMouseButton and not e.pressed:
+		var r = _lua.run(_NHAT_KY, "nhat ky cham")
+		if r != null and str(r) != "":
+			_trang_thai.text = str(r)
+
+
 func _unhandled_key_input(e: InputEvent) -> void:
 	if not (e is InputEventKey) or not e.pressed:
 		return
@@ -74,6 +91,8 @@ func _ready() -> void:
 	var goc := XggLayout.find_node(_khung, "UIRootLayer")
 	goc.position = Vector2.ZERO
 	_lua.set_ui_root(goc)
+	# Do cham tren CA khung: nut Back va lop che nam ngoai UIRootLayer.
+	_lua.set_touch_root(_khung)
 
 	var r = _lua.run(_NAP, "nap")
 	if r == null:
@@ -238,6 +257,18 @@ const _MO := """
 	end
 	while #c.cell_errors > 0 do table.remove(c.cell_errors) end
 	return out
+"""
+
+## Sau mot lan tha tay: ham nao cua ban goc vua chay, va loi neu co.
+const _NHAT_KY := """
+	local c = require('cocos')
+	local s = c.nhat_ky_cham[#c.nhat_ky_cham] or ''
+	if s ~= '' then s = 'cham -> ' .. s end
+	for i, e in ipairs(c.loi_cham) do
+		if i <= 2 then s = s .. '\\n   loi: ' .. e end
+	end
+	while #c.loi_cham > 0 do table.remove(c.loi_cham) end
+	return s
 """
 
 ## Dong man dang mo, va don tay hai cho ban goc khong tu don:

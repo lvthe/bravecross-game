@@ -96,6 +96,58 @@ static func kind_of(cls: String) -> String:
 const _BAD_NAME_CHARS := [".", ":", "@", "/", "\"", "%", "$"]
 
 
+## Chu cua mot nhan, lay tu truong 'text' cua bo cuc (work/xgg.py, +0x138):
+## '#Khoa' tra bang chu tieng Viet (data_ref/text_vi.json), khong co '#' la chu
+## viet thang. Bo cuc cu khong co 'text' thi lay 'res' nhu truoc.
+static var _bang_chu: Dictionary = {}
+static var _da_nap_chu := false
+
+static func _chu_nhan(nd: Dictionary) -> String:
+	var chu := String(nd.get("text", ""))
+	if chu == "":
+		return String(nd.get("res", ""))
+	if not chu.begins_with("#"):
+		return chu
+	if not _da_nap_chu:
+		_da_nap_chu = true
+		var p := "res://data_ref/text_vi.json"
+		if FileAccess.file_exists(p):
+			var d = JSON.parse_string(FileAccess.get_file_as_string(p))
+			if d is Dictionary:
+				_bang_chu = d
+	var khoa := chu.substr(1)
+	return String(_bang_chu.get(khoa, khoa))
+
+
+## Lop CHUYEN MAU (CCLayerGradientEx): troi cua canh Main va cac chien truong.
+## Bo cuc ghi danh sach {rgb, a, pos}, pos tinh tu DUOI len (xem work/xgg.py).
+## Khong ve thi ca vung troi la mau nen xam cua cua so.
+static func _lop_chuyen_mau(stops: Array) -> Control:
+	var ds := stops.duplicate()
+	ds.sort_custom(func(p, q): return float(p["pos"]) < float(q["pos"]))
+	var g := Gradient.new()
+	var offs := PackedFloat32Array()
+	var mau := PackedColorArray()
+	for s in ds:
+		var c: Array = s["rgb"]
+		offs.append(float(s["pos"]))
+		mau.append(Color8(int(c[0]), int(c[1]), int(c[2]), int(s.get("a", 255))))
+	g.offsets = offs
+	g.colors = mau
+	var tex := GradientTexture2D.new()
+	tex.gradient = g
+	tex.width = 4
+	tex.height = 256
+	# UV y = 0 o TREN; vi tri 0 cua ban goc o DUOI.
+	tex.fill_from = Vector2(0, 1)
+	tex.fill_to = Vector2(0, 0)
+	var tr := TextureRect.new()
+	tr.texture = tex
+	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tr.stretch_mode = TextureRect.STRETCH_SCALE
+	return tr
+
+
 static func _safe_name(s: String) -> String:
 	var out := s
 	for c in _BAD_NAME_CHARS:
@@ -135,6 +187,22 @@ static func build(json_path: String) -> Control:
 	return root
 
 
+## CCLayer va CCScene dat GOC DUOI-TRAI tai (x, y), bo qua diem neo:
+## ignoreAnchorPointForPosition cua cocos2d-x 2.x (chuoi co trong libgame.so,
+## con 'RelativeAnchorPoint' cua 1.x thi khong). Chu thich cua chinh ban goc
+## o CUIAssist.lua:454: "layer会忽略anchor". Ma goc dua vao dieu nay:
+## CUIActivityGodOfWealth.lua:115 dat ban sao sngTmpLGodOfWealthUI (neo 0,5)
+## o (-w/2, -h/2) de canh giua diem cam, va CUIHelper:fixListViewPosition tru
+## neo cua cha khi xep con — ap neo cho lBattleSkill (520x140, neo 0,5, tai
+## 270,75) thi nut thuc tinh dau tien ra x = -250, ngoai man.
+## Con cua lop trong .xgg nam trong 0..w (lHeroPKFinalInfo: 0..820) nen van
+## tinh tu goc — dung voi luat nay.
+## CCLayerColorRoundRect CHUA do: 12 node co neo 0,5, phan lon la lop che dat
+## giua cha (lSubDialogMask 960x640 tai 480,320), nen giu cach ap neo.
+static func bo_qua_neo(tn: String) -> bool:
+	return tn == "CCLayer" or tn == "CCScene"
+
+
 static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 	var w := float(nd.get("w", 0.0))
 	var h := float(nd.get("h", 0.0))
@@ -154,7 +222,16 @@ static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 	match kind:
 		"label":
 			var lb := Label.new()
-			lb.text = String(nd.get("res", ""))
+			lb.text = _chu_nhan(nd)
+			# Can chu theo ban ghi (work/xgg.py: +0x100 ngang, +0x104 doc, thu tu
+			# enum Cocos 0/1/2). Bo cuc cu khong co thi can giua — mac dinh cua
+			# CCLabelTTF co khung.
+			var can_ngang := [HORIZONTAL_ALIGNMENT_LEFT, HORIZONTAL_ALIGNMENT_CENTER,
+					HORIZONTAL_ALIGNMENT_RIGHT]
+			var can_doc := [VERTICAL_ALIGNMENT_TOP, VERTICAL_ALIGNMENT_CENTER,
+					VERTICAL_ALIGNMENT_BOTTOM]
+			lb.horizontal_alignment = can_ngang[clampi(int(nd.get("alignH", 1)), 0, 2)]
+			lb.vertical_alignment = can_doc[clampi(int(nd.get("alignV", 1)), 0, 2)]
 			node = lb
 		"scale9":
 			var np := NinePatchRect.new()
@@ -177,6 +254,8 @@ static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 				cr.color = Color8(int(c[0]), int(c[1]), int(c[2]),
 						int(nd.get("opacity", 255)))
 				node = cr
+			elif nd.has("gradient") and not (nd["gradient"] as Array).is_empty():
+				node = _lop_chuyen_mau(nd["gradient"])
 			else:
 				node = Control.new()
 
@@ -193,8 +272,12 @@ static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 		node.set_meta("xgg_name", ten_that)   # giu nguyen, ke ca khi phai lam sach
 	node.name = _safe_name(nm)
 	node.size = Vector2(w, h)
-	# Doi truc: xem chu thich dau file.
-	node.position = Vector2(x - ax * w, parent_size.y - (y - ay * h) - h)
+	# Doi truc: xem chu thich dau file. Lop va canh bo qua neo khi dat cho —
+	# xem bo_qua_neo(). Neo van giu trong meta 'cocos' (getAnchorPoint cua ma
+	# goc can so that) va van la tam phong to / xoay ben duoi.
+	var pax := 0.0 if bo_qua_neo(tn) else ax
+	var pay := 0.0 if bo_qua_neo(tn) else ay
+	node.position = Vector2(x - pax * w, parent_size.y - (y - pay * h) - h)
 	# Tam phong to / xoay. Cocos giu DIEM NEO dung yen khi phong to hay xoay;
 	# Godot lam quanh pivot_offset, mac dinh la goc tren-trai. Co 5.841 node
 	# vua co phong/xoay khac mac dinh vua co neo khac 0 — bay nhieu cho se ve
@@ -225,10 +308,22 @@ static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 	node.set_meta("res", nd.get("res", ""))
 	node.set_meta("kind", kind)
 	node.set_meta("type_name", tn)
+	# Ten cham va ten bien toan cuc cua doi tuong nhan cham, doc tu ban ghi node
+	# (+0x0C / +0x14, xem work/xgg.py). Engine ban goc goi
+	# <doi tuong>:onTouchEnd_<ten cham>(node, bTrongO) — lua/cocos.lua lam
+	# phan do. 2.005 node co; khong co thi node khong nhan cham.
+	if nd.has("touch"):
+		node.set_meta("touch", String(nd["touch"]))
+	if nd.has("touchObj"):
+		node.set_meta("touch_obj", String(nd["touchObj"]))
 	# Giu nguyen toa do Cocos de set_frame() tinh lai duoc vi tri khi anh moi
 	# co kich thuoc khac — ban goc doi anh thi giu DIEM NEO, khong giu goc o.
 	node.set_meta("cocos", Vector4(x, y, ax, ay))
 	node.set_meta("parent_h", parent_size.y)
+	# He so parallax (+0x30 cua ban ghi, work/xgg.py). Bo cuc chi ghi khi khac
+	# 1; san tran (battle/san_tran_ve.gd) doc de cuon nen theo camera.
+	if nd.has("parallax"):
+		node.set_meta("parallax", nd["parallax"])
 
 	# Gan anh neu bo cuc co ghi. 'verified' = ten tu kiem chung duoc bang
 	# section C cua chinh man do (co trong danh sach anh VA dung kich thuoc);

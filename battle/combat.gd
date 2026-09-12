@@ -128,6 +128,16 @@ class Fighter extends RefCounted:
 	var taken_skill: float
 	var immune_normal: float
 	var level: int
+	## Tuong CUA NGUOI CHOI tren san tran co hinh: day no thi GIU, khong tu
+	## tung — nguoi choi bam nut thuc tinh (battle/san_tran_ve.gd). Mac dinh
+	## tat: mo hinh cu, sim/ va may chu khong doi gi.
+	var giu_no := false
+	## Bam nut roi: don KE TIEP la don ky nang (neu da day no).
+	var ep_no := false
+	## Ban ghi chi so GOC (tArmysData.Sprite.* cua ban goc). Chi tran co hinh
+	## dat (tran_goc._chien_binh), de cong thuc sat thuong that (Harm) doc cac
+	## chi so ma Fighter khong mang: FireAp, DamageAddition, DamageMultiples...
+	var raw: Dictionary = {}
 
 	## `power` la he so manh cua doi dich theo chuong. May chu nhan no vao TRUOC
 	## GrowthFactor va truoc he so cap (xem fighter() trong battle.lua); thu tu
@@ -219,28 +229,43 @@ class Fighter extends RefCounted:
 		anger += anger_gain
 		# Ten bien la `fired` chu khong phai `skill`: `skill` nay la ten ky
 		# nang rieng cua tuong.
-		var fired := anger >= float(rules.get("angerFull", 100.0))
+		var full := float(rules.get("angerFull", 100.0))
+		var fired := anger >= full
+		if giu_no:
+			# Giu no cho nut thuc tinh: chi tung khi da bam (ep_no). Chan tren
+			# o nguong day. Khong rut them so ngau nhien: chuoi so khong doi.
+			anger = minf(anger, full)
+			fired = fired and ep_no
 		if fired:
 			anger = 0.0
+			ep_no = false
 		var dmg := ap * (skill_rate if fired else hit_rate)
-		# Pha giap: bo qua mot phan giap doi phuong.
-		var def_eff := target.defence * (1.0 - pierce)
-		if String(rules.get("mitigation", "subtract")) == "divide":
-			var k := float(rules.get("defenceK", 100.0))
-			dmg *= k / (k + def_eff)
+		if bool(rules.get("harm_real", false)) and not raw.is_empty():
+			# Tran co hinh: cong thuc + hang so THAT cua ban goc (Harm). Muc tieu
+			# la tuong khi HeroID > 0 (chon he so nhan tuong / linh). Cac kenh
+			# thiet bich / chuyen thuoc / mien han la cua mo hinh ta, khong ap o
+			# day — chien dich khong co do chuyen thuoc nen khong doi con so.
+			var muc_tuong := int(target.raw.get("HeroID", 0)) > 0
+			dmg = Harm.tinh(dmg, raw, target.raw, muc_tuong)
 		else:
-			dmg -= def_eff
-		# Thiet bich: he so nay thuoc ve BEN CHIU, khong phai ben danh.
-		dmg *= target.taken
-		# Do chuyen thuoc: giay chiu it don KY NANG hon (ZhuanShuXieZi -15%).
-		if fired and target.taken_skill != 0.0:
-			dmg *= maxf(0.0, 1.0 + target.taken_skill)
-		# Giap chuyen thuoc: xac suat mien han mot don THUONG (ZhuanShuYiFu
-		# 10%). Chi boc so khi CO chi so nay — de tran khong co do chuyen
-		# thuoc van dung y nguyen chuoi ngau nhien cu.
-		if not fired and target.immune_normal > 0.0:
-			if rng.roll() < target.immune_normal:
-				return {"damage": 0.0, "skill": fired, "crit": false}
+			# Pha giap: bo qua mot phan giap doi phuong.
+			var def_eff := target.defence * (1.0 - pierce)
+			if String(rules.get("mitigation", "subtract")) == "divide":
+				var k := float(rules.get("defenceK", 100.0))
+				dmg *= k / (k + def_eff)
+			else:
+				dmg -= def_eff
+			# Thiet bich: he so nay thuoc ve BEN CHIU, khong phai ben danh.
+			dmg *= target.taken
+			# Do chuyen thuoc: giay chiu it don KY NANG hon (ZhuanShuXieZi -15%).
+			if fired and target.taken_skill != 0.0:
+				dmg *= maxf(0.0, 1.0 + target.taken_skill)
+			# Giap chuyen thuoc: xac suat mien han mot don THUONG (ZhuanShuYiFu
+			# 10%). Chi boc so khi CO chi so nay — de tran khong co do chuyen
+			# thuoc van dung y nguyen chuoi ngau nhien cu.
+			if not fired and target.immune_normal > 0.0:
+				if rng.roll() < target.immune_normal:
+					return {"damage": 0.0, "skill": fired, "crit": false}
 		var crit := rng.roll() < crit_chance
 		if crit:
 			dmg *= crit_mult

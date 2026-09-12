@@ -178,7 +178,14 @@ return function(C)
 			if doi_tuong == nil or ten == nil then return end
 			local f = doi_tuong[ten]
 			if type(f) == 'function' then
-				pcall(f, doi_tuong, tham ~= nil and tham or node)
+				-- GHI loi lai, dung nuot: hop thoai cua ban goc ket thuc hoat
+				-- canh mo bang CCCallFunc(OnShowAnimationFinish), va ham do chi
+				-- PopAnimation o CUOI (CUIManager.lua:951). Loi o giua ma nuot
+				-- thi hang doi hoat canh ket mai, moi Show sau im lang khong mo.
+				local ok, loi = pcall(f, doi_tuong, tham ~= nil and tham or node)
+				if not ok and C.loi_hen then
+					C.loi_hen[#C.loi_hen + 1] = 'CCCallFunc ' .. tostring(ten) .. ': ' .. tostring(loi)
+				end
 			end
 		end
 		local dat_lai_cu = a.dat_lai
@@ -329,6 +336,9 @@ return function(C)
 			if not bo then
 				local ok, xong = pcall(m.a.tien, m.a, m.node, dt)
 				bo = (not ok) or xong
+				if not ok and C.loi_hen then
+					C.loi_hen[#C.loi_hen + 1] = 'action: ' .. tostring(xong)
+				end
 			end
 			if bo then
 				table.remove(dang_chay, i)

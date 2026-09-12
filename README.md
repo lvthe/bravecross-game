@@ -456,9 +456,16 @@ lại là mã của nó: nạp bố cục, `onInit`, hoạt cảnh mở, `onShow
 |---|---|
 | module của bản gốc nạp được | **875/876** |
 | màn đăng ký | 353 |
-| màn mở được | **244** |
-| màn "im" (đòi tham số, không phải hỏng) | 23 |
-| màn hỏng | 86 — trong đó **82 là thiếu dữ liệu người chơi** |
+| màn mở được | **246** |
+| màn "im" (đòi tham số, không phải hỏng) | 22 |
+| màn hỏng | 85 — phần lớn là **thiếu dữ liệu người chơi** |
+
+Bộ hẹn giờ thật, `S_CCSprite` và phép đổi toạ độ mở thêm `ArenaMain`,
+`CUIFirstPayGift`, `CUIWCSShop` (243 → 246).
+
+Quét không hoàn toàn tất định: giữa hai lần chạy, vài màn đổi qua lại giữa "im"
+và "hỏng" (vd `ArenaSummary`, `ThreeButtonDialog`) vì màn trước để lại trạng
+thái. Số tổng thì giữ nguyên — kể cả khi bỏ phần chạm đi (đã đo đối chứng).
 
 Đo lại bất cứ lúc nào:
 
@@ -466,10 +473,20 @@ lại là mã của nó: nạp bố cục, `onInit`, hoạt cảnh mở, `onShow
 godot --headless --path . --script tools/quet_show.gd
 ```
 
-**Chưa bấm được gì cả.** `setCallbackLuaObject` (325 chỗ) và `setLuaTouchName`
-(318 chỗ) chưa làm, nên 1.712 hàm `onTouchEnd_*` của bản gốc chưa nối. Mọi màn
-hiện giờ là ảnh tĩnh. Đây là việc đáng làm tiếp theo: hai hàm, mở khoá rất
-nhiều.
+**Bấm được.** Tên chạm và đối tượng nhận chạm nằm ngay trong bản ghi node của
+`.xgg` (+0x0C tên chạm, +0x14 tên biến toàn cục của đối tượng): 2.005 node,
+1.204 cặp khác nhau, 1.021 cặp khớp đúng lớp có hàm xử lý. Cộng với
+`setLuaTouchName` / `setCallbackLuaObject` lúc chạy (318 / 325 chỗ), engine giả
+gọi `<đối tượng>:onTouchBegin_/Move_/End_<tên>` theo đúng khuôn tên có trong
+`libgame.so` (`onTouchEnd_%s` ở 0x7b10fd). Trong `xem_man`, bấm chuột vào màn
+là mã gốc chạy; dòng trạng thái ghi hàm vừa gọi và lỗi nếu có.
+
+```bash
+godot --headless --path . --script tools/verify_cham.gd
+```
+
+Bộ kiểm mở màn thành tựu bằng `Show` của bản gốc, bấm nút nhận thưởng, và
+`CUIAchieve:onTouchEnd_OnAhchieveButtonClick` chạy không lỗi.
 
 ### Ba mảnh của tầng dưới
 
@@ -516,10 +533,18 @@ thành 353, và 105 màn mở được thành 244.
 * **Tag thật không nằm trong `.xgg`** — engine sinh lúc nạp. Đo từ chính bản
   gốc chạy trong máy ảo Android (`work/emu_tags.py`), ghép vào bằng
   `emu_join.py --ghi`. Phủ 90,7% số cặp (node, tag) mà mã gốc thật sự hỏi.
-* **`CCLayer` bỏ qua điểm neo khi đặt chỗ** (`isRelativeAnchorPoint = false`
-  trong init của nó) — chính chú thích của bản gốc nói thế:
-  *"用左下角是为了支持layer, 因为layer会忽略anchor"*. Cần đúng chỗ này vì hoạt
-  cảnh mở gọi `setAnchorPoint(0.5,0.5)` rồi không trả lại.
+* **`CCLayer` bỏ qua điểm neo khi đặt chỗ** (`ignoreAnchorPointForPosition` của
+  cocos2d-x 2.x — chuỗi này có trong `libgame.so`, còn `RelativeAnchorPoint`
+  của 1.x thì không) — chính chú thích của bản gốc nói thế
+  (`CUIAssist.lua:454`): *"用左下角是为了支持layer, 因为layer会忽略anchor"*. Cần
+  đúng chỗ này vì hoạt cảnh mở gọi `setAnchorPoint(0.5,0.5)` rồi không trả lại.
+  Bộ nạp `.xgg` cũng theo luật này (`XggLayout.bo_qua_neo`, cho `CCLayer` và
+  `CCScene`), nhưng vẫn giữ neo thật trong meta vì mã gốc đọc
+  `getAnchorPoint()` rồi tự trừ đi: `CUIHelper:fixListViewPosition` xếp nút
+  thức tỉnh vào `lBattleSkill` (520×140, neo 0,5, tại 270,75). Áp neo cho lớp
+  thì nút đầu tiên ra x = −250, ngoài màn; theo luật thì ra x = 10, khít mép
+  trái khung. `CCLayerColorRoundRect` **chưa đo** nên vẫn áp neo — phần lớn là
+  lớp che đặt giữa cha (`lSubDialogMask` 960×640 tại 480,320).
 * **Tên ảnh trần tra trong `sngSplitData/`**, lấy bản nông nhất. Đó là không
   gian tên của `S_CCSpriteFrameCache`: ảnh giao diện không nằm trong atlas, mỗi
   ảnh là một `.pkm` riêng. Chấm bằng chính bảng sprite của `.xgg`: luật cũ
@@ -533,7 +558,22 @@ thành 353, và 105 màn mở được thành 244.
   `convertTo32UintString` rồi so với `0x100000000`.
 * **Bản gốc luôn ở trong một cảnh.** `g_CSceneManager.CurrentScene` là `nil`
   thì `CLevelLoader` không bắn tin `OnLoadXGG` và `onInit` của màn hình không
-  bao giờ chạy. Hiện đặt `"Test"` — chưa dựng cảnh `Main`.
+  bao giờ chạy. `xem_man` và các bộ kiểm màn vẫn đặt `"Test"`; đường vào cảnh
+  thật thì xem `tools/vao_main.gd`.
+* **Đổi cảnh là một coroutine chạy bằng bộ hẹn giờ.** `CSceneManager` nhường
+  từng bước bằng `S_CCSchedule:scheduleOnce(self, "sngLoadingNext")`, nên
+  không có hẹn giờ thật thì nó đứng yên ở lần `yield` đầu tiên. Gọi lại phải
+  để **khung sau** (kể cả `loadLevelFileAsync`): gọi ngay là resume chính
+  coroutine đang chạy, Lua báo *cannot resume non-suspended coroutine*. Ngữ
+  nghĩa hẹn giờ lấy từ chú thích của chính bản gốc, `CTimerManager.lua:102-117`.
+* **`S_CCSprite` là một thể hiện dùng làm nhà máy** (`system/engine.lua:41`:
+  `S_CCSprite = CCSprite:new()`), rồi mã gốc gọi `S_CCSprite:new()` 61 lần.
+  Để nguyên thì `:new()` rơi vào stub, ra `nil`, và coroutine đổi cảnh chết.
+* **Engine nới lớp phủ màn theo tỉ lệ cửa sổ** (1366 → 1429 trên máy ảo) và
+  giữ con ở đúng tỉ lệ trong cha. `emu_join` nay so thêm theo tỉ lệ cỡ cha:
+  +182 node có tag (17.830 → 18.012), không sinh tag trùng, và
+  `lCommonLoadingDialog:getChildByTag(4)` — chỗ cảnh `Main` từng chết — ra
+  đúng `lLoadingDialog`.
 * **Màn "im" phần lớn là đòi tham số.** `Show(tên, data, kiểu)` truyền `data`
   xuống `onShow`; màn nào đòi thêm tham số thì thoát ngay dòng đầu. Đo bằng
   `debug.getinfo(ui.onShow, 'u').nparams`.
@@ -541,15 +581,364 @@ thành 353, và 105 màn mở được thành 244.
   (`CloseImmediately` không đặt lại) và hàng đợi hoạt cảnh (`InsertAnimation`
   chỉ chạy ngay khi hàng đợi đang rỗng).
 
+* **Chạm: `EndEx` không đi sau `End`.** 33/66 hàm `onTouchEndEx_*` tự gọi lại
+  `onTouchEnd_*(node, false)` của chính nó (vd `CUIAchieve.lua:597`) — engine mà
+  gọi cả hai thì `End` chạy hai lần. Nên `EndEx` là lối ra khi chạm bị cướp
+  (danh sách cuộn), và chưa gọi vì chưa có cuộn bằng chạm. Giá trị trả về của
+  `Begin` cũng **không** quyết định có nhận chạm: `End` tự kiểm lại đúng điều
+  kiện của `Begin`, và 42 lớp chỉ có `Begin`. Hai điều này **suy từ mã Lua,
+  chưa đo trên engine** — đọc hàm phát chạm trong `libgame.so` cần
+  `work/armdis.py`, mà nó cần `capstone` + `pyelftools`.
+* **Kéo `brave-cross` mới thì dựng lại `ui_ref` và `layout_ref`** (bước 2 và
+  2b ở đầu README). Dữ liệu cũ không báo lỗi mà hỏng lặng lẽ: trên một máy
+  mới, `layout_ref` dựng trước khi `layout.py` ghi `zOrder` làm 4 bộ kiểm đỏ,
+  và `emu_join` chỉ ghép được tag cho 9.901 node thay vì 17.830.
+
 ### Việc tiếp theo, theo thứ tự
 
-1. **Nối chạm** — `setCallbackLuaObject` + `setLuaTouchName`. Hai hàm, 1.712
-   hàm xử lý của bản gốc sống dậy. Rẻ nhất, đổi cảm giác nhiều nhất.
-2. **Dựng cảnh `Main`** — `conf/UI_Main_960_640.xgg` nạp được rồi và node vẽ
-   được, nhưng `CUIMain:InitUI` chết ở `lCommonLoadingDialog:getChildByTag(4)`:
-   node đó nằm trong `UI_MessageBox_Loading_960_640.xgg` (chưa nạp) và con của
-   nó nằm trong 9% số tag chưa đo.
-3. **Trạng thái người chơi mới tinh**, dựng từ chính bảng cấu hình của bản gốc.
+1. ~~**Nối chạm**~~ — xong (xem trên). Còn lại của phần chạm: cuộn danh sách
+   bằng chạm (kèm `onTouchEndEx`), và đo hàm phát chạm trong `libgame.so` để
+   thay hai điều đang suy bằng số đo.
+2. ~~**Dựng cảnh `Main`**~~ — phần engine xong. Chạy đúng dòng của bản gốc,
+   `g_CSceneManager:RepaleceScene("Main")` (`ClientActivitiesLogic.lua:104`),
+   và coroutine đổi cảnh đi hết: nạp `UI_Main_960_640` lên sân khấu, khung hộp
+   thoại vào `g_MainUIScene`, 13 file chung của `CUIMain:sngPreLoad`,
+   `onEnter`, khung chat. `InitUI` giờ dừng ở `CUIMain.lua:201` vì
+   `G_UserLogic:GetLevel()` ra `nil` — **thiếu dữ liệu người chơi**, không còn
+   là thiếu engine. Đo bằng `tools/vao_main.gd`, khoá bằng
+   `tools/verify_main.gd`.
+3. ~~**Trạng thái người chơi mới tinh**~~ — xong. Giá trị lấy từ **chính bảng
+   cấu hình của bản gốc**: `KDBGameCommonConfig` có mục `<bảng>Reset` cho
+   10/33 bảng người chơi (tướng 25 cùng 6 món, 50.000 vàng, 0 kim cương, thống
+   soái 6, thể lực 120…), và mã server dùng chung nạp người chơi đúng kiểu đó
+   (`LotteryLogic:Reset`, `UserLogic:Reset`). Giao qua **lớp offline** của
+   `brave-cross/work/offline` (thay máy chủ, `import_lua.py` chép vào
+   `sc/offline`). `tools/vao_main.gd` chạy **cả chuỗi của bản gốc**: cảnh Login
+   → `G_Login:Login` → chọn máy chủ → `onTouchEnd_OnEnterGame` → `StartRPC` →
+   `Handshake` → `EnterGame` → `OnGetAcvitityList` → `RepaleceScene("Main")`.
+   Ba cú bấm của người chơi làm thay bằng đúng hàm nút gọi; còn lại là mã gốc.
+4. ~~**Tag con của `lMainToolbarRightTop`**~~ (40 nút góc phải trên của
+   `Main`) — máy ảo chưa bao giờ đo tới, nay gán bằng **đối chiếu nhãn**:
+   `brave-cross/work/tags_nhan.json`, `emu_join.py` áp sau tag đo được và
+   đánh dấu `tagFrom: "nhan"`. Ba nguồn độc lập: nhãn chú thích
+   `-- <tính năng> begin` ngay trên `getChildByTag(n)` (và nhãn của
+   `iosApproveHelper`), tên pinyin của từng tag trong cấu hình
+   `GameMainTopConfig`, và tên lớp của nút trong `.xgg`. 40 nút đánh số đúng
+   1..40, mỗi tag một nút; 40/40 gán được, 0 xung đột. Duy nhất tag 11
+   (`虎符争夺`) là **loại trừ** — nút cuối cùng còn lại.
+5. ~~**Tag của node CON bên trong từng nút**~~ — không có nhãn, gán bằng **suy
+   cấu trúc** (`do_tin: "cau-truc"` trong `tags_nhan.json`; chọn node theo
+   loại + "có con loại X", cha chỉ bằng đường tag như `lMainToolbarRightTop/18`,
+   phải khớp ĐÚNG MỘT node). Nút 18: `CUICOGEntry.lua:272-273` lấy con tag 2
+   rồi con tag 1 của nó và `setString` lên đó. Kiểm bằng số đo: nút cùng kiểu
+   `lArmyGroup_COGButton` — mã gốc dùng y hệt (`:310-311`) — ĐO ĐƯỢC trên máy
+   ảo là `CCScale9Sprite` tag 2 chứa `CCLabelTTF` tag 1, và nút 18 chỉ có đúng
+   một con như thế. Với hai tag này, `InitUI` chạy hết và `replaceScene` đưa
+   **`g_MainUIScene` lên màn hình** — lần đầu cả chuỗi Login → `Main` của bản
+   gốc chạy trọn. Chụp: `godot --path . --script tools/vao_main.gd -- --chup=main.png`.
+6. ~~**Vẽ cảnh `Main` cho đủ**~~ — trời, thành phố, nhà, dải nút trên cùng,
+   biển tên nhà và số của người chơi đã lên màn. Những chỗ đã sửa, mỗi chỗ
+   có số đo:
+   * **Cửa sổ của engine cao cố định 768**, rộng theo tỉ lệ màn: máy ảo đo ca
+     13 `CCScene` là 1429×768 tại (0,0). `LuaRuntime.cua_so_engine`; cảnh đặt ở
+     gốc cửa sổ (file ghi (1,−1), neo 0,5 — `CCScene` bỏ qua neo).
+   * **Bố cục nạp vào một cha khác** (khung hộp thoại vào `g_MainUIScene` cao
+     768) và **`addChild`** giữ nguyên toạ độ Cocos, đổi theo chiều cao thật
+     của cha. Trước đó `UIRootLayer` lệch 128 và dải nút trên cùng bị cắt;
+     nhà (armature) rơi thấp ~480 px.
+   * **Trời** là dải chuyển màu `CCLayerGradientEx`: bản ghi 312 byte, mảng
+     cố định 7 ô (RGB, alpha, vị trí) — giải đúng cả 18 node của mọi file.
+   * **Nhà** là armature (`getUIAnimFromSpriteCatch`, 216+31 lời gọi;
+     `_Lua_playAnimation` 440) — phát bằng `SngRig` trên chính armature gốc;
+     tên dạng biến thể (`UITongYong_ItemLight`, `Player004M03F`) tìm theo tiền tố.
+   * **Chữ của nhãn** ở `+0x138` của bản ghi `CCLabelTTF` (`#Khoá` tra bảng chữ
+     tiếng Việt, không `#` là chữ viết thẳng): 4.237 khoá, 4.228 có trong bảng.
+     Trước đó mọi nhãn tĩnh trên mọi màn đều trống. **Căn chữ** ở `+0x100` /
+     `+0x104` (thứ tự enum Cocos 0/1/2).
+   * **Số vàng / kim cương / thể lực**: tag 1 (nhãn số) và 2 (biểu tượng) của
+     ba thanh tài nguyên — suy cấu trúc từ `setNum` / `rollNum`, không có số
+     đo đối chiếu. Giờ hiện đúng 50.000 vàng, 0 kim cương, 120/120 thể lực
+     của `GameUserBaseInfoReset`.
+7. **Còn thiếu ở `Main`:** hiệu ứng sáng `UITongYong_ItemLight` vẽ thành đốm
+   xanh (có lẽ thiếu hoà màu cộng); `sngFixInfoReflash` (sắp lại con khi đổi
+   cỡ) chưa làm; nhà ở nửa phải lớp cuộn chưa xem được vì chưa có kéo cuộn.
+8. ~~**Chiến dịch: từ Main vào trận rồi về màn kết thúc**~~ — chạy trọn bằng
+   đúng đường của bản gốc. Xem mục "Chiến dịch và sân trận" ngay dưới.
+
+#### Chiến dịch và sân trận
+
+```bash
+godot --headless --path . --script tools/do_chien_dich.gd            # đo từng bước
+godot --headless --path . --script tools/do_chien_dich.gd -- --kiem  # tự kiểm (check.py)
+```
+
+Công cụ gọi đúng hàm mà từng nút gọi: nút tấn công ở Main
+(`CUIMain:onTouchEnd_btnMainExtraUIAttack`) → chọn ải → "Đi" (`OnGo`) →
+bố trí quân → tấn công → `ClientChapterBegin` → `RepaleceScene("Battle")` →
+`CUIGame:StartBattle` → `g_BattleField:_Lua_StartGame` → hết trận →
+`ClientChapterCompleteSuccess/Faild` → `CUIGameFinish`. Sau mỗi bước in ra
+lời gọi máy chủ, lời gọi lớp offline còn thiếu, và lỗi của mã gốc.
+
+**Máy chủ (lớp offline, `brave-cross/work/offline/.../handlers/chapter.lua`).**
+Luật server của chiến dịch NẰM SẴN trong `sc/share/share_ChapterLogic.lua`
+(`saveChapterBeginStatus`, `chapterCompleteSuccess` → `chapterVictoryHandle`,
+`chapterCompleteFaild`), và client có chúng trên `G_ChapterLogic`. Handler chỉ
+gọi luật đó rồi chép `G_DataManager.userData` về kho. Đo được trên
+`L_N_01_01`: vào ải trừ 1/6 thể lực (120 → 119); thắng thì cộng 200 vàng
+(`ResourceCount`), kinh nghiệm, trừ nốt 5/6 thể lực, chiến báo
+`BattleStatus 3`; thua thì giữ vàng, chiến báo `BattleStatus 2`. Hai chỗ
+không có trong tay, nói rõ trong file: danh sách rơi đồ do server gốc sinh
+(gửi rỗng, đúng hình `{DropConfig, Drop}`), và `CheckActivityIsDoublePrize` —
+hàm chỉ server có; ở đây hỏi đúng hoạt động mà luật gốc hỏi, offline không có
+hoạt động nên không nhân đôi. `ClientCheck` (chống gian lận) bỏ qua.
+
+**Sân trận (`lua/san_tran.lua`, `battle/tran_goc.gd`).** Trận của bản gốc
+đánh trong C++ (`libgame.so`); Lua chỉ đưa dữ liệu qua `setSendTroops` /
+`setLevelData` rồi nghe gọi ngược. `g_BattleField` là node CCLayer trong
+`BattleField_<cảnh>_960_640.xgg`; `cocos.lua` gắn bộ hàm riêng cho nó theo tên
+(`lop_rieng`). Tên hàm của nó và tên các hàm engine gọi ngược vào `g_CUIGame`
+(`troopResidue`, `npcResidue`, `TotalHpResidue`, `onLevelComplete`,
+`onLevelOver`…) lấy từ chuỗi của `libgame.so`, không đoán. Trận đánh bằng CHỈ
+SỐ THẬT trong dữ liệu đó (HP, MinAp/MaxAp, DP, AttackInterval… do luật gốc tính
+theo cấp), nhưng **cách gộp thành sát thương là của ta**
+(`Combat.Fighter.strike`).
+
+**Trận có hình** (`battle/san_tran_ve.gd`): quân là `BattleUnit` (đi theo làn,
+chọn mục tiêu, nhịp đánh, thanh máu, động tác `SngRig` từ `assets_ref`) đặt lên
+chính node `g_BattleField`, trên nền trận của bản gốc. Tên armature lấy từ
+`Name` / `SpriteName` trong dữ liệu gốc, tìm theo tiền tố như `_tao_rig`
+(`Player000M03W` → `Player000`, biến thể `Player000M03W`); cỡ theo `NpcSize`.
+Trận bước theo bộ hẹn giờ của Lua, không theo `_process` — nên chạy được cả khi
+không có cửa sổ — và kết quả là trận người chơi nhìn thấy. Chế độ tính nhanh của
+bản gốc (`setQuickResult`) và `quickGameFinish` vẫn đánh tức thì
+(`battle/tran_goc.gd`). ĐẶT, không phải bản gốc: mặt đất = giữa node
+`g_MapZero`; tốc độ và tầm đánh tối thiểu của `BattleUnit`; cách camera bám quân.
+
+**Chỗ đứng và camera — số thật.** 1 ô (格) = 100 px: chú thích của bản gốc
+trong `map/hero_config.xml` ghi *"单位:格 100pix"*, khớp với `MaxAttackDistance`
+tính bằng px (30 cận chiến, 300–500 bắn xa) và với `CUIGame:FitBattleArmyPos`
+(căn giữa đấu trường ở ô 6,83 = nửa màn 1366). `PosX` của dữ liệu ải tính theo
+ô từ `g_MapZero`: ở L_N_01_01 tướng ta đứng ô 7, ba nhóm địch ô 12 / 18 / 24 —
+sân dài hơn một màn, nên camera chạy theo quân.
+
+* **Parallax:** `g_BattleFieldLayer` là một `CCParallaxNode` (trong
+  `Game_UI_960_640`), mã gốc nạp cả file sân vào nó. Hệ số của từng con nằm ở
+  `+0x30` / `+0x34` của bản ghi node (`xgg.py`, `layout.py` ghi thành
+  `parallax` khi khác 1). Đo trên 18 file sân: lớp nền `gb<tầng>_<ô>` ra 1,4
+  (`gb0`, tiền cảnh) / 1,0 (`gb1`, mặt đất) rồi giảm dần theo tầng, mọi ô của
+  một tầng cùng một số; `g_BattleField` luôn 1,0; trời 0,001 (đứng yên — khớp
+  với việc nó chỉ rộng 2000). Bề dài sân = mép phải của mặt đất (Snow: 4096).
+* **Hằng số camera** từ mục `<camera>` của `map/global_config.xml` (giải mã ở
+  `brave-cross/work/vn/decrypted`): ngưỡng 0,8, tốc độ 1,8 ô/giây, chậm dần
+  trong 2 ô, tăng tốc trong 0,7 giây, đuổi nhanh khi lệch quá 5 ô. **Cách** dùng
+  các số đó là ĐẶT — luật thật nằm trong lớp C++ `CDFCamera`, chưa giải: giữ
+  quân ta đi đầu ở 0,8 bề ngang màn. `g_BattleField:StopCamera()` (kịch bản)
+  dừng camera thật.
+**Công thức sát thương thật** (chỉ trận có hình — `battle/harm.gd`). Cấu trúc
+giải từ hàm C++ `0x380c94` và hằng số `<formula>` của `global_config.xml`
+(chi tiết ở `brave-cross/work/README.md`). Thay chỗ trừ giáp thẳng của mô hình
+ta bằng luật chia của bản gốc:
+
+```
+avoid = DP / (DP + 1500)         (chặn trên 1)
+dmg   = elem + atk×(1−avoid) + xuyên; ×(1+DamageAddition/3000);
+        −ReducingDamage; ×(1+FinalHarm); × DamageMultiples(theo loại mục tiêu)
+```
+
+Nhờ chia thay vì trừ, tướng ta không còn bị giáp cao nuốt sạch đòn: ap 78 vào
+Lữ Bố (DP 500) ra **58,5** thay vì **1** (78−500 kẹp về 1); và hệ số nhân thật
+của địch phát huy — lính Defender NPC có `DamageMultiplesAtDogface = 5` nên
+đánh lính ta 75 thay vì 15. **Mô hình đối chiếu ba bên (`combat.gd` mặc định,
+`sim/battle.py`, `server/battle.lua`) KHÔNG đổi** — `harm_real` chỉ bật trên
+bản `rules` riêng của trận có hình.
+
+ĐẶT (chưa kiểm byte-exact, cần máy ảo): ánh xạ trường struct sang bên đánh /
+bên chịu theo nghĩa tên trường, và ghép bốn tham số `FinalHarm`. `combat.gd`
+giữ nguyên đường cũ khi `harm_real` tắt.
+
+Cùng `<formula>` còn nhiều hằng số khác (`RoleGrowthBase` 2, `CriticalResistBase`
+3000, `StateResistBase` 2000) cho các hàm con đã giải — dùng khi port đủ.
+
+Kiểm: `do_chien_dich.gd --kiem` cho camera bám một quân đầu giả ở x = 3000
+trong 20 giây, rồi đòi camera dừng đúng đích (2078 = 3000 − 0,8 × 1152) và
+**mọi** lớp trôi đúng hệ số × camera (gb6 0,4 → 831, gb0 1,4 → 2910). Chụp
+cảnh camera đã trôi: `... -- --chup=tran.png --cam=2500 --khung=30`.
+
+**Chơi thử một trận** (có cửa sổ, không `--headless`): tự đi Main → chọn ải
+→ "Đi" → xếp tướng → tấn công, rồi giao cửa sổ cho người chơi — bấm nút binh
+chủng (dưới giữa) để đưa lính ra, nút thức tỉnh (dưới trái) khi nó sáng, xem
+camera chạy và màn kết thúc. Lỗi Lua mới in ra ngay.
+
+```bash
+godot --path . --script tools/do_chien_dich.gd -- --xem
+```
+
+Đã chạy 10.000 khung liền (qua hết trận L_N_01_01) không lỗi Lua nào.
+
+**Đi từ `Main` vào trận bằng cú bấm thật** — `tools/bam_that.gd` (bộ
+`bam that Main -> tran` của `check.py`). Mỗi bước tìm node đang hiện mang tên
+chạm của nút (`btnMainExtraUIAttack` → `OnSelectLevel` → `OnGo` →
+`OnChapterListAttack`), bấm vào tâm nó qua `touch_at` — đúng đường chuột của
+`--xem` — rồi đòi màn kế tiếp mở. In ra node NÀO thật sự nhận cú bấm, nên lớp
+phủ nuốt cú bấm lộ ngay. Nó đã lộ hai chỗ, đều là **yêu cầu máy chủ không ai
+trả**: yêu cầu phát `OnWaitingForRequest` → `CUIMain:OnWaitingForRequest` bật
+lớp "đang tải" (`lCommonLoadingDialog`, tên chạm `ClickBackground`), và chỉ
+`OnReceiveResponse` mới tắt — lớp đó nằm đè cả `Main`. Tìm bằng vết gọi của
+`g_buyLoadingDialog:Show` (móc trong `bam_that.gd`):
+
+* **Quốc chiến** — `CUIMain:onEnter` hỏi giờ mở (`ClientStateWarBeginTime`,
+  hàm sinh bởi `CUIAssist.bindRpcToEvent`; vết `CUIAssist.lua:356 <
+  StateWarLogic.lua:27 < CUIMain.lua:533`). Lớp offline trả `(0, "")` — chưa
+  có lịch (`handlers/statewar.lua`).
+* **Cửa hàng bí ẩn** — `OnMainShowUI` gọi `ClientRefresh` khi hàng đã quá mốc
+  làm mới (9 / 12 / 18 / 21 giờ), nên **lúc được lúc không theo đồng hồ**: một
+  lần dò qua, lần sau sang mốc mới thì kẹt. Client không có hàm nhận riêng; lớp
+  offline trả qua đường chung của bản gốc
+  `g_CUIGameRPCManager:OnReciveResponse("", "", 0, {})` — phát
+  `OnReceiveResponse`, không đổi dữ liệu (`handlers/mysterious.lua`). Luật
+  sinh danh sách hàng chỉ server gốc có: offline **không** làm mới hàng.
+
+`handlers/achieve.lua` (đạt / nhận thưởng thành tựu, gọi luật gốc
+`AchieveLogic`) viết lúc đang đoán kịch bản hướng dẫn tân thủ là thủ phạm —
+đoán sai, và đoạn đó chưa chạy tới trong lần dò nào, nên nó **chưa được kiểm
+bằng đường thật**.
+
+Lớp offline cố ý KHÔNG trả lời API chưa có handler (test `khong tra loi bua`),
+nên yêu cầu nào khác phụ thuộc giờ mà chưa có handler vẫn có thể làm kẹt `Main`
+vào lúc khác — `bam_that.gd` sẽ chỉ ra. Bấm tay trong `vao_main.gd --xem` giờ
+đi được tới trận.
+
+```bash
+godot --path . --script tools/do_chien_dich.gd -- --chup=tran.png   # chụp giữa trận
+```
+
+Chưa có: kịch bản `sc/plot/drama_*.lua`, `OnKillEnemy` (chưa biết `szId` là
+gì), minimap, camera lia tới địch (`fLoaferFocus*`) và chậm hình khi qua ải
+(`fTimeScaleForStageClear`). Với mô hình này, ải đầu thua: một tướng HP 1.035
+gặp tướng NPC HP 5.000 / DP 500.
+
+**Đưa lính ra trận.** Nút binh chủng `btnBattlefieldArmy` là lớp C++ mang tên
+node (`libgame.so` có `setDispatchID` / `setLeaderShipForBuild` / `dispatch` /
+`attachedDispatch` cạnh nhau); trong `.xgg` nó KHÔNG có tên chạm — bản gốc để
+engine bắt chạm trên nút. `lua/san_tran.lua` gắn bộ hàm riêng cho nó (bản sao
+của `createArmyIcons` giữ tên node vì `_copy` chép meta) và tên chạm `DuaLinh`
+khi engine nhận `setDispatchID`. Bấm nút hay `CUIGame:TouchArrmy(n)` (đường tự
+đánh / hướng dẫn) đều vào `dispatch`: đủ thống soái thì trừ, thả một toán
+`MaxUnit` người dựng từ chỉ số thật của `Troop_<n>`, báo `NoticeDispatch` /
+`updateLeaderShip`; thống soái hồi theo `runLeaderShipTimer` /
+`updateLeaderShip` / `updateMaxLeaderShip` (tên đo trong `libgame.so`). Số lấy
+từ dữ liệu bản gốc: `L_N_01_01` có thống soái 6, `LeaderShipResume` 5;
+`Troop_1` (`DefenderN`, HP 1.000) tốn 3, mỗi toán 4 người. ĐẶT, chưa đo: vào
+trận đầy thống soái; hồi 1 điểm sau mỗi `LeaderShipResume` giây; toán lính
+xuất hiện ở mép trái sân. "Binh lực 20/20" chưa làm — không có số trong dữ
+liệu. Kiểm (`--kiem`): hai lần `TouchArrmy(1)` thả 2 × 4 người (quân 11 → 19),
+thống soái 6 → 0, lần ba bị từ chối; bấm THẬT vào tâm nút (qua `touch_at`) sau
+khi hồi đủ 3 thì thêm 4 người, trừ 3.
+
+**Kỹ năng thức tỉnh.** Luật của từng kỹ năng nằm trong C++ (`libgame.so` có
+hàng loạt lớp hành vi `CDFSpriteFight*Wake`, nút là `CDFWakeButton`); dữ liệu
+chỉ mang `WakeSkill`, `AngerRecovery`, `AttackAwakening`, `GethitAwakening` và
+`Skills` (với `Hero_25`: `JiJiaoZhiShi`, `SkillInjuryRates` 1,4). Phần làm
+theo đúng bản gốc là DÒNG ĐIỀU KHIỂN: nút là bản sao của `spBattleFieldHeroItem`
+(`CUIGame:SetSkillIcons`), không có tên chạm trong `.xgg` — engine bắt chạm;
+`lua/san_tran.lua` gọi `InitSkillButton` cho từng tướng, đổi trạng thái nút
+bằng `SetSkillButtonLighten` (đầy nộ) / `SetSkillButtonNormal` /
+`SetSkillButtonGray` (tên đo trong `libgame.so`, là hàm Lua của `CUIGame`), gắn
+tên chạm `ThucTinh`, báo `NoticeCastSkill`; `setWaking()` (nút `btnWake` cũ)
+và `setAutoWake` (tự đánh) cũng vào đó. ĐẶT: nộ tích theo mô hình của ta
+(`AngerRecovery` mỗi đòn, đầy ở 100); bấm nút thì đòn KẾ TIẾP của tướng là đòn
+kỹ năng (công × `SkillInjuryRates`) và armature phát động tác `Wake`
+(`Combat.Fighter.giu_no` / `ep_no`, mặc định tắt nên mô hình cũ và `sim/`
+không đổi — `verify_battle.gd` 12/12). Ở `L_N_01_01`, với mô hình này, tướng ta
+chết trước khi đủ 4 đòn để đầy nộ, nên `--kiem` đặt nộ bằng móc
+`_dat_no` (chỉ để kiểm) lúc tướng còn sống rồi bấm THẬT vào nút: thấy đủ chuỗi
+`InitSkillButton → SetSkillButtonGray → SetSkillButtonLighten → NoticeCastSkill
+→ đòn kỹ năng → SetSkillButtonNormal → SetSkillButtonGray`.
+
+**Đổi ảnh theo khung (armature).** Bản ghi khung 80 byte của `.xml` có hai
+trường trước đây ghi nhầm là "luôn 0" (`brave-cross/work/anim.py`):
+`+0x2C` là **chỉ số ảnh** đang hiện của xương (vị trí trong bảng xương → ảnh,
+−1 = ẩn), `+0x40` là **số khung** keyframe đó giữ. Đo trên 418 file / 641.538
+keyframe: chỉ số nằm trong [−1, số ảnh − 1] ở 641.525 keyframe (số ảnh lấy
+từ bảng riêng, không phải từ khung); tổng số khung giữ = độ dài động tác ở
+95.416 / 95.431 xương. Mọi chỗ lệch nằm ở `BingYing.xml` và
+`XSJiYouHeTiJi.xml` (bố cục khung khác, chưa giải) — ở đó `SngRig` giữ cách
+cũ. `SngRig` nay dựng mỗi xương thành một khung chứa MỌI ảnh / rig lồng của
+nó, đổi ảnh bằng một đường gọi `_doi_anh` cho mỗi xương, và đặt keyframe theo
+số khung giữ (trước đây mỗi keyframe cách đúng 1 khung). Kiểm:
+`tools/verify.gd` (3.138 đạt), trong đó `eff010` của `Player000M03W/Fight`
+phải ẩn → hiện ảnh 0 ở khung 8 → ẩn ở khung 12, đúng số trong file.
+
+**Trang phục dùng động tác của nhóm gốc.** `Defender_VampirE`,
+`Archer_VampirE` là BỘ ẢNH cho cùng bộ xương, không có nhóm động tác riêng;
+`SngRig` trước đây trả nhóm rỗng, nên lính trang phục trên sân không có động
+tác nào và mọi xương — cả xương hiệu ứng — đứng im ở ảnh đầu (thành một mảng
+vuốt đỏ bám theo cả trận). Nay lấy nhóm có tên là tiền tố dài nhất. Đo trên
+cả `assets_ref`: 76 bộ phận cấp cao không có nhóm riêng, 75 có nhóm gốc là
+tiền tố, xương trùng trung vị 100%.
+
+Hai chỗ tìm ra khi dựng hình:
+* **Cảnh 40×40.** `g_GameUIScene` (cảnh Battle) ghi cỡ 40×40 trong file; con
+  trực tiếp của cảnh đặt theo chiều cao đó, nên `g_BattleFieldLayer` đứng ở MÉP
+  TRÊN và cả sân trận nằm ngoài khung. `_load_xgg` nay đặt lại con của cảnh theo
+  chiều cao thật (Cocos đặt con theo góc dưới-trái của cha).
+* **Lớp đen `g_BlackEffectLayer`** (2000×1000, đen, độ mờ 255, đang hiện) phủ
+  kín màn. Lua của bản gốc không bao giờ tắt nó (dòng tắt duy nhất,
+  `CUIGame.lua:1148`, nằm trong khối đã chú thích bỏ); tên nó có trong
+  `libgame.so` và `g_BattleField` có `SetLayerDark` — nên SUY RA là việc của
+  engine: sân dựng thì tắt, `SetLayerDark(b)` bật/tắt.
+* `addChild(con, z)` từng đặt `z_index` — bản gốc truyền tới 99999, Godot chỉ
+  nhận ±4096. Nay xếp lại anh em như `setZOrder`.
+
+**Những chỗ đã mất công tìm ra:**
+* **Tag ghép nhầm khi anh em trùng khít.** Năm con của `lSmallBackgroup`
+  (`UI_MessageBox`) cùng ở (230, 155) 500×330; `emu_join.py` so vị trí nên
+  gán nhầm `lMessageBox` tag 4 thay vì 1, và MỌI hộp thoại hỏi chết ở
+  `CMessageBox.lua:79`. Nay phân xử bằng cây con đo được (`diem_cay_con`).
+* **`CCCallFunc` nuốt lỗi** (`actions.lua`): hoạt cảnh mở hộp thoại kết thúc
+  bằng `CCCallFunc(OnShowAnimationFinish)`, và hàm đó chỉ `PopAnimation` ở cuối.
+  Lỗi ở giữa bị nuốt thì hàng đợi hoạt cảnh kẹt mãi — mọi `Show` sau im lặng
+  không mở. Nay lỗi ghi vào `loi_hen`.
+* **`G_DEBUG_TEST_MODE`** (`game.lua:363`) chưa được chạy lại nên thành bóng
+  (đúng): `CUIGame.lua:1276` hẹn `GameFinish(true)` sau 2 giây và trận nào
+  cũng thắng. Nay `khoi_dong_game` chạy lại dòng đó.
+* Hàm/lớp engine thêm vào, đều có tên trong `libgame.so`:
+  `spriteWithSpriteFrameName`, `LGG_GetUtf8WordLen` (cách đếm của bản gốc CHƯA
+  giải — đếm ký tự UTF-8, chỉ ảnh hưởng tỉ lệ thu nhỏ tên dài), `CCLayer`,
+  `CCLayerColorRoundRect` (thứ tự đối số theo `CCLayerColor` của Cocos, suy từ
+  tên), `TableView:cellAtIndex`.
+* Còn thiếu, không chặn: `toAnimationName` (có trong `libgame.so`, dùng lập
+  danh sách armature nạp trước; cách đổi tên chưa rõ), `ClientReachAchieve`,
+  `G_MysteriousStoreLogic.ClientRefresh`.
+
+#### Trạng thái người chơi — những chỗ đã mất công tìm ra
+
+* **Bóng khác `nil`, nên mọi `if X == nil` đi nhánh sai.** Ba lớp sửa:
+  * biến mã gốc **đã từng gán** (kể cả gán `nil`) thì vắng mặt là `nil` —
+    `AchieveCheckLogic.lua:1010` quên `local` rồi kiểm `nCount == nil`;
+  * **144 biến chắc chắn `nil`**: mã gốc kiểm nil nhưng không ai đặt được
+    (không trong Lua, không trong `libgame.so` lẫn `classes.dex`) —
+    `import_lua.py` đo lại mỗi lần, ghi `data_ref/bien_nil.json`. Gồm
+    `ISSERVER` (mã dùng chung đi nhánh **máy chủ**), `G_DataCenterManager`,
+    và tên node `.xgg` (nil tới khi nạp bố cục);
+  * tên **có** trong `libgame.so` thì engine đăng ký thật — phải làm thật
+    (`sngUtil_getIDFV`, `sngHttpRequestWithData`), không ép nil được.
+* **`sc/game.lua` chạy 13 bước khởi tạo sau `G_ConfigManager:Init`** mà ta
+  không chạy file đó — `bootstrap.khoi_dong_game()` làm lại đúng thứ tự
+  (`XGEvent:Init` là nơi duy nhất đặt `XGEvent.m_GameParams`…). Bỏ qua âm
+  thanh, tải xuống, HTTP và cảnh Logo.
+* **LuaXML có hai nửa.** Nửa Lua là `sc/system/xml.lua` của bản gốc; nửa C
+  (`load`, `eval`, `encode`, `_save`) là `lua/luaxml.lua`, phải đặt thành
+  `xml` **trước** khi nạp bản kê khai để `module("xml")` dùng lại bảng đó.
+* **Tên trường phải lấy từ chỗ client ĐỌC**, không đoán: tên nhân vật là
+  `CharacterName`; phản hồi đăng nhập là `uid` / `session` viết thường; danh
+  sách máy chủ là `RecomendList`; hàm nhận danh sách hoạt động tên sai chính
+  tả `OnGetAcvitityList`.
+* **`io.open` của LuaJIT trên Windows không mở được đường dẫn ngoài ASCII** —
+  `user://` của dự án có dấu gạch dài. Bọc lại, đi qua `FileAccess` khi cần.
+* **Người chơi mới tinh thật ra vào ải hướng dẫn**, không vào `Main`
+  (`CUILogin2.lua:3714`). `vao_main` bật công tắc có sẵn của bản gốc
+  (`CloseGuide`, `game.lua:457`) để vào thẳng `Main`.
 
 ## Khung giao diện (các màn viết tay)
 

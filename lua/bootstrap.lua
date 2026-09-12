@@ -151,7 +151,44 @@ end
 local never = {
 	-- ma goc kiem 'if os.dateServer ~= nil' — phai ra nil that
 	dateServer = true,
+	-- Nen snappy: engine goc co, engine cua ta KHONG. Ma goc kiem truoc MOI
+	-- lan dung (sngRpcAnalytics.lua:212, :217 — hai cho dung duy nhat) va khi
+	-- nil thi gui khong nen. De bong thi no 'co', ma goc dem bong di ma hoa va
+	-- initGameConfig chet o sngRpcAnalytics.lua:232.
+	-- (sngHttpRequestWithData thi KHAC: rpc.lua:305 goi thang khong kiem, tuc
+	-- engine luon co — lam that trong install_cocos, khong ep nil.)
+	sngUtil_snappyCompress = true,
 }
+
+-- Bien toan cuc ma ban goc KIEM nil (== nil, ~= nil, if X then) nhung trong
+-- client da ship thi KHONG AI DAT: khong co dong gan nao trong 973 file Lua
+-- (ke ca _G.X =, _G["X"] =, rawset), khong co trong chuoi cua libgame.so, va
+-- khong co trong classes.dex — tuc C++ va Java cung khong dat duoc. Vay tren
+-- may that chung la nil. De thanh bong thi chung thanh "dung" va ma goc di
+-- nhanh khac han:
+--   * ISSERVER — ma dung chung (share/) di nhanh MAY CHU; bong bi cham 357 lan.
+--   * RECHARGESIGN_OPENMONTH — share/Setting.lua:52 con dong gan nhung BI CHU
+--     THICH; bong lam ClientRechargeSignLogic.lua:80 so so voi nil, va chuoi
+--     vao game (OnServerEnterGame) chet o do.
+--
+-- Danh sach DO LAI moi lan chay tools/import_lua.py (data_ref/bien_nil.json):
+-- moi ten ma goc kiem nil ma khong co dong gan nao trong Lua, va khong co
+-- trong chuoi cua libgame.so lan classes.dex. Lan do 12/09/2026: 144 ten —
+-- gom ca G_DataCenterManager (doi tuong chi co o may chu; ma dung chung goi
+-- sau 'if G_DataCenterManager then') va ten node .xgg nhu lMainBtnLayer (nil
+-- toi khi nap bo cuc; nap xong khoa CO MAT nen van ra node that).
+-- Ten CO trong libgame.so (74 ten, vd sngUtil_getIDFV) thi engine dang ky
+-- that — khong ep nil duoc, phai lam that trong install_cocos.
+local function nap_bien_nil()
+	if _godot_doc_file == nil then return 0 end
+	local s = _godot_doc_file('bien_nil.json')
+	if s == nil then return 0 end
+	local ok, t = pcall(function() return require('json').decode(s) end)
+	if not ok or type(t) ~= 'table' or type(t.ten) ~= 'table' then return 0 end
+	for _, ten in ipairs(t.ten) do never[ten] = true end
+	return #t.ten
+end
+M.so_bien_nil = nap_bien_nil()
 
 -- Dat cac doi tuong toan cuc cua engine ma lop gia lap CO lam that.
 -- Phai goi TRUOC install(), khong thi chung bi lam bong va ma goc se goi vao
@@ -163,6 +200,13 @@ function M.install_cocos()
 	g_CNFont = c.luaFont
 	G_CTableViewMgr = c.tableViewMgr
 	S_CCDirector = c.director
+	-- Bo hen gio that (xem cocos.lua, muc "Hen gio"). Khong co no thi coroutine
+	-- doi canh cua CSceneManager dung o lan yield dau tien.
+	S_CCSchedule = c.lich
+	-- San tran: node g_BattleField (BattleField_<canh>_960_640.xgg) dong vai
+	-- engine tran C++ cua ban goc. Phai dang ky TRUOC khi nap canh Battle —
+	-- loadLevelFile boc node ngay luc nap (_G[ten] = c.wrap(...)).
+	c.lop_rieng['g_BattleField'] = require('san_tran')(c)
 	-- system/engine.lua:159 dat lai hai bien nay tu S_CCDirector cua C++;
 	-- sau khi nap ban goc thi chung la bong, phai tra ve so that.
 	screenWidth, screenHeight = c.director.getWinSize()
@@ -186,6 +230,93 @@ function M.install_cocos()
 	function LGG_GetPathWithFileName(rel) return rel end
 
 	function LGG_IsFileExist(p) return _godot_co_file(p) end
+
+	-- Thu muc GHI duoc cua game (noi dat set.xgg). Lop offline luu tien trinh
+	-- va nhat ky vao day. Tren may that la thu muc ngoai cua app; o day la
+	-- user:// cua Godot, doi ra duong dan that vi Lua mo file bang io.open.
+	function LGG_GetSetFilePath() return _godot_thu_muc_ghi or '' end
+
+	-- Do dai ten de thu nho chu (CPublic.lua:697, :728 — ten nhan vat va ten
+	-- tuong; o danh sach xep tuong goi no cho TUNG o). Ham co that trong
+	-- libgame.so, ngay sau LGG_GetUtf8Len. Thieu thi ra bong (bang), dong
+	-- 'nNameLen > nMaxNameSize' nem 'compare number with table' va man bo
+	-- tri quan khong dung duoc o tuong nao.
+	--
+	-- DAT, KHONG DO: cach dem cua ban goc chua giai duoc (can dich nguoc ma
+	-- may). O day dem KY TU UTF-8. Chi anh huong ti le thu nho cua ten dai
+	-- hon 10 ky tu (tieng Viet), khong cham luat choi.
+	function LGG_GetUtf8WordLen(s)
+		if type(s) ~= 'string' then return 0 end
+		local n = 0
+		for i = 1, #s do
+			local b = s:byte(i)
+			if b < 0x80 or b >= 0xC0 then n = n + 1 end
+		end
+		return n
+	end
+
+	-- sc/game.lua:40-42 — file khoi dong ma ta KHONG chay (boot_goc nap ban ke
+	-- khai thay no):
+	--     if os.dateServer ~= nil then
+	--         os.dateOrg = os.date; os.date = os.dateServer
+	--     end
+	-- os.dateServer la phan mo rong cua engine goc (ngay theo mui gio server).
+	-- Tren may that no co, nen os.dateOrg luon co — local_notification.lua:64
+	-- va :107 goi thang no. Lam lai phan CHAC CHAN cua ba dong do: dateOrg la
+	-- os.date goc. os.date thi giu nguyen: khong biet mui gio server VN nen
+	-- khong dung duoc dateServer ma khong bia.
+	if os ~= nil and os.dateOrg == nil then
+		os.dateOrg = os.date
+	end
+
+	-- io.open cua LuaJIT tren Windows goi fopen voi trang ma ANSI, nen khong mo
+	-- duoc duong dan ngoai ASCII — ma thu muc user:// cua du an nay co dau gach
+	-- dai ("BraveCross — game moi"): lop offline khong ghi duoc file luu nao. Mo
+	-- that truoc; chi khi hong VA duong dan co byte ngoai ASCII moi di qua
+	-- FileAccess cua Godot. Du cho nhung gi lop offline dung: doc '*a', ghi,
+	-- flush, close.
+	if io ~= nil and not M.da_boc_io then
+		M.da_boc_io = true
+		local mo_goc, xoa_goc = io.open, os.remove
+		local function ngoai_ascii(p)
+			return type(p) == 'string' and p:find('[\128-\255]') ~= nil
+		end
+		io.open = function(p, che_do)
+			local f, e = mo_goc(p, che_do)
+			if f ~= nil or not ngoai_ascii(p) then return f, e end
+			che_do = che_do or 'r'
+			if che_do:sub(1, 1) == 'r' then
+				local s = _godot_doc_ngoai(p)
+				if s == nil then return nil, e end
+				return {
+					read = function() return s end,
+					close = function() return true end,
+				}
+			end
+			-- 'w' xoa file o lan ghi dau; 'a' thi noi. Cac lan sau luon noi.
+			local noi, da_ghi, dem = che_do:sub(1, 1) == 'a', false, {}
+			local fp = {}
+			function fp:write(...)
+				for i = 1, select('#', ...) do dem[#dem + 1] = tostring((select(i, ...))) end
+				return self
+			end
+			function fp:flush()
+				if #dem > 0 or not da_ghi then
+					_godot_ghi_ngoai(p, table.concat(dem), noi or da_ghi)
+					dem, da_ghi = {}, true
+				end
+				return true
+			end
+			function fp:close() return self:flush() end
+			return fp
+		end
+		os.remove = function(p)
+			local ok, e = xoa_goc(p)
+			if ok or not ngoai_ascii(p) then return ok, e end
+			if _godot_xoa_ngoai(p) then return true end
+			return nil, e
+		end
+	end
 
 	-- cjson: ban goc goi 436 lan. Quan trong nhat la JSON LONG TRONG JSON —
 	-- vi du PrizeContent cua bang phan thuong la mot chuoi JSON nam trong
@@ -241,6 +372,87 @@ function M.install_cocos()
 		end
 	end
 
+	-- LuaXML: engine goc rang buoc no thanh bien toan cuc 'xml'. Kho thiet lap
+	-- set.xgg (g_SetGame, g_xmlSet) doc/ghi qua no — xem lua/luaxml.lua.
+	xml = require('luaxml')
+
+	-- Ham file cua engine goc, dung de dung set.xgg (system/engine.lua:238,
+	-- user/Public/set.lua:86-96). Nguon tuong doi ('conf/set_org.xgg') la tai
+	-- nguyen ban goc — import_lua.py chep vao data_ref/conf/.
+	function is_file_exist(p) return xml.doc(p) ~= nil end
+	function LGG_CopyFile(tu, den)
+		local s = xml.doc(tu)
+		if s == nil then return false end
+		local f = io.open(den, 'w')
+		if f == nil then return false end
+		f:write(s)
+		f:close()
+		return true
+	end
+	-- engine.lua:238 goi copy_file_absolute_path(set_org, set.xgg, false) MOI
+	-- lan khoi dong. Neu tham so thu ba la 'ghi de' thi thiet lap cua nguoi
+	-- choi mat sau moi lan mo game — nen hieu false la KHONG ghi de khi da co.
+	-- Day la SUY RA tu cach dung, khong doc duoc tu engine.
+	function copy_file_absolute_path(tu, den, ghi_de)
+		if not ghi_de and is_file_exist(den) then return true end
+		return LGG_CopyFile(tu, den)
+	end
+	function LGG_IsXmlValid(p) return xml.load(p) ~= nil end
+
+	-- sngUtil_getIDFV: ma dinh danh thiet bi. Ten nay CO trong libgame.so nen
+	-- tren may that engine dang ky no — khong ep nil duoc (xem bien_nil).
+	-- Device.lua:274 va :293 dem ket qua di string.find, nen bong (mot bang)
+	-- lam chuoi ket noi chet o g_CUIGameRPCManager:OnConnected. Khong co thiet
+	-- bi that thi khong co ma: tra chuoi rong, va Device.lua tu 'break' ra.
+	function sngUtil_getIDFV() return '' end
+
+	-- Armature theo ten (engine C++): nha cua canh Main, hieu ung, tuong trong
+	-- giao dien. Lam bang SngRig tren du lieu armature cua ban goc — xem
+	-- LuaRuntime._tao_rig.
+	function getSpriteFromSpriteCatch(ten)
+		return c.wrap(_godot_tao_rig(tostring(ten)))
+	end
+	getUIAnimFromSpriteCatch = getSpriteFromSpriteCatch
+
+	-- sngHttpRequestWithData(url, du_lieu, kieu, obj_ok, ham_ok, obj_hong,
+	-- ham_hong, so_lan_thu): engine goc LUON co — rpc.lua:305 goi thang khong
+	-- kiem. Engine cua ta khong co mang ra ngoai: moi yeu cau deu hong, va bao
+	-- ve ham 'hong' o KHUNG SAU, dung nhu mot may mat mang. Hai ham hong cua ma
+	-- goc chi dem va ghi log, khong thu lai (rpc.lua:189,
+	-- sngRpcAnalytics.lua:341). Ma loi -1 la ta DAT.
+	function sngHttpRequestWithData(url, _, _, _, _, obj_hong, ham_hong)
+		if type(obj_hong) == 'string' and type(ham_hong) == 'string' then
+			local cho = {}
+			function cho:goi()
+				local o = rawget(_G, obj_hong)
+				if type(o) == 'table' and type(o[ham_hong]) == 'function' then
+					o[ham_hong](o, url, -1)
+				end
+			end
+			c.lich:scheduleOnce(cho, 'goi')
+		end
+		return true
+	end
+
+	-- Nap nhieu file roi goi obj:ten_ham() — CLevelLoader.lua:132, la duong
+	-- nap cua ca doi canh lan sngPreLoad. Phai goi lai o KHUNG SAU chu khong
+	-- goi ngay: ham goi lai (CLevelLoader:sngLoadFinish) resume chinh coroutine
+	-- dang goi toi day, ma coroutine dang chay thi khong resume duoc.
+	function loadLevelFileAsync(ds, cha, obj, ten_ham)
+		if type(ds) == 'string' then ds = { ds } end
+		for _, duong in ipairs(ds or {}) do loadLevelFile(duong, cha) end
+		if obj ~= nil and ten_ham ~= nil then c.lich:scheduleOnce(obj, ten_ham) end
+	end
+
+	-- Kho xgg cua engine. Doi canh goi popXgg cho tung file cua canh cu
+	-- (CLevelLoader:UnloadFile). Ta chi QUEN file do de lan sau nap lai duoc —
+	-- chua giai phong node, vi chua theo doi node nao den tu file nao.
+	function sngXggMgrPool_pushXgg(_) end
+	function sngXggMgrPool_popXgg(duong)
+		if _godot_bo_xgg ~= nil then _godot_bo_xgg(duong) end
+	end
+	function sngXggMgrPool_popUnuseTexture() end
+
 	-- Cac lop node cua engine, dung de TAO node luc chay. Ban goc goi
 	-- Label:new() 14 lan, CCScale9Sprite:new() 9, CCSprite:new() 7,
 	-- CCLabelTTF:new() 3 — va system/engine.lua thi khong dinh nghia chung
@@ -254,6 +466,42 @@ function M.install_cocos()
 	CCSprite = lop_node('sprite')
 	CCScale9Sprite = lop_node('scale9')
 	CCNode = lop_node('node')
+	-- CCLayer:new() 7 cho, CCLayerColorRoundRect:new(...) 6 cho — ca hai la
+	-- lop C++ (libgame.so co 'lua_CCLayerColorRoundRect'), thieu thi ra bong.
+	-- CUISubtitle:AddToParent (CUISubtitle.lua:52-54) tao mot cai lam khung
+	-- phu de roi addChild vao canh Battle: bong di vao addChild la
+	-- CUIGame:InitUI chet ngay dong 379, truoc ca initBattle.
+	CCLayer = lop_node('lop')
+	-- Doi so (r, g, b, a, rong, cao): thu tu cua CCLayerColor::create(ccColor4B,
+	-- w, h) ben Cocos — suy tu ten lop, KHONG do. Ma goc goi (0, 255, 0, 0, w, h):
+	-- xanh la voi do mo 0, tuc mot khung trong suot.
+	local function lop_mau(_, r, g, b, a, w, h)
+		local n = c.new_node('mau')
+		local gd = c.raw(n)
+		gd.color = Color((tonumber(r) or 0) / 255.0, (tonumber(g) or 0) / 255.0,
+			(tonumber(b) or 0) / 255.0, (tonumber(a) or 0) / 255.0)
+		if type(w) == 'number' and type(h) == 'number' then
+			n:setContentSize(w, h)
+		end
+		return n
+	end
+	CCLayerColorRoundRect = { new = lop_mau, create = lop_mau }
+	-- system/engine.lua:41 dat 'S_CCSprite = CCSprite:new()' — mot THE HIEN
+	-- dung lam nha may, roi ma goc goi S_CCSprite:new() (61 cho). Voi lop gia
+	-- lap, CCSprite:new() da ra mot node, nen S_CCSprite:new() roi vao stub va
+	-- tra nil: dung cho do coroutine doi canh chet (CUILoad.lua:137,
+	-- CUIArmyGroupCampsiteChatting.lua:439). Tro thang ve nha may.
+	S_CCSprite = CCSprite
+	S_CCOnlineImageSprite = CCSprite
+	-- Tao sprite theo TEN KHUNG — ham cua engine ('spriteWithSpriteFrameName'
+	-- o 0x7ad2c1 trong libgame.so), 6 file goi. CUISelectLevel.lua:1667 goi no
+	-- trong OnShowAnimationFinish: thieu thi loi o do lam hang doi hoat canh
+	-- hop thoai ket mai, va man thong tin ai khong bao gio mo.
+	function CCSprite.spriteWithSpriteFrameName(_, ten)
+		local n = c.new_node('sprite')
+		n:initWithSpriteFrameName(ten)
+		return n
+	end
 
 	-- ProtoRPC: doi tuong RPC ben C++ (system/rpc.lua:337 ProtoRPC:new()).
 	--
@@ -378,12 +626,31 @@ function M.boot_goc()
 end
 
 
+-- Ten toan cuc ma ma goc DA TUNG GAN, ke ca gan nil. Bong chi duoc thay cho
+-- bien ma ma goc KHONG BAO GIO dat; bien da gan la bien that, vang thi phai
+-- doc ra nil.
+--
+-- Can vi ma goc hay quen 'local'. AchieveCheckLogic.lua:1010-1012:
+--     bRetCode,nCount = G_UserLogic:GetStatisticsCommonData(...)
+--     if nCount == nil then nCount = 0 end
+-- Nguoi choi moi thi ham tra nil, 'nCount = nil' khong tao muc nao trong _G,
+-- va lan doc sau roi vao __index — ra BONG chu khong ra nil, phep kiem truot,
+-- roi AchieveLogic.lua:1448 so bong voi so va ca chuoi vao game chet. Ban goc
+-- khong co bong nen o day ra nil va di tiep binh thuong.
+local da_gan = {}
+M.da_gan = da_gan
+
 function M.install()
 	local mt = getmetatable(_G) or {}
 	mt.__index = function(_, k)
-		if never[k] then return nil end
+		if never[k] or da_gan[k] then return nil end
 		note(M.ghosts, tostring(k))
 		return make_ghost(tostring(k))
+	end
+	-- Chi chay khi khoa CHUA co trong _G — dung luc can ghi nhan.
+	mt.__newindex = function(t, k, v)
+		da_gan[k] = true
+		rawset(t, k, v)
 	end
 	setmetatable(_G, mt)
 end
@@ -438,6 +705,72 @@ M.FRAMEWORK = {
 function M.init_config()
 	local ok, err = pcall(function() G_ConfigManager:Init() end)
 	return ok and 'ok' or tostring(err)
+end
+
+-- Phan con lai cua sc/game.lua SAU G_ConfigManager:Init() (d.215) — cac loi goi
+-- khoi dong thuan Lua, dung thu tu cua no. Ta khong chay game.lua (no mo mang,
+-- tai tai nguyen, nap am thanh FMOD, dung canh Logo), nen phai lam lai tung
+-- buoc. Thieu buoc nao thi thieu trang thai ma ban goc tin la luon co — vi du
+-- XGEvent:Init (d.227) la noi DUY NHAT dat XGEvent.m_GameParams, va thieu no
+-- thi CUILogin:OnServerEnterGame chet o xg_event.lua:375.
+--
+-- BO QUA, co y: am thanh (d.238, 340-347 — engine), bo tai (242-247 — mang),
+-- sngPatch va kiem phien ban (252-314 — xoa file roi khoi dong lai game),
+-- sngHttMgr (488 — HTTP), va canh Logo (498 tro di).
+--
+-- Tra ve (so buoc chay duoc, bang {nhan -> loi} cua buoc hong).
+function M.khoi_dong_game()
+	local buoc = {
+		{ 'initGameConfig (d.220)', function() initGameConfig() end },
+		{ 'XGAnalytics START (d.222)', function()
+			XGAnalytics:logEventByID(XGAnalytics.EVENT_ID.START) end },
+		{ 'UMEvent:Init (d.225)', function() UMEvent:Init() end },
+		{ 'XGEvent:Init (d.227)', function() XGEvent:Init() end },
+		{ 'plot.string_gb + g_DramaSystem (d.233-235)', function()
+			require('plot.string_gb')
+			g_DramaSystem = DFDramaScriptSystem:new()
+		end },
+		{ '__twoYearCheckInit (d.318)', function()
+			if g_CUIMainTheme and g_CUIMainTheme.__twoYearCheckInit ~= nil then
+				g_CUIMainTheme:__twoYearCheckInit()
+			end
+		end },
+		{ 'math.randomseed (d.337)', function() math.randomseed(os.time()) end },
+		{ 'g_CUIOptions:InitGameInfo (d.352)', function() g_CUIOptions:InitGameInfo() end },
+		{ 'RECONNECT_COUNT (d.355)', function() USER_GLOBAL.RECONNECT_COUNT = 3 end },
+		-- Co thu nghiem cua ban goc: chi bat khi set.xgg ghi DebugTestMode.
+		-- Thieu buoc nay thi G_DEBUG_TEST_MODE chua ai gan nen ra BONG (dung),
+		-- va CUIGame.lua:1276 hen GameFinishTimer -> GameFinish(true) sau 2
+		-- giay: tran nao cung THANG, du san tran bao gi.
+		{ 'G_DEBUG_TEST_MODE (d.363-366)', function()
+			G_DEBUG_TEST_MODE = g_SetGame:GetString('DebugTestMode') == 'true'
+			if G_DEBUG_TEST_MODE then
+				g_CGameFuncOpeningManager.IsTest = true
+			end
+		end },
+		{ 'g_CUILoad:InitUI (d.452)', function() g_CUILoad:InitUI() end },
+		{ 'CloseGuide / OpenAllGameFun (d.457-467)', function()
+			g_CUIMain.bIgnoreGuide = g_SetGame:GetString('CloseGuide') == 'true'
+			if g_SetGame:GetString('OpenAllGameFun') == 'true' then
+				g_CGameFuncOpeningManager.IsTest = true
+			end
+		end },
+		{ 'co khoi dong (d.472-481)', function()
+			g_bShowServerKickedMsg = false
+			g_bSngSceneLoadAsync = false
+			g_CUIGame.bTestButton = false
+			g_CUIGame.bRepeatPlot = false
+		end },
+		{ 'XGAnalytics LOADCONFIG (d.485)', function()
+			XGAnalytics:logEventByID(XGAnalytics.EVENT_ID.LOADCONFIG) end },
+	}
+	local n, hong = 0, {}
+	for _, b in ipairs(buoc) do
+		M.cham = 0
+		local ok, err = pcall(b[2])
+		if ok then n = n + 1 else hong[b[1]] = tostring(err) end
+	end
+	return n, hong, #buoc
 end
 
 -- Nap khung suon. Tra ve bang {ten module -> 'ok' hoac loi}, khong nem ra

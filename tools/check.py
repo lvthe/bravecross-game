@@ -23,6 +23,14 @@ SUITES = [
     ('ma Lua ban goc',      'script', 'tools/verify_lua_ui.gd',  False, []),
     ('man hinh Lua ban goc','script', 'tools/verify_lua_screen.gd', False, []),
     ('action + anh (Lua)',  'script', 'tools/verify_lua_actions.gd', False, []),
+    ('cham (Lua)',          'script', 'tools/verify_cham.gd',    False, []),
+    ('canh Main (Lua)',     'script', 'tools/verify_main.gd',    False, []),
+    # Main -> chon ai -> bo tri quan -> tran (g_BattleField gia) -> man ket
+    # thuc, qua lop offline: ca chuoi chien dich cua ban goc.
+    ('chien dich (Lua)',    'script', 'tools/do_chien_dich.gd',  False, ['--kiem']),
+    # Cung duong do nhung BANG CU BAM THAT vao tung nut (touch_at, nhu chuot
+    # cua --xem): lop phu nao con hien ma nuot cu bam la lo ngay.
+    ('bam that Main -> tran', 'script', 'tools/bam_that.gd',     False, []),
     ('tang cau hinh (Lua)', 'script', 'tools/verify_lua_config.gd', False, []),
     ('trang bi (GDScript)',  'script', 'tools/verify_equipment.gd', False, []),
     ('man trang bi',         'scene',  'tools/verify_equip.tscn', False, []),

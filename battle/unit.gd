@@ -87,7 +87,19 @@ func setup(f: Combat.Fighter, team_index: int, rules: Dictionary,
 		if rig != null:
 			rig.scale = Vector2(_scale_x(art_scale), art_scale)
 			add_child(rig)
+			# Dong tac danh / thuc tinh KHONG lap (loop=false): choi xong dung o
+			# khung cuoi. Khi choi xong ma van song thi ve Standby (dung im nhip
+			# tho), khoi treo cung o khung cuoi giua cac don.
+			if rig.player != null:
+				rig.player.animation_finished.connect(_dong_tac_xong)
 			_play("Standby")
+
+
+## Dong tac vua choi xong (ban goc loop=false cho Fight/Wake/Hit...). Con song
+## thi ve Standby de khong dung cung khung cuoi.
+func _dong_tac_xong(ten: StringName) -> void:
+	if state != State.DEAD and String(ten) != "Standby":
+		_play("Standby")
 
 
 ## scale.x cho huong `facing` hien tai, da tinh ca chieu ve cua art.
@@ -95,11 +107,54 @@ func _scale_x(mag: float) -> float:
 	return (-facing if ART_FACES_LEFT else facing) * mag
 
 
+## Chuoi thay the cho tung dong tac: khong phai armature nao cung du bo dong tac
+## chuan. Flagman chi co "Walk" (khong Standby/Fight) -> truoc day _play im lang,
+## don vi treo cung o khung 0. Doi sang dong tac gan nghia nhat con co that.
+const THAY_DONG := {
+	"Standby": ["Standby", "Standby2", "Walk", "Run"],
+	"Walk": ["Walk", "Walk2", "Run", "Standby"],
+	"Fight": ["Fight", "Fight2", "Fight3", "Fire", "Walk"],
+	"Wake": ["Wake", "Wake2", "WakeLoop", "Fight", "Walk"],
+	"Death": ["Death", "Down", "Hit", "Standby"],
+}
+
+
+## Ten dong tac CO THAT gan nhat voi `anim_name` tren rig hien tai; "" neu chiu.
+func _ten_dong(anim_name: String) -> String:
+	if rig == null or rig.player == null:
+		return ""
+	if rig.player.has_animation(anim_name):
+		return anim_name
+	for ten in THAY_DONG.get(anim_name, []):
+		if rig.player.has_animation(ten):
+			return ten
+	# Cuoi cung: dong tac dau tien co, con hon dung im.
+	var ds := rig.player.get_animation_list()
+	return String(ds[0]) if not ds.is_empty() else ""
+
+
 func _play(anim_name: String) -> void:
-	if rig == null or _anim == anim_name:
+	if rig == null:
 		return
-	if rig.play(anim_name):
-		_anim = anim_name
+	var ten := _ten_dong(anim_name)
+	if ten == "" or _anim == ten:
+		return
+	if rig.play(ten):
+		_anim = ten
+
+
+## Choi LAI tu dau, du dang o dung dong tac do — cho don danh / ky nang lap lai
+## moi don. Khong co cai nay thi don thu hai tro di bi _play bo qua (trung ten)
+## va nhan vat treo o khung cuoi Fight -> "danh khong muot".
+func _play_lai(anim_name: String) -> void:
+	if rig == null or rig.player == null:
+		return
+	var ten := _ten_dong(anim_name)
+	if ten == "":
+		return
+	rig.player.play(ten)
+	rig.player.seek(0.0, true)
+	_anim = ten
 
 
 func alive() -> bool:
@@ -118,9 +173,21 @@ func alive() -> bool:
 
 ## Pha 1: chon muc tieu, tien len. `snap` la vi tri cua moi don vi truoc buoc
 ## nay. Tra ve muc tieu neu don vi nay ra don trong buoc, khong thi null.
+## Xac mo dan roi BIEN MAT sau khi chet — khong de dong lai thanh vet den.
+const DEATH_FADE := 1.2
+
 func advance(delta: float, enemies: Array, snap: Dictionary) -> BattleUnit:
 	if state == State.DEAD:
 		_death_timer += delta
+		if rig != null:
+			if _death_timer >= DEATH_FADE:
+				# Da mo het: an han xac de khong chong dong thanh vet den.
+				if rig.visible:
+					rig.visible = false
+			else:
+				# Mo dan tu ~0,85 ve 0 trong DEATH_FADE giay.
+				var a := 0.85 * (1.0 - _death_timer / DEATH_FADE)
+				rig.modulate = Color(0.7, 0.7, 0.76, a)
 		return null
 	if not alive():
 		die()
@@ -177,7 +244,7 @@ func advance(delta: float, enemies: Array, snap: Dictionary) -> BattleUnit:
 	cooldown -= delta
 	if cooldown <= 0.0:
 		cooldown += fighter.interval
-		_play("Fight")
+		_play_lai("Fight")
 		return target
 	if _anim != "Fight":
 		_play("Standby")
@@ -230,8 +297,10 @@ func die() -> void:
 		# TUONG DOI voi rig, nen ha rig xuong -1 lam moi manh thanh -1..22:
 		# manh sau cung tut xuong duoi ca nen (bien mat), so con lai nhay len
 		# tren ca nguoi con song. Ket qua la vu khi bay lo lung giua man hinh.
-		# Lam mo la du de phan biet xac voi nguoi song.
-		rig.modulate = Color(0.65, 0.65, 0.72, 0.5)
+		# Lam mo la du de phan biet xac voi nguoi song; advance() mo tiep ve 0
+		# roi an han (xem DEATH_FADE) de xac khong chong dong thanh vet den.
+		rig.modulate = Color(0.7, 0.7, 0.76, 0.85)
+	_death_timer = 0.0
 	died.emit(self)
 
 

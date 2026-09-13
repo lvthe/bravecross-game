@@ -288,9 +288,32 @@ return function(C)
 		end
 	end
 
+	-- Nap va chay kich ban tran cua ban goc (sc/plot/drama_<ai>.lua). File
+	-- dang ky moc len g_DramaSystem luc require (dong dau file), roi ta chay
+	-- moc bat dau. Xoa package.loaded de tran sau nap lai dung g_DramaSystem
+	-- hien tai. Thieu file kich ban (ai khong co plot) thi bo qua im lang.
+	local function bat_dau_kich_ban(strKey)
+		local kb = rawget(_G, 'g_DramaSystem')
+		if kb == nil or type(kb.bat_dau_kich_ban) ~= 'function' then return end
+		local ten = 'plot.drama_' .. tostring(strKey)
+		package.loaded[ten] = nil
+		local ok = pcall(require, ten)
+		if not ok then return end          -- ai nay khong co kich ban
+		pcall(function() kb:bat_dau_kich_ban() end)
+	end
+
 	local hen = {}
 	-- Moi khung: buoc tran co hinh. Ban goc tam dung (_Lua_PauseGame) thi dung.
 	function hen:buoc(dt)
+		-- Kich ban tran chay TRUOC va BAT KE tam dung: canh dien anh dung tran
+		-- (_Lua_PauseGame) nhung kich ban van tiep. Tin hieu gap_quan bao khi
+		-- tran co dich moi de moc EncounterArmyBegin di tiep.
+		local kb = rawget(_G, 'g_DramaSystem')
+		if kb ~= nil and type(kb.dang_chay) == 'function' and kb:dang_chay() then
+			-- Quan dich co san tu dau tran nen "gap quan" la ngay; moc
+			-- EncounterArmyBegin vi the di tiep o khung ke.
+			pcall(function() kb:gap_quan(); kb:buoc(tonumber(dt) or 0) end)
+		end
 		if not T.dang or T.tran == nil or T.dung == true then return end
 		hoi_thong_soai(tonumber(dt) or 0)
 		cap_nhat_thuc_tinh()
@@ -440,6 +463,13 @@ return function(C)
 		T.hen = C.lich:schedule(hen, 'buoc', 0)
 		bat_dau_thong_soai()
 		bat_dau_thuc_tinh()
+		-- Kich ban tran chi chay khi BAT co G_KICHBAN. Canh dien anh dung tran,
+		-- an nut, tao NPC — dung cho tran that, nhung dap len cac phep kiem cua
+		-- do_chien_dich (dua linh / thuc tinh). De mac dinh TAT: do_chien_dich
+		-- --kiem giu 16/16; do_chien_dich --kichban bat co de do rieng kich ban.
+		if bPlot == true and rawget(_G, 'G_KICHBAN') == true then
+			bat_dau_kich_ban(strKey)
+		end
 	end
 
 	return S

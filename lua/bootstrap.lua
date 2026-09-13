@@ -207,6 +207,9 @@ function M.install_cocos()
 	-- engine tran C++ cua ban goc. Phai dang ky TRUOC khi nap canh Battle —
 	-- loadLevelFile boc node ngay luc nap (_G[ten] = c.wrap(...)).
 	c.lop_rieng['g_BattleField'] = require('san_tran')(c)
+	-- DFDramaScriptSystem: lop C++ chay kich ban tran (sc/plot/drama_*.lua).
+	-- khoi_dong_game (d.235) goi DFDramaScriptSystem:new() -> g_DramaSystem.
+	DFDramaScriptSystem = require('kich_ban')(c)
 	-- system/engine.lua:159 dat lai hai bien nay tu S_CCDirector cua C++;
 	-- sau khi nap ban goc thi chung la bong, phai tra ve so that.
 	screenWidth, screenHeight = c.director.getWinSize()

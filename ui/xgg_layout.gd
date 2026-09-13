@@ -232,6 +232,15 @@ static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 					VERTICAL_ALIGNMENT_BOTTOM]
 			lb.horizontal_alignment = can_ngang[clampi(int(nd.get("alignH", 1)), 0, 2)]
 			lb.vertical_alignment = can_doc[clampi(int(nd.get("alignV", 1)), 0, 2)]
+			# Chu DAI trong o CAO (doan van, vd #FinishUI_*Tip 195x70) phai XUONG
+			# DONG trong be rong o — CCLabelTTF cua ban goc tao voi kich thuoc thi
+			# tu ngat dong. Khong bat thi chu tran ra ngang, cat qua ca man va de
+			# chong len o ben (man ket thuc tran: ba muc kien nghi dinh vao nhau).
+			# Chi bat cho o cao >= 45 (nhieu dong); nhan / so mot dong (h~30) giu
+			# nguyen de khoi ngat nham khi be rong do sat mep chu.
+			if float(nd.get("h", 0.0)) >= 45.0:
+				lb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+				lb.clip_text = true
 			node = lb
 		"scale9":
 			var np := NinePatchRect.new()

@@ -320,7 +320,12 @@ const _CHUAN_BI := """
 		return ghi(self, tag, msg)
 	end
 	require('offline.init')
-	Offline:wipe()
+	-- Mac dinh XOA de moi lan chay la nguoi choi moi tinh (test on dinh). Bat
+	-- co GIU_SAVE (do_chien_dich --giu) thi GIU ban luu de thu tien trinh chien
+	-- dich qua nhieu ai (thang ai 1 -> len cap -> mo ai 2 -> choi tiep).
+	if rawget(_G, 'GIU_SAVE') ~= true then
+		Offline:wipe()
+	end
 	-- Cong tac co san cua ban goc (game.lua:457, CloseGuide trong set.xgg).
 	-- Khong bat thi nguoi choi moi tinh vao ai huong dan (CUILogin2.lua:3714)
 	-- — dung voi ban goc, nhung la canh Battle chu khong phai Main.

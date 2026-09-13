@@ -44,13 +44,25 @@ const BUOC := [
 			.. ' || G_DataManager ' .. tostring(dm ~= nil and type(dm.userData))""", 1],
 	["mo man chon ai",
 		"g_CUINormalDlg:Show(g_CUISelectLevel:GetUIName(), {}) return true", 90],
-	["chon ai dau tien dang mo",
+	["chon ai (mac dinh: dau tien dang mo; AI_CHON: dung ten do)",
 		"""local L = g_CUISelectLevel
+		local ds = {}
+		local chon = rawget(_G, 'AI_CHON')
 		for i, v in ipairs(L.tChapterData or {}) do
-			if v.BattleStatus ~= 0 then L.nSubChapter = i; break end
+			ds[#ds + 1] = tostring(v.ChapterKey) .. '=' .. tostring(v.BattleStatus)
+			if chon ~= nil and chon ~= '' then
+				if tostring(v.ChapterKey) == tostring(chon) and v.BattleStatus ~= 0 then
+					L.nSubChapter = i
+				end
+			elseif v.BattleStatus ~= 0 and L.nSubChapter == nil then
+				L.nSubChapter = i
+			end
 		end
-		if L.nSubChapter == nil then return 'khong co ai nao mo' end
-		L:GoNextCallback() return true""", 60],
+		if L.nSubChapter == nil then
+			return 'khong mo duoc ai (' .. tostring(chon or 'dau') .. '); ds: ' .. table.concat(ds, ' ')
+		end
+		L:GoNextCallback()
+		return 'chon ' .. tostring(L.tChapterData[L.nSubChapter].ChapterKey) .. ' | ds: ' .. table.concat(ds, ' ')""", 60],
 	["bam 'Di'",
 		"g_CUIChapterInfo:onTouchEnd_OnGo(nil, true) return true", 90],
 	# Nguoi choi moi chua co danh sach xuat tran (GetFightHeroListByType ra
@@ -200,11 +212,19 @@ func _init() -> void:
 			_xem = true
 		elif a.begins_with("--thoat="):
 			_thoat = int(a.substr(8))
+		elif a.begins_with("--ai="):
+			_ai = a.substr(5)
+		elif a == "--giu":
+			_giu = true
 	var san := Control.new()
 	san.size = lua.cua_so_engine
 	san.scale = Vector2.ONE * (vp.y / lua.cua_so_engine.y)
 	lua.set_stage(san)
 	lua.set_touch_root(san)
+	# --giu: giu ban luu (khong xoa) de thu tien trinh chien dich qua nhieu ai.
+	# Phai dat TRUOC _NAP vi _CHUAN_BI (trong _NAP) doc co nay de bo qua wipe.
+	if _giu:
+		lua.run("GIU_SAVE = true", "giu ban luu")
 	if lua.run(VM._NAP, "nap") == null:
 		print("nap hong: %s" % ", ".join(lua.errors))
 		quit(1)
@@ -228,6 +248,9 @@ func _init() -> void:
 	# 16/16 vi kich ban an nut / dung tran, dap len phep kiem dua linh).
 	if kichban:
 		lua.run("G_KICHBAN = true", "bat kich ban")
+	# --ai=KEY: chon dung ai do o man chon ai (mac dinh: ai dau tien dang mo).
+	if _ai != "":
+		lua.run("AI_CHON = '%s'" % _ai, "chon ai")
 	var may_chu := ""
 	var offline := ""
 	var canh_sau_tan_cong := ""
@@ -359,6 +382,8 @@ var _khung_chup := 90          ## --khung=N: chup o khung thu N sau khi dua linh
 var _cam_thu := ""             ## camera() sau _thu_camera — xem _kiem
 var _xem := false              ## --xem: giao tran cho nguoi choi
 var _thoat := 0                ## --thoat=N: thoat sau N khung (de kiem --xem)
+var _ai := ""                  ## --ai=KEY: chon dung ai do (mac dinh ai dau mo)
+var _giu := false              ## --giu: giu ban luu (khong wipe) de thu tien trinh
 var _da_in_xem := 0
 var _lua: LuaRuntime = null
 var _san: Control = null

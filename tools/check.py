@@ -31,6 +31,8 @@ SUITES = [
     # Cung duong do nhung BANG CU BAM THAT vao tung nut (touch_at, nhu chuot
     # cua --xem): lop phu nao con hien ma nuot cu bam la lo ngay.
     ('bam that Main -> tran', 'script', 'tools/bam_that.gd',     False, []),
+    # Kich ban tran: nap sc/plot/drama_<ai>.lua, chay coroutine, do chuoi thoai.
+    ('kich ban tran (Lua)',  'script', 'tools/do_chien_dich.gd', False, ['--kichban']),
     ('tang cau hinh (Lua)', 'script', 'tools/verify_lua_config.gd', False, []),
     ('trang bi (GDScript)',  'script', 'tools/verify_equipment.gd', False, []),
     ('man trang bi',         'scene',  'tools/verify_equip.tscn', False, []),

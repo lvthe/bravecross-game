@@ -220,6 +220,14 @@ func _init() -> void:
 	# --kiem: tu kiem ca chuoi (check.py goi). Gom moi loi goi may chu va moi
 	# dong nhat ky offline qua cac buoc de xet o cuoi.
 	var kiem := "--kiem" in OS.get_cmdline_user_args() or "--kiem" in OS.get_cmdline_args()
+	# --kichban: bat co cho kich ban tran chay (san_tran doc G_KICHBAN), roi do
+	# rieng chuoi thoai. Bat TRUOC khi vao tran (bam tan cong goi _Lua_StartGame).
+	var kichban := "--kichban" in OS.get_cmdline_user_args() or "--kichban" in OS.get_cmdline_args()
+	# Choi thu (--xem) chay CA kich ban: nguoi choi xem thoai, dong minh nhap
+	# tran, boss rut -> trai nghiem tron ai 1 thang duoc. --kiem KHONG bat (giu
+	# 16/16 vi kich ban an nut / dung tran, dap len phep kiem dua linh).
+	if kichban:
+		lua.run("G_KICHBAN = true", "bat kich ban")
 	var may_chu := ""
 	var offline := ""
 	var canh_sau_tan_cong := ""
@@ -260,6 +268,44 @@ func _init() -> void:
 				lua.touch(e.xformed_by(root.get_final_transform().affine_inverse())))
 			print("\ndang mo tran — bam nut linh (duoi giua), nut thuc tinh (duoi trai),"
 					+ " dong cua so de thoat")
+			return
+		# --kichban: tran da bat dau (kich ban tu chay khi G_KICHBAN bat). Buoc
+		# them nhieu khung de kich ban dien het (thoai tu di tiep), roi do thoai.
+		if kichban and b[0] == "bam tan cong":
+			for i in 3000:
+				lua.tick(KHUNG)
+				# Nguoi choi cung dua linh nhu binh thuong: du 3 thong soai thi bam.
+				# Cong dong minh kich ban + boss bi rut -> ben ta don sach.
+				if i % 30 == 15 and int(lua.run("return (g_BattleField:_thong_soai())", "ts")) >= 3:
+					lua.run("g_CUIGame:TouchArrmy(1)", "dua linh")
+				if i > 60 and lua.run("local k=g_DramaSystem return not (k and k.dang_chay and k:dang_chay())", "xong kb") == true:
+					print("  (kich ban het sau %d khung)" % (i + 1))
+					break
+			var kb = lua.run(_KICH_BAN, "do kich ban")
+			var so := int(kb.get("so", 0)) if kb != null else 0
+			var loikb := str(kb.get("loi", "?")) if kb != null else "khong doc duoc"
+			print("  so thoai: %d" % so)
+			print("  chuoi thoai: %s" % (str(kb.get("thoai", "")) if kb != null else ""))
+			print("  nhat ky kich ban: %s" % (str(kb.get("nk", "")) if kb != null else ""))
+			print("  loi kich ban: %s" % loikb)
+			# Dong minh nhap tran chua (JoinBattle trong nhat ky), va tran ket
+			# thuc ra sao: kich ban keo boss ra thi ben ta don sach -> thang.
+			print("  quan luc kich ban xong: %s" % str(lua.run("return require('cocos').tran_nut:ds_quan()", "ds")))
+			var co_dong_minh := str(kb.get("nk", "")).contains("JoinBattle")
+			for i in 9000:
+				lua.tick(KHUNG)
+				if i % 30 == 29 and lua.run("return require('cocos').tran_cuoi ~= nil", "cho") == true:
+					break
+			var tc = lua.run(_KB_TRAN, "tran cuoi")
+			var thang := str(tc.get("thang", "?")) if tc != null else "?"
+			print("  dong minh nhap tran: %s | tran: thang=%s (%s)" % [co_dong_minh, thang,
+					str(tc.get("chi_tiet", "")) if tc != null else ""])
+			# Dat khi: kich ban dien het (thoai, khong loi), dong minh nhap tran,
+			# VA ai thang duoc (boss bi rut + linh + dong minh don sach).
+			var okkb := so > 0 and loikb == "nil" and co_dong_minh and thang == "true"
+			print("\ndat %d, hong %d" % [1 if okkb else 0, 0 if okkb else 1])
+			san.free()
+			quit(0 if okkb else 1)
 			return
 		# --kiem: BAM THAT vao nut binh chung (touch_at -> ten cham DuaLinh ->
 		# dispatch), khong qua TouchArrmy. Cho thong soai hoi du 3 roi bam tam nut.
@@ -547,6 +593,28 @@ func _kiem(lua: LuaRuntime, may_chu: String, offline: String, canh: String,
 			print("  HONG: %s  (%s)" % [e[0], str(e[2]).substr(0, 300)])
 	print("\ndat %d, hong %d" % [ok, bad])
 	return bad
+
+
+## Do kich ban tran: so cau thoai, chuoi thoai (ten: loi), va loi coroutine.
+const _KICH_BAN := """
+	local out = Dictionary()
+	local k = rawget(_G, 'g_DramaSystem')
+	out['so'] = (k and k.so_thoai) and k:so_thoai() or 0
+	out['thoai'] = (k and k.chuoi_thoai) and k:chuoi_thoai():sub(1, 1500) or ''
+	out['nk'] = (k and k.nhat_ky) and k:nhat_ky():sub(1, 1500) or ''
+	out['loi'] = tostring(k and k.loi and k:loi())
+	return out
+"""
+
+
+## Ket qua tran sau kich ban: thang/thua + so quan con hai ben.
+const _KB_TRAN := """
+	local out = Dictionary()
+	local r = require('cocos').tran_cuoi
+	out['thang'] = tostring(r and r.thang)
+	out['chi_tiet'] = r and ('song ' .. tostring(r.song) .. ' giay ' .. string.format('%.0f', tonumber(r.giay) or 0)) or 'chua xong'
+	return out
+"""
 
 
 const _TRANG_THAI_CUOI := """

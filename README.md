@@ -654,7 +654,11 @@ thành 353, và 105 màn mở được thành 244.
    * **Chữ của nhãn** ở `+0x138` của bản ghi `CCLabelTTF` (`#Khoá` tra bảng chữ
      tiếng Việt, không `#` là chữ viết thẳng): 4.237 khoá, 4.228 có trong bảng.
      Trước đó mọi nhãn tĩnh trên mọi màn đều trống. **Căn chữ** ở `+0x100` /
-     `+0x104` (thứ tự enum Cocos 0/1/2).
+     `+0x104` (thứ tự enum Cocos 0/1/2). **Nhãn ô CAO (đoạn văn, cao ≥ 45)
+     xuống dòng theo bề rộng ô** (`AUTOWRAP_WORD_SMART` + `clip_text`) — bản gốc
+     `CCLabelTTF` tạo kèm kích thước thì tự ngắt; thiếu thì chữ dài tràn ngang
+     cắt qua cả màn (màn kết thúc trận: ba mục kiến nghị `#FinishUI_*Tip` 195×70
+     dính vào nhau). Nhãn một dòng (cao ~30) giữ nguyên để khỏi ngắt nhầm.
    * **Số vàng / kim cương / thể lực**: tag 1 (nhãn số) và 2 (biểu tượng) của
      ba thanh tài nguyên — suy cấu trúc từ `setNum` / `rollNum`, không có số
      đo đối chiếu. Giờ hiện đúng 50.000 vàng, 0 kim cương, 120/120 thể lực
@@ -812,10 +816,63 @@ vào lúc khác — `bam_that.gd` sẽ chỉ ra. Bấm tay trong `vao_main.gd --
 godot --path . --script tools/do_chien_dich.gd -- --chup=tran.png   # chụp giữa trận
 ```
 
-Chưa có: kịch bản `sc/plot/drama_*.lua`, `OnKillEnemy` (chưa biết `szId` là
-gì), minimap, camera lia tới địch (`fLoaferFocus*`) và chậm hình khi qua ải
-(`fTimeScaleForStageClear`). Với mô hình này, ải đầu thua: một tướng HP 1.035
-gặp tướng NPC HP 5.000 / DP 500.
+**Kịch bản trận** (`sc/plot/drama_*.lua`) chạy được — `lua/kich_ban.lua` là
+`DFDramaScriptSystem` giả. Kịch bản gốc là một **coroutine**: đăng ký bằng
+`AddMoitor`/`SetGameStartMoitor`, thân hàm gọi `g_DramaSystem:...` rồi
+`coroutine.yield()` chờ. Bộ điều khiển của ta chạy coroutine đó và đánh thức
+lại theo điều kiện "đi tiếp": hết giờ chờ (`DelayTimeThenGoNext`), qua thoại
+(`ShowDialogue`), gặp quân (`EncounterArmyBegin`), nhận thông báo trận
+(`Notification_*`), tướng thức tỉnh xong (`HeroWakeEnd`). Ghi lại chuỗi thoại
+và mọi lời gọi. Chạy bằng cờ `G_KICHBAN` (mặc định TẮT để `--kiem` giữ 16/16);
+đo bằng `do_chien_dich.gd --kichban` — nạp `drama_L_N_01_01.lua` và diễn trọn
+20 câu thoại hướng dẫn tân thủ (giới thiệu → mở khoá đao binh → Lăng Thống →
+Lữ Bố → Triệu Vân) không lỗi.
+
+**Đồng minh của kịch bản NHẬP TRẬN thật, và ải 1 thắng được.** Kịch bản gốc
+cho quân tiếp viện vào trận (`CreateNpcAndMoveTo`/`CreateNpcWithAppear` tạo,
+`TakeUnitJoinBattle` cho đánh) và kéo boss ra khỏi giao tranh
+(`MakeUnitToPlotSprite`). Lớp giả nay làm THẬT các lời gọi đó:
+- `CreateNpc*` ghi đặc tả (armature, phe, `dataKey` "NpcID-Level");
+- `TakeUnitJoinBattle` lấy **chỉ số thật** từ `G_ConfigManager:GetNpcConfigWithNpcId`
+  rồi thêm đơn vị vào trận có hình (`san_tran_ve.dua_dong_minh`);
+- `MakeUnitToPlotSprite` rút đơn vị khớp tên armature khỏi trận
+  (`xoa_theo_hinh`) — Lữ Bố bị kéo ra như bản gốc cho hắn bỏ chạy.
+
+Kết quả đo (`do_chien_dich.gd --kichban`): Đao Binh, Lăng Thống, Triệu Vân
+nhập trận; Lữ Bố bị rút; người chơi đưa lính ra — **ải 1 thắng** (`thang=true`,
+dọn sạch địch). Đúng cách bản gốc, KHÔNG chỉnh số liệu.
+
+**Tuyệt chiêu kịch bản, vào-trận-từ-mép, camera lia** — cũng làm thật:
+- `SetRoleChangeFight(sprite, phe, form, "Wake"/"Talent")` → `tuyet_chieu`: tìm
+  đơn vị khớp armature, phát động tác, và nếu là tuyệt chiêu BÊN TA thì đánh
+  AoE lên mọi địch (Triệu Vân "thất tiến thất xuất"). **Sát thương mỗi đòn dùng
+  chỉ số + công thức THẬT** (`Fighter.strike` qua `Harm`); chỉ *số đòn* (3) và
+  việc đánh khắp là ĐẶT (hiệu ứng thật trong C++ `CDFSpriteFight*Wake`).
+- Quân tiếp viện vào trận từ MÉP (đồng minh từ trái, địch từ phải) rồi tự tiến
+  vào — đúng ý `CreateNpcAndMoveTo` "đi vào".
+- `CameraMoveBy(hướng, giây)` → `lia_camera`: dừng bám quân rồi lia camera nửa
+  màn (cảnh điện ảnh); `StartGame` cho bám lại. Biên độ là ĐẶT.
+- Khớp boss: `MakeUnitToPlotSprite` khớp **chính xác tên armature trước**, không
+  có mới đến chứa-chuỗi — tránh "LvBu" trùng "LvBuEvil".
+
+ĐẶT, không phải bản gốc: `SetCameraScale` (thu phóng) vẫn ghi-lại vì đổi tỉ lệ
+làm lệch toạ độ chạm; di chuyển/đường đi NPC trong cảnh và các hiệu ứng điện
+ảnh (điện ảnh thanh, hố đen…) chỉ ghi lại; lớp phủ hướng dẫn `g_CGuideLogical`
+bịt no-op; thoại tự đi tiếp sau 0,4 s.
+
+**Chơi thật thì kịch bản CHẠY.** `--xem` (và `--chup`) bật cờ `G_KICHBAN`, nên
+chơi tay là diễn trọn hướng dẫn tân thủ: mở khoá binh chủng, đồng minh đi vào,
+Lữ Bố bị rút, và ải 1 thắng được. `--kiem` KHÔNG bật (giữ 16/16, vì kịch bản ẩn
+nút / dừng trận, đè lên phép kiểm đưa lính).
+
+`OnKillEnemy` (`szId`): với **ải thường** đây là no-op — `ChapterBattle` (màn
+thường) không có `OnKill`; danh sách giết (`KillIdList`) chỉ dùng ở chế độ vô
+tận (SCS) và Hoàng Cân xâm lược (HJRQ), chưa chạy. Nên không cần cho vòng chơi
+hiện tại.
+
+Chưa có: minimap, camera lia tới địch (`fLoaferFocus*`), chậm hình khi qua ải
+(`fTimeScaleForStageClear`), `SetCameraScale`, và đường đi/hiệu ứng điện ảnh
+của dàn cảnh.
 
 **Đưa lính ra trận.** Nút binh chủng `btnBattlefieldArmy` là lớp C++ mang tên
 node (`libgame.so` có `setDispatchID` / `setLeaderShipForBuild` / `dispatch` /

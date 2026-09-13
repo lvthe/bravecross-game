@@ -27,7 +27,7 @@ từ bản đã dịch ngược. Hai repo, nằm cạnh nhau:
 ## Trước khi làm gì
 
 ```bash
-python tools/check.py          # 23 bộ, phải xanh hết
+python tools/check.py          # 24 bộ, phải xanh hết
 ```
 
 Kéo `brave-cross` mới về thì dựng lại `ui_ref` + `layout_ref` + tag (README,
@@ -91,7 +91,21 @@ cấu trúc hàm C++ `0x380c94` + hằng số `<formula>` của `global_config.x
 bật bằng `rules['harm_real']`, chỉ trận có hình). Mô hình đối chiếu ba bên
 (`combat.gd` mặc định / `sim` / `server`) GIỮ NGUYÊN. Ánh xạ trường sang bên
 đánh/chịu là ĐẶT (chưa kiểm byte-exact, cần máy ảo). Chưa có: kịch bản,
-minimap. Đo và khoá: `tools/do_chien_dich.gd`
+minimap (nhưng có kịch bản). Đo và khoá: `tools/do_chien_dich.gd`
+
+Kịch bản trận (`sc/plot/drama_*.lua`) chạy bằng `lua/kich_ban.lua`
+(`DFDramaScriptSystem` giả, chạy coroutine + điều kiện đi tiếp). Bật bằng cờ
+`G_KICHBAN` (mặc định TẮT để `--kiem` giữ 16/16); đo: `do_chien_dich.gd
+--kichban`; và `--xem`/`--chup` cũng bật `G_KICHBAN` nên chơi tay diễn trọn
+hướng dẫn và thắng được ải 1. (`--kiem` KHÔNG bật.) Đồng minh kịch bản NHẬP TRẬN thật
+(`TakeUnitJoinBattle` -> `san_tran_ve.dua_dong_minh`, chỉ số từ
+`GetNpcConfigWithNpcId`), boss bị rút (`MakeUnitToPlotSprite` ->
+`xoa_theo_hinh` khớp tên armature) — nhờ đó **ải 1 thắng được** đúng cách bản
+gốc (không chỉnh số). Tuyệt chiêu kịch bản (`SetRoleChangeFight` "Wake" ->
+`tuyet_chieu` AoE, sát thương THẬT, số đòn ĐẶT), quân vào trận từ mép, camera
+lia (`CameraMoveBy` -> `lia_camera`), khớp boss chính-xác-trước cũng đã làm.
+Còn ĐẶT/ghi-lại: `SetCameraScale` (thu phóng lệch toạ độ chạm), đường đi/hiệu
+ứng điện ảnh, lớp phủ `g_CGuideLogical`.
 (`--kiem`; chụp giữa trận: `--chup=tran.png`, thêm `--cam=2500` để thấy nền
 trôi; chơi thử một trận: `--xem`; hai chế độ sau chạy KHÔNG `--headless`).
 Armature đổi ảnh theo khung: `+0x2C` (chỉ số ảnh, −1 ẩn) và `+0x40` (số khung

@@ -33,3 +33,8 @@ sc/
 # Addon Lua (~200 MB, tai ve chu khong commit). Lay lai bang:
 #   python tools/fetch_addons.py
 addons/
+
+# Anh chup tam luc do (do_chien_dich --chup, dan_rig): sinh lai bang cong cu,
+# khong commit.
+/*.png
+/*.png.import

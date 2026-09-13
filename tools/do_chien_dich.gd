@@ -71,6 +71,11 @@ const BUOC := [
 	# :2803-2819): getItemByHeroID roi OnTouchAllHerosEnd(item, tuong, true).
 	["xep tuong dang mo vao doi",
 		"""local D = g_CUIBattleDeploy
+		-- Dung danh sach tuong da mo (D.tAllUnlockHerosData) chi day khi man bo
+		-- tri go tab chon tuong (refreshHerosScrollLayerUI, CUIBattleDeploy:1746).
+		-- Cong cu khong bam tab do nen phai goi tay, khong thi danh sach rong va
+		-- tuong chieu mo khong len duoc doi.
+		pcall(function() D:refreshHerosScrollLayerUI(1) end)
 		local n = 0
 		for _, h in ipairs(D.tAllUnlockHerosData or {}) do
 			if h.UserHeroID == nil and type(h[1]) == 'table' then h = h[1] end
@@ -216,6 +221,8 @@ func _init() -> void:
 			_ai = a.substr(5)
 		elif a == "--giu":
 			_giu = true
+		elif a.begins_with("--chieu-mo="):
+			_chieu_mo = maxi(0, int(a.substr(11)))
 	var san := Control.new()
 	san.size = lua.cua_so_engine
 	san.scale = Vector2.ONE * (vp.y / lua.cua_so_engine.y)
@@ -251,6 +258,16 @@ func _init() -> void:
 	# --ai=KEY: chon dung ai do o man chon ai (mac dinh: ai dau tien dang mo).
 	if _ai != "":
 		lua.run("AI_CHON = '%s'" % _ai, "chon ai")
+	# --chieu-mo=N: rut N lan bang vang (them vang truoc cho du) de co kho tuong
+	# roi dua vao doi hinh — thu chuoi 'chieu mo -> len doi hinh -> thang ai sau'.
+	if _chieu_mo > 0:
+		lua.run("G_UserLogic:AddGold(%d, 'test')" % (_chieu_mo * 40000 + 100000), "them vang")
+		var so_tuong0 := int(lua.run(_DEM_TUONG, "dem tuong truoc"))
+		for i in _chieu_mo:
+			lua.run("G_LotteryLogic:ServerPlayLottery(LOTTERY_TYPE.GOLD_ONCE, false)", "chieu mo")
+			lua.tick(KHUNG)
+		var so_tuong1 := int(lua.run(_DEM_TUONG, "dem tuong sau"))
+		print("chieu mo %d lan: kho tuong %d -> %d" % [_chieu_mo, so_tuong0, so_tuong1])
 	var may_chu := ""
 	var offline := ""
 	var canh_sau_tan_cong := ""
@@ -384,6 +401,8 @@ var _xem := false              ## --xem: giao tran cho nguoi choi
 var _thoat := 0                ## --thoat=N: thoat sau N khung (de kiem --xem)
 var _ai := ""                  ## --ai=KEY: chon dung ai do (mac dinh ai dau mo)
 var _giu := false              ## --giu: giu ban luu (khong wipe) de thu tien trinh
+var _chieu_mo := 0             ## --chieu-mo=N: rut N tuong truoc khi vao chien dich
+const _DEM_TUONG := "local ok,m=pcall(function() return select(2, G_DataManager:GetUserDataWithName('GameUserHero')) end) local c=0 if type(m)=='table' then for _ in pairs(m) do c=c+1 end end return c"
 var _da_in_xem := 0
 var _lua: LuaRuntime = null
 var _san: Control = null

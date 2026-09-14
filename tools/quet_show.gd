@@ -1,25 +1,44 @@
 # Quet: mo THU tung man hinh cua ban goc bang dung duong Show cua no.
 #
 #   godot --headless --path . --script tools/quet_show.gd
+#   godot --headless --path . --script tools/quet_show.gd -- --tho
 #
 # Khong phai phep kiem dat/hong, ma la mot phep DO: duong Show chay duoc bao xa
 # tren bao nhieu man. Moi man deu di dung mot dong — <quan ly>:Show(<ten>) — va
 # tat ca phan con lai la ma goc.
 #
+# Mac dinh chay tren MOT NGUOI CHOI THAT: di tron chuoi Login -> Main qua lop
+# offline (dung tools/vao_main.gd), roi moi quet. Quan trong vi phan lon man
+# hong la hong o cho DOC DU LIEU NGUOI CHOI — khong co nguoi choi thi phep do
+# chi dang do cai engine, khong dang do man hinh.
+#
+#   --tho   bo qua dang nhap, quet tren nen tran nhu truoc (canh 'Test',
+#           khong co nguoi choi). De doi chieu xem dang nhap duoc bao nhieu.
+#
 # Ba muc trong bao cao:
 #
 #   mo duoc  Show chay tron: nap bo cuc, onInit, hoat canh mo, onShow.
-#   im       Show ve ma khong onShow. Ghi kem bo cuc co nap duoc khong
-#            (conoc) va onInit co chay khong (isInit), de biet no dung o dau.
-#   hong     ma goc nem loi. Phan lon la THIEU DU LIEU chu khong phai thieu
-#            engine: nil config, nil du lieu may chu, hoac mot cai bong bi dem
-#            ra lam so.
+#   im       Show ve ma khong onShow — thuong la man DOI THAM SO ma Show goi
+#            tran. Ghi kem so tham so cua onShow (nparams, dem ca self).
+#   hong     ma goc nem loi. Ghi ro kieu: bong bi dem ra lam gia tri la thieu
+#            ENGINE, con nil la thieu DU LIEU.
 #
-# Hai cho phai don tay giua cac man, vi trong game that khong ai mo 164 hop
+# Hai cho phai don tay giua cac man, vi trong game that khong ai mo 353 hop
 # thoai lien tiep: IsUILock va hang doi hoat canh. Xem chu thich trong ma.
 extends SceneTree
 
-const _BOOT := """
+const VaoMain := preload("res://tools/vao_main.gd")
+
+## Phan chuan bi RIENG cua phep quet, chay sau khi da vao Main.
+const _SAN_SANG := """
+	_G._QUAN_LY = {'g_CUINormalDlg', 'g_CUISubDialog', 'g_CUIMessageDlg',
+		'g_CUITipsDlg', 'g_CUIMultiLayerDialog'}
+	_G._DA_BIET = {}
+	return true
+"""
+
+## Nen tran, khi chay --tho: khong dang nhap, khong nguoi choi.
+const _BOOT_THO := """
 	local boot = require('bootstrap')
 	boot.install_cocos()
 	boot.install()
@@ -30,10 +49,10 @@ const _BOOT := """
 	-- dong sau, trong nhu la thieu du lieu may chu.
 	boot.boot_goc()
 	boot.init_config()
+	-- Ban goc luon o trong mot canh; ten canh la nil thi CLevelLoader khong
+	-- ban tin OnLoadXGG va onInit khong bao gio chay.
 	g_CSceneManager.CurrentScene = 'Test'
-	_G._QUAN_LY = {'g_CUINormalDlg', 'g_CUISubDialog', 'g_CUIMessageDlg',
-		'g_CUITipsDlg', 'g_CUIMultiLayerDialog'}
-	_G._DA_BIET = {}
+	return true
 """
 
 
@@ -105,27 +124,69 @@ const _MOT := """
 
 
 func _init() -> void:
+	var tho := false
+	for a in OS.get_cmdline_user_args():
+		if a == "--tho":
+			tho = true
+
 	var lua := LuaRuntime.new()
+	# Cua so cua ENGINE — giong tools/vao_main.gd: cao co dinh 768, rong theo
+	# ti le man. Canh cua ban goc dung dung co do.
+	var vp := Vector2(
+			float(ProjectSettings.get_setting("display/window/size/viewport_width", 960)),
+			float(ProjectSettings.get_setting("display/window/size/viewport_height", 640)))
+	lua.cua_so_engine = Vector2(roundf(768.0 * vp.x / vp.y), 768.0)
 	if not lua.open():
 		print("KHONG chay duoc: %s" % ", ".join(lua.errors))
 		quit(1)
 		return
 	XggLayout.respect_visible = true
-	var nen := XggLayout.build("res://layout_ref/UI_NormalDlg_960_640.json")
-	lua.bind_layout(nen)
-	var goc := XggLayout.find_node(nen, "UIRootLayer")
-	goc.position = Vector2.ZERO
-	lua.set_ui_root(goc)
-	lua.run(_BOOT, "boot")
+
+	var san := Control.new()
+	san.size = lua.cua_so_engine
+	lua.set_stage(san)
+	lua.set_touch_root(san)
+
+	if tho:
+		# Nen tran: khung hop thoai dung tay, khong canh, khong nguoi choi.
+		var nen := XggLayout.build("res://layout_ref/UI_NormalDlg_960_640.json")
+		san.add_child(nen)
+		lua.bind_layout(nen)
+		var goc := XggLayout.find_node(nen, "UIRootLayer")
+		goc.position = Vector2.ZERO
+		lua.set_ui_root(goc)
+		if lua.run(_BOOT_THO, "boot tho") == null:
+			print("boot hong: %s" % ", ".join(lua.errors))
+			quit(1)
+			return
+		print("nen: TRAN (khong dang nhap)")
+	else:
+		# Nguoi choi THAT: di tron chuoi Login -> Main qua lop offline.
+		if lua.run(VaoMain._NAP, "nap") == null:
+			print("nap hong: %s" % ", ".join(lua.errors))
+			quit(1)
+			return
+		var d := VaoMain.chay(lua)
+		if d["dung"] != "":
+			print("KHONG vao duoc Main, dung o: %s" % d["dung"])
+			quit(1)
+			return
+		var lv = lua.run("return select(2, G_UserLogic:GetLevel())", "cap")
+		print("nen: da dang nhap, dang o canh Main (nguoi choi cap %s)" % lv)
+
+	if lua.run(_SAN_SANG, "san sang") == null:
+		print("san sang hong: %s" % ", ".join(lua.errors))
+		quit(1)
+		return
 
 	var ds: Array = []
-	var d := DirAccess.open("res://sc/user/UI")
-	d.list_dir_begin()
-	var f := d.get_next()
+	var thu_muc := DirAccess.open("res://sc/user/UI")
+	thu_muc.list_dir_begin()
+	var f := thu_muc.get_next()
 	while f != "":
 		if f.ends_with(".lua"):
 			ds.append(f.get_basename())
-		f = d.get_next()
+		f = thu_muc.get_next()
 	ds.sort()
 
 	var nap_hong := []

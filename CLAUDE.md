@@ -123,6 +123,33 @@ CCLayerColorRoundRect **chưa đo**, vẫn áp neo.
 Tag trong bố cục có ba nguồn, đừng trộn: đo từ máy ảo (`tags_that.json`), đối
 chiếu nhãn và suy cấu trúc (`tags_nhan.json`, đánh dấu `tagFrom: "nhan"`).
 
+Đốm xanh ở Main (hiệu ứng sáng) — ĐÃ KHOANH VÙNG, CHƯA GIẢI. Nó là armature
+`UITongYong` (UI通用), xương `sad`, các ảnh `UITongYong_Res-lizi*`
+(粒子 = hạt), vẽ bằng `SngRig` ngay trên hai nút `spFirstPayGiftBg` /
+`新手特权` của `lMainToolbarRightTop`. Đã đo:
+
+  * Ảnh nguồn ĐÚNG: 128×128 RGBA, alpha thật (81% pixel trong), màu phần hiện
+    là xanh (60,100,238). Không phải lỗi giải `.pkm`.
+  * Bản ghi armature KHÔNG có cờ trộn màu: quét 418 file `.xml` / 13.543 bản
+    ghi sprite — `+0x18` và `+0x1C` luôn bằng 0; byte cờ trong bản ghi REF
+    (`+0x10`) chia ~50/50 ở CẢ hai nhóm (hạt và bộ phận thường) nên không phải
+    cờ đánh dấu hạt.
+  * Game CÓ lưu cách trộn màu, nhưng ở chỗ khác: các `.plist` HẠT THẬT của
+    Cocos (`beachfirebig.plist`…) có `blendFuncSource` / `blendFuncDestination`.
+    Armature thì không.
+
+Nên rất có thể bản gốc vẽ mấy ảnh này theo kiểu CỘNG (additive) — xanh cộng
+vào nền trời ra ánh sáng, còn vẽ thường thì ra khối xanh đặc như hiện nay.
+NHƯNG chưa chứng minh được, và `libgame.so` có `setBlendFunc`, `glBlendFunc`,
+`sngShaderFlashBlend` nên câu trả lời nằm bên C++.
+
+Hai cách giải dứt điểm, chưa làm: (1) chụp màn `Main` của BẢN GỐC trong máy ảo
+Android — cách đã dùng để đo tag, một lần chạy là xong; (2) đọc chỗ vẽ armature
+trong `libgame.so` xem có gọi `setBlendFunc` không (`armdis.py`, `xref.py`).
+
+ĐỪNG đặt đại additive khi chưa có một trong hai — sẽ thành một chỗ "đẹp hơn
+nhưng không biết có đúng không", và đó là kiểu sai khó gỡ nhất.
+
 Lớp offline (thay máy chủ) nằm ở `../brave-cross/work/offline`, test bằng
 `python run_tests.py` ở đó. Sửa nó xong phải chạy lại `tools/import_lua.py`.
 

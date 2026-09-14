@@ -126,6 +126,32 @@ CCLayerColorRoundRect **chưa đo**, vẫn áp neo.
 Tag trong bố cục có ba nguồn, đừng trộn: đo từ máy ảo (`tags_that.json`), đối
 chiếu nhãn và suy cấu trúc (`tags_nhan.json`, đánh dấu `tagFrom: "nhan"`).
 
+Rơi đồ: luật sinh của server không được ship, nhưng SỐ thì có đủ trong cấu
+hình gốc — `KDBGameNpcConfig[NpcID].DropData` (mỗi mục có `DropValue` +
+`PrizeData`) và `TotalDropValue` (mẫu số 100 hoặc 10000). Mã đơn vị
+`"<nhóm>-<lính>-<bản sao>"` do SÂN TRẬN đặt (bản gốc: engine C++), client chỉ
+gom rồi gửi lại — nên chỉ cần `battle/tran_goc.gd` và `offline/handlers/
+chapter.lua` khớp nhau. Dạng mã đọc ra từ ví dụ trong chú thích đầu
+`CUIGameFinish.lua` ("1-1-1", "1-1-2", "1-1-3", "1-2-1") đối chiếu với
+`ChapterInfo.Groups`. **ĐẶT**: mỗi mục quay riêng với xác suất
+`DropValue/TotalDropValue` — căn cứ là 167/331 NPC có tổng `DropValue` vượt
+mẫu số nên không thể là một lần quay chọn một món. Lưu ý: chính client chèn
+thêm khoá `DropList` vào bảng `Drop`, và màn kết thúc bỏ qua nó
+(`CUIGameFinish.lua:1885`) — phép đo cũng phải bỏ qua.
+
+Phần thưởng vào đâu: `SetDataWithPrizeData` rẽ theo `PrizeResType` —
+`Prop` (2) gọi `AddItem` (cộng vào `ItemCount` của mục sẵn có và bật cờ
+`IsExist`, nên **số mục không đổi**), `Resource` (3) cộng thẳng vào vàng /
+kim cương / binh hồn (`CurrencyType` 4 = `ArmySoul`, chiếm 272/311 mục) chứ
+không tạo mục nào. Nên ĐỪNG đo bằng cách đếm mục trong túi — đã thử và bỏ:
+người chơi mới còn có sẵn trang bị khởi đầu nên số nền không phải 0, và
+phép đo theo chênh lệch thì phụ thuộc lần quay. Phép kiểm đang dùng là loại
+XÁC ĐỊNH: thử phát từng mục rơi có thể có của ải 1 (40 mục) và đòi tất cả
+đều trả `true` (`do_chien_dich --kiem`). **Còn treo**: đo theo chênh lệch túi
+thỉnh thoảng ra 0 trong khi có mục vật phẩm rơi — chưa truy ra, nhưng phát
+thưởng từng mục thì luôn thành công, nên nghi ở chỗ đo chứ không ở đường
+phát.
+
 Đốm xanh ở Main (hiệu ứng sáng) — ĐÃ KHOANH VÙNG, CHƯA GIẢI. Nó là armature
 `UITongYong` (UI通用), xương `sad`, các ảnh `UITongYong_Res-lizi*`
 (粒子 = hạt), vẽ bằng `SngRig` ngay trên hai nút `spFirstPayGiftBg` /

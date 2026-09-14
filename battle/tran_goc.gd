@@ -100,20 +100,33 @@ static func doc_quan(ta: Dictionary, dich: Dictionary, rules: Dictionary) -> Dic
 
 	var bang: Dictionary = dich.get("Data", {})
 	var doi_dich: Array = []
+	# MA DON VI cho danh sach roi do: "<nhom>-<linh>-<ban sao>", ba so dem tu 1.
+	# Doc ra tu chinh ban goc: chu thich dau CUIGameFinish.lua cho vi du
+	# "1-1-1", "1-1-2", "1-1-3", "1-2-1" — ba ban sao roi sang linh ke tiep — va
+	# ChapterInfo cua ai 1 co dung mot nhom Num = 3 o vi tri do. Ma nay la do
+	# SAN TRAN dat (ban goc: engine C++), client chi gom lai roi gui ve, nen
+	# chi can hai dau khop nhau: cho sinh danh sach roi (lop offline) va cho
+	# bao giet (lua/san_tran.lua).
+	var i_nhom := 0
 	for g in _ds(dich.get("Groups", [])):
 		if not (g is Dictionary):
 			continue
+		i_nhom += 1
+		var i_linh := 0
 		for s in _ds(g.get("Soldiers", [])):
 			if not (s is Dictionary):
 				continue
+			i_linh += 1
 			var cs = bang.get(String(s.get("Data", "")), null)
 			if not (cs is Dictionary):
 				continue
 			# Num = 0 thi khong ra tran: nhom dau cua L_N_01_01 co nam NPC
 			# Num = 0 (cap 0), dung o nhom PosX = 0.
 			for k in int(s.get("Num", 0)):
-				doi_dich.append(_muc(cs, rules, int(s.get("NpcID", 0)), false,
-						float(g.get("PosX", 0)), float(g.get("AppearTime", 0)), doi_dich.size()))
+				var m := _muc(cs, rules, int(s.get("NpcID", 0)), false,
+						float(g.get("PosX", 0)), float(g.get("AppearTime", 0)), doi_dich.size())
+				m["ma_roi"] = "%d-%d-%d" % [i_nhom, i_linh, k + 1]
+				doi_dich.append(m)
 
 	var chapter = sprite.get("Chapter", {})
 	var max_t := float(chapter.get("ChapterGameTime", 300)) if chapter is Dictionary else 300.0
@@ -152,22 +165,29 @@ static func tong_ket(ds_ta: Array, ds_dich: Array, giay: float, sat: Dictionary,
 	var hp_dich := 0.0
 	var goc_dich := 0.0
 	var dich_con: Array = []
+	# Ma don vi cua quan dich DA CHET — lop offline khoa danh sach roi do theo
+	# ma nay, con luat goc (ChapterLogic:filterKillDropList) loc lay dung
+	# nhung con da giet.
+	var dich_chet: Array = []
 	for e in ds_dich:
 		var f: Combat.Fighter = e["f"]
 		goc_dich += f.hp_max
 		if f.alive():
 			hp_dich += f.hp
 			dich_con.append({"ID": e["id"], "NpcID": e["id"], "HP": f.hp, "Fury": f.anger})
+		elif e.has("ma_roi"):
+			dich_chet.append(e["ma_roi"])
 	return {"thang": thang, "giay": giay, "song": song, "ta_con": ta_con,
 			"dich_con": dich_con,
 			"ta_pct": hp_ta / goc_ta if goc_ta > 0.0 else 0.0,
 			"dich_pct": hp_dich / goc_dich if goc_dich > 0.0 else 0.0,
-			"sat_thuong_tuong": sat, "loi": ""}
+			"sat_thuong_tuong": sat, "dich_chet": dich_chet, "loi": ""}
 
 
 static func _loi(s: String) -> Dictionary:
 	return {"thang": false, "giay": 0.0, "song": 0, "ta_con": [], "dich_con": [],
-			"ta_pct": 0.0, "dich_pct": 0.0, "sat_thuong_tuong": {}, "loi": s}
+			"ta_pct": 0.0, "dich_pct": 0.0, "sat_thuong_tuong": {}, "dich_chet": [],
+			"loi": s}
 
 
 ## Mot chien binh tu CHI SO THAT cua ban goc (da tinh cap), dung khuon cua

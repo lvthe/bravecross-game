@@ -625,6 +625,28 @@ func _kiem(lua: LuaRuntime, may_chu: String, offline: String, canh: String,
 		ds.append(["tran do TranGoc danh, khong loi", str(cuoi["tran"]) == "", str(cuoi["tran"])])
 		ds.append(["chien bao L_N_01_01 da ghi (BattleStatus > 0)", int(cuoi["chien bao"]) > 0,
 				str(cuoi["chien bao"])])
+		# Ai 1 co 10 con ra tran (Num: 3 + 3 + 1 + 3; nhom dau Num = 0 nen
+		# khong tinh). Moi con mot ma, va so mon roi phai khop so muc trong
+		# DropConfig — hai ben sinh cung mot luot.
+		ds.append(["danh sach roi do phu dung 10 con ra tran",
+				int(cuoi.get("roi ma", -1)) == 10, "%s ma" % cuoi.get("roi ma", "?")])
+		# Mon roi phai VAO TUI, khong chi hien tren man ket thuc. Tui cua
+		# nguoi choi moi tinh rong, nen so muc trong tui phai bang so mon da
+		# roi. Bang 0 cung dat: quay truot ca 10 con la chuyen binh thuong.
+		# Mon roi phai VAO TUI, khong chi hien tren man ket thuc. Tui cua nguoi
+		# choi moi tinh rong, nen so muc trong tui phai bang so mon da roi —
+		# ke ca bang 0 (quay truot ca 10 con la chuyen binh thuong).
+		# Moi LOAI phan thuong roi cua ai 1 deu phat duoc. Phep kiem nay xac
+		# dinh (khong phu thuoc lan quay), va no do dung cai dang so: duong
+		# SetDataWithPrizeData -> AddItem / ChangeArmySoul / AddGold.
+		ds.append(["moi muc roi cua ai 1 deu phat thuong duoc",
+				int(cuoi.get("phat duoc", -1)) == int(cuoi.get("phat thu", -2))
+					and int(cuoi.get("phat thu", 0)) > 0,
+				"%s/%s muc" % [cuoi.get("phat duoc", "?"), cuoi.get("phat thu", "?")]])
+		ds.append(["so mon roi khop so muc trong DropConfig",
+				int(cuoi.get("roi mon", -1)) == int(cuoi.get("roi cfg", -2)),
+				"%s mon / %s muc" % [cuoi.get("roi mon", "?"),
+					cuoi.get("roi cfg", "?")]])
 		ds.append(["kho offline khop client (vang, the luc)", str(cuoi["kho"]) == str(cuoi["client"]),
 				"kho %s / client %s" % [cuoi["kho"], cuoi["client"]]])
 	else:
@@ -678,6 +700,98 @@ const _TRANG_THAI_CUOI := """
 	out['so quan'] = okq and sq or 0
 	local okt, th = pcall(function() return nut:thieu_rig() end)
 	out['rig thieu'] = okt and th or '?'
+	-- Roi do: danh sach sinh o ClientChapterBegin (tu DropData cua tung NPC
+	-- trong KDBGameNpcConfig), loc theo con da giet, roi man ket thuc doc.
+	local okd, tD = pcall(function()
+		return g_CUIGame and g_CUIGame.tChapterInfo and g_CUIGame.tChapterInfo.DropList
+	end)
+	local nMa, nMon = 0, 0
+	if okd and type(tD) == 'table' and type(tD.Drop) == 'table' then
+		for ma, ds in pairs(tD.Drop) do
+			-- Bo qua khoa 'DropList': CHINH client chen no vao Drop, va man
+			-- ket thuc cung bo qua (CUIGameFinish.lua:1885 'if k ~= "DropList"').
+			if ma ~= 'DropList' then
+				nMa = nMa + 1
+				if type(ds) == 'table' then nMon = nMon + #ds end
+			end
+		end
+	end
+	out['roi ma'] = nMa
+	out['roi mon'] = nMon
+	local nCfg = 0
+	if okd and type(tD) == 'table' and type(tD.DropConfig) == 'table' then
+		for _ in pairs(tD.DropConfig) do nCfg = nCfg + 1 end
+	end
+	out['roi cfg'] = nCfg
+	-- Khong phai mon roi nao cung thanh mot muc trong tui: SetDataWithPrizeData
+	-- re theo PrizeResType — Prop thanh vat pham, Resource cong thang vao vang
+	-- / kim cuong / danh vong. Dem rieng loai "vao tui" de so cho dung.
+	local nVao = 0
+	if okd and type(tD) == 'table' and type(tD.DropConfig) == 'table' then
+		for _, c in pairs(tD.DropConfig) do
+			local pd = type(c) == 'table' and c.PrizeData or nil
+			if type(pd) == 'table' and tonumber(pd.PrizeResType) ~= PrizeResType.Resource then
+				nVao = nVao + 1
+			end
+		end
+	end
+	out['roi vao tui'] = nVao
+	-- Mon roi co VAO TUI khong. Luat goc tu lam: chapterVictoryHandle gọi
+	-- SetDataWithDropList (share_ChapterLogic.lua:4028 — hàm này CÓ được ship),
+	-- ghi thẳng vào GameUserItem. Người chơi mới tinh có túi rỗng, nên đếm
+	-- cuối ván là đủ.
+	local function dem(t)
+		local n = 0
+		if type(t) == 'table' then for _ in pairs(t) do n = n + 1 end end
+		return n
+	end
+	-- Mon roi di vao HAI bang khac nhau tuy loai phan thuong: vat pham vao
+	-- GameUserItem, trang bi vao GameUserEquipment (SetDataWithPrizeData re
+	-- theo PrizeResType). Dem ca hai, va dem ca hai phia: luat goc ghi vao du
+	-- lieu client truoc, kho offline chi soi lai khi syncFromClient chay.
+	out['roi vao tui'] = nVao
+	-- Mon roi co VAO TUI khong. Luat goc tu lam: chapterVictoryHandle gọi
+	-- SetDataWithDropList (share_ChapterLogic.lua:4028 — hàm này CÓ được ship),
+	-- ghi thẳng vào GameUserItem. Người chơi mới tinh có túi rỗng, nên đếm
+	-- cuối ván là đủ.
+	local function dem(t)
+		local n = 0
+		if type(t) == 'table' then for _ in pairs(t) do n = n + 1 end end
+		return n
+	end
+	-- Mon roi di vao HAI bang khac nhau tuy loai phan thuong: vat pham vao
+	-- GameUserItem, trang bi vao GameUserEquipment (SetDataWithPrizeData re
+	-- theo PrizeResType). Dem ca hai, va dem ca hai phia: luat goc ghi vao du
+	-- lieu client truoc, kho offline chi soi lai khi syncFromClient chay.
+	-- Thu phat MOI muc roi co the co cua ai 1, tung cai mot. Khac phep do
+	-- theo tui: khong phu thuoc lan quay, va chi thang vao ham that
+	-- (SetDataWithPrizeData -> AddItem / ChangeArmySoul / AddGold).
+	local nThu, nDuoc = 0, 0
+	do
+		local c = G_ConfigManager:GetChapterConfig('L_N_01_01') or {}
+		local info = type(c.ChapterInfo) == 'table' and c.ChapterInfo or nil
+		for _, g in ipairs(info and info.Groups or {}) do
+			for _, sd in ipairs(g.Soldiers or {}) do
+				if (tonumber(sd.Num) or 0) > 0 then
+					local npc = G_ConfigManager:GetNpcConfigWithNpcId(tostring(sd.NpcID))
+					local dsr = npc and npc.DropData
+					if type(dsr) == 'string' then
+						local okj, t = pcall(cjson.decode, dsr)
+						dsr = okj and t or nil
+					end
+					for _, muc in ipairs(dsr or {}) do
+						nThu = nThu + 1
+						local okp, tra = pcall(function()
+							return G_ChapterLogic:SetDataWithPrizeData(muc.PrizeData, 1, 'do')
+						end)
+						if okp and tra == true then nDuoc = nDuoc + 1 end
+					end
+				end
+			end
+		end
+	end
+	out['phat thu'] = nThu
+	out['phat duoc'] = nDuoc
 	local okr, _, bc = pcall(function() return G_ChapterLogic:GetBattleReportsData('L_N_01_01') end)
 	out['chien bao'] = (okr and type(bc) == 'table' and tonumber(bc.BattleStatus)) or 0
 	local _, vang = G_UserLogic:GetGold()
@@ -792,3 +906,7 @@ const _RUT := """
 	nk.sv, nk.off, nk.loi = {}, {}, {}
 	return out
 """
+
+
+## Dem so mon dang co trong tui, de cuoi van so chenh lech.
+

@@ -21,7 +21,7 @@ Số trong ngoặc là **đo được**, không phải ước lượng. Cách đ
 | | số | đo bằng |
 |---|---|---|
 | Module Lua của bản gốc nạp được | **875 / 876** | `boot_goc()` |
-| Màn hình mở được | **258 / 353** | `tools/quet_show.gd` |
+| Màn hình mở được | **260 / 353** | `tools/quet_show.gd` |
 | Hàm máy chủ `Client*` đã có bản offline | **12 / 411** | đếm `sc/` vs `offline/handlers` |
 | Bộ kiểm | **24**, xanh hết | `tools/check.py` |
 
@@ -80,13 +80,29 @@ Máy chủ cũ đã chết. Mỗi tính năng cần một handler đọc luật 
 - [x] `statewar` — quốc chiến (chặn, để không nuốt cú bấm)
 - [x] `mysterious` — cửa hàng bí ẩn
 - [x] `lottery` — chiêu mộ tướng
-- [ ] Danh sách rơi đồ (`DropData.DropList`): luật sinh **không có** trong
-      `sc/share`. Đánh xong không rơi đồ.
+- [x] Bảng người chơi không có mục `<bảng>Reset` thì lấy hình dạng từ
+      `InitData()` của chính client (`GamePet`, `GameUserStarSoul`) — trước đây
+      để `{}` rỗng, và rỗng làm client chết ở dòng sau chứ không báo gì
+- [~] Danh sách rơi đồ (`DropData.DropList`) — **đánh xong có rơi đồ**, và phần
+      thưởng đi vào dữ liệu người chơi qua `SetDataWithPrizeData` (40/40 mục
+      rơi của ải 1 phát được). Số lấy
+      từ `KDBGameNpcConfig[NpcID].DropData` + `TotalDropValue` của chính bản
+      gốc; mã đơn vị `"<nhóm>-<lính>-<bản sao>"` giải ra từ ví dụ trong chú
+      thích `CUIGameFinish.lua` đối chiếu với `ChapterInfo`. **ĐẶT**: cách quay
+      (mỗi mục quay riêng, xác suất `DropValue/TotalDropValue`) — luật sinh của
+      server không được ship
 
 **Chưa có — xếp theo số màn hình nó mở khoá:**
 
+> Cách nhóm dưới đây dựa trên **đường dẫn file ném lỗi**, nên là ước lượng thô.
+> Đã có một lần sai vì thế: nhóm "hộp thoại chung" ban đầu đếm 11 màn, nhưng
+> đọc mã ra thì `CMessageBox`, `CUISubDialog`, `CUIMakeSureBuyDialog` lấy nội
+> dung từ **tham số `data` của `onShow(lastUIName, data)`** — người gọi truyền
+> vào, không phải máy chủ trả về. Chúng **không cần handler nào**; chúng hỏng
+> chỉ vì bộ quét gọi `Show(tên)` trần. Trước khi viết handler cho một nhóm,
+> đọc xem giá trị nil đó từ đâu ra.
+
 - [ ] Ải vô tận / Epic / SB / COG (11 màn)
-- [ ] Hộp thoại chung: hộp thư, xác nhận, tip (11 màn)
 - [ ] Bang hội / quân đoàn (10 màn)
 - [ ] Hoạt động, sự kiện, điểm danh, nạp tích luỹ (9 màn)
 - [ ] Đấu trường / PvP / giải đấu (9 màn)
@@ -130,9 +146,12 @@ Máy chủ cũ đã chết. Mỗi tính năng cần một handler đọc luật 
 
 ## 8. Việc tiếp theo, xếp theo giá trị
 
-1. **Handler offline cho nhóm đông nhất.** Mỗi handler mở khoá 5–11 màn, và
-   đây là 70/72 màn hỏng còn lại. Bắt đầu từ **hộp thoại chung** (11 màn, dùng
-   lại ở khắp nơi) hoặc **bang hội** (10 màn, một cụm gọn).
+1. **Handler offline cho nhóm đông nhất.** Nhưng đọc mã trước khi chọn nhóm —
+   xem cảnh báo ở mục 4. Nhóm gọn và chắc chắn cần dữ liệu thật: **bang hội**
+   (10 màn) và **ải vô tận / Epic** (11 màn).
+   Mẹo đã dùng được hai lần: bảng nào client tự khai `InitData()` thì lấy hình
+   dạng từ đó; luật nào server giữ thì tìm SỐ trong bảng cấu hình trước khi kết
+   luận là mất.
 2. **Chốt đốm xanh ở Main** bằng máy ảo Android — một lần chạy là xong, và
    máy ảo còn dùng lại được để đo tiếp 9,3% tag còn thiếu.
 3. **Âm thanh.** Chưa có gì; game câm thì cảm giác vẫn chưa phải game.

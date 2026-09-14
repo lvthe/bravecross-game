@@ -20,7 +20,8 @@
 -- Ca hai dung CHI SO THAT trong du lieu ban goc gui vao; cach gop chi so
 -- thanh sat thuong la cua ta. CHUA CO: dua linh ra tran (nguoi choi bam bieu
 -- tuong, ton thong soai), ky nang thuc tinh, kich ban (sc/plot/drama_*.lua),
--- OnKillEnemy (khong biet szId la gi).
+-- (Truoc day chua co bao giet vi khong ro szId; nay da giai: xem
+-- battle/tran_goc.gd, ma don vi "<nhom>-<linh>-<ban sao>".)
 return function(C)
 	local S = setmetatable({}, { __index = C.Node })
 
@@ -90,6 +91,16 @@ return function(C)
 		T.dang = false
 		dung_tran(thang)
 		local r = T.kq or {}
+		-- Bao GIET tung con, truoc khi bao ket qua. Ban goc: engine C++ goi
+		-- setKillEnemyCallBack moi lan mot con chet, va CUIGame gom lai thanh
+		-- KillIdList gui ve server; server dung no loc danh sach roi do
+		-- (ChapterLogic:filterKillDropList). Ta danh tuc thi nen bao het mot
+		-- lan o day — thu tu trong danh sach khong anh huong: luat goc chi
+		-- tra cuu theo ma.
+		local ten_cb = T.cb['setKillEnemyCallBack']
+		if ten_cb ~= nil and type(r.dich_chet) == 'table' then
+			for _, ma in ipairs(r.dich_chet) do goi(ten_cb, tostring(ma)) end
+		end
 		goi('troopResidue', r.ta_con or {})
 		goi('npcResidue', r.dich_con or {})
 		goi('TotalHpResidue', r.ta_pct or 0, r.dich_pct or 0)

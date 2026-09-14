@@ -152,6 +152,20 @@ thỉnh thoảng ra 0 trong khi có mục vật phẩm rơi — chưa truy ra, n
 thưởng từng mục thì luôn thành công, nên nghi ở chỗ đo chứ không ở đường
 phát.
 
+Bảng người chơi: kho offline giữ 37 bảng. Bốn bảng cuối (`GameUserGuildData`,
+`GameUserCloudShop`, `GameUserStateWar`, `GameUserRankTitle`) client hỏi tới
+bằng **chuỗi** chứ không qua `EventManagerTableName` nên trước đó lọt lưới —
+tìm ra bằng cách quét mọi `GetUserDataWithName("...")` trong 973 file rồi trừ
+đi danh sách đang có. Thiếu một bảng thì **không báo gì**:
+`GetUserDataWithName` rơi xuống `initUserDataFromDB` và trả mã lỗi, người gọi
+`goto Exit0` lặng lẽ — đó là lý do `CUIGuildControl:onInit` không chạy tiếp.
+
+Bang hội là tính năng NHIỀU NGƯỜI CHƠI. Offline chỉ có một người và không có
+kho bang hội, nên `ClientGetGuildInfo` trả đúng mã `GuildNotExist` (3501) của
+bản gốc chứ không dựng một cái bang giả. `GuildId ~= 0` là phép thử "có bang"
+mà chính client dùng. Tạo bang / xin vào / quyên góp / chiến bang đều cần
+người chơi khác — nếu làm thì thuộc về máy chủ thật, không phải lớp offline.
+
 Đốm xanh ở Main (hiệu ứng sáng) — ĐÃ KHOANH VÙNG, CHƯA GIẢI. Nó là armature
 `UITongYong` (UI通用), xương `sad`, các ảnh `UITongYong_Res-lizi*`
 (粒子 = hạt), vẽ bằng `SngRig` ngay trên hai nút `spFirstPayGiftBg` /

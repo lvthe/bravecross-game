@@ -21,9 +21,14 @@ Số trong ngoặc là **đo được**, không phải ước lượng. Cách đ
 | | số | đo bằng |
 |---|---|---|
 | Module Lua của bản gốc nạp được | **875 / 876** | `boot_goc()` |
-| Màn hình mở được | **260 / 353** | `tools/quet_show.gd` |
+| Màn hình mở được | **~259 / 353** | `tools/quet_show.gd` |
 | Hàm máy chủ `Client*` đã có bản offline | **12 / 411** | đếm `sc/` vs `offline/handlers` |
 | Bộ kiểm | **24**, xanh hết | `tools/check.py` |
+
+> Con số màn hình **dao động ±3 giữa các lần chạy** (đo 3 lần trong ngày:
+> 258, 259, 260). Bộ quét mở 353 hộp thoại liên tiếp trong một máy ảo dùng
+> chung trạng thái, nên đừng đọc chênh lệch một vài màn là tiến bộ — muốn biết
+> một sửa đổi có ăn thua không thì mở thẳng màn đó mà xem.
 
 Con số 12/411 là thước đo thật của phần còn lại: **giao diện gần xong, máy
 chủ mới làm được phần đi chiến dịch.**
@@ -103,7 +108,12 @@ Máy chủ cũ đã chết. Mỗi tính năng cần một handler đọc luật 
 > đọc xem giá trị nil đó từ đâu ra.
 
 - [ ] Ải vô tận / Epic / SB / COG (11 màn)
-- [ ] Bang hội / quân đoàn (10 màn)
+- [~] Bang hội / quân đoàn — handler `guild` đã có, và `GuildControlMain` mở
+      được. Nhưng nhóm này **không phải 10 màn**: đọc mã ra thì 4 màn chỉ dùng
+      chung widget `CUIGuildTableViewList` (thật ra là APR/Activity), 2 màn đòi
+      đối số của người gọi, 1 màn hỏng vì thiếu **tag** chứ không thiếu dữ liệu.
+      Phần còn lại (tạo bang, xin vào, chiến bang) cần người chơi khác — việc
+      của máy chủ thật, không phải lớp offline
 - [ ] Hoạt động, sự kiện, điểm danh, nạp tích luỹ (9 màn)
 - [ ] Đấu trường / PvP / giải đấu (9 màn)
 - [ ] Thú cưng (6 màn)

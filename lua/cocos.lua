@@ -347,6 +347,18 @@ function Node:getChildrenCount()
 	return raw(self):get_child_count()
 end
 
+-- Cocos: tra ve MANG con (CCArray). Ban goc duyet no bang `#` va chi so 1..n
+-- (vd CUICavern:onCreateSceneDecoration ghep trang tri theo tung con). Thieu no
+-- thi `#getChildren()` la `#nil` -> vo. Thu tu theo cay Godot, dung thu tu them.
+function Node:getChildren()
+	local gd = raw(self)
+	local out = {}
+	for i = 0, gd:get_child_count() - 1 do
+		out[#out + 1] = wrap(gd:get_child(i))
+	end
+	return out
+end
+
 function Node:addChild(child, z, tag)
 	local c = unwrap(child)
 	local p = c:get_parent()

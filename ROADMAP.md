@@ -78,7 +78,7 @@ chủ mới làm được phần đi chiến dịch.**
 Máy chủ cũ đã chết. Mỗi tính năng cần một handler đọc luật có sẵn trong
 `sc/share/` rồi trả kết quả về, không bịa số.
 
-**Đã có (6 handler / 12 hàm):**
+**Đã có (7 handler):**
 
 - [x] `login` — đăng nhập, người chơi mới tinh (từ mục `*Reset` của cấu hình)
 - [x] `chapter` — chiến dịch: bắt đầu ải, thắng, thua, lên cấp, mở ải sau
@@ -86,6 +86,13 @@ Máy chủ cũ đã chết. Mỗi tính năng cần một handler đọc luật 
 - [x] `statewar` — quốc chiến (chặn, để không nuốt cú bấm)
 - [x] `mysterious` — cửa hàng bí ẩn
 - [x] `lottery` — chiêu mộ tướng
+- [~] `cavern` — Ma Khu: **mở được màn** (thêm `Node:getChildren` cho lớp Cocos;
+      `GameUserCavern` trả `nil` ở `initUserDataFromDB` để `CavernDataManager`
+      tự dựng hình dạng gốc — nó dùng `CraeteUserCavern`, không phải `InitData`
+      nên lọt qua bộ quét ở trên). Handler gọi luật `CavernLogic` gốc: lên tầng
+      (`CompeleteProgress`, đo được P 0→1), đánh (`CompeleteFight`), nhận thưởng,
+      đặt lại, hồi sinh, mua đồ. **CHƯA**: làm mới hàng cửa hàng và quét nhanh
+      (luật sinh danh sách hàng không nằm trong `CavernLogic`, chưa tìm ra)
 - [x] Bảng người chơi không có mục `<bảng>Reset` thì lấy hình dạng từ
       `InitData()` của chính client (`GamePet`, `GameUserStarSoul`) — trước đây
       để `{}` rỗng, và rỗng làm client chết ở dòng sau chứ không báo gì
@@ -120,7 +127,8 @@ Máy chủ cũ đã chết. Mỗi tính năng cần một handler đọc luật 
 - [ ] Thú cưng (6 màn)
 - [ ] Võ tướng, doanh trại, hồn tướng, cánh, thời trang (6 màn)
 - [ ] Cửa hàng, nạp, VIP (5 màn)
-- [ ] Hang / ma khu (1 màn)
+- [~] Hang / ma khu (1 màn) — mở được + handler `cavern` (xem mục "Đã có"); còn
+      làm mới hàng cửa hàng và quét nhanh
 - [ ] Nhiệm vụ, thương nhân, bạn bè, chat (4 màn)
 
 ## 5. Trận đánh

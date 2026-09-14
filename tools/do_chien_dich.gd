@@ -318,6 +318,16 @@ func _init() -> void:
 				# Cong dong minh kich ban + boss bi rut -> ben ta don sach.
 				if i % 30 == 15 and int(lua.run("return (g_BattleField:_thong_soai())", "ts")) >= 3:
 					lua.run("g_CUIGame:TouchArrmy(1)", "dua linh")
+				# Nguoi choi that con BAM THUC TINH khi no day — day la mot phan cua cach
+				# thang ai 1 chu khong phai meo cua bo do. Bam bang DUONG THAT: cham
+				# vao nut tren thanh ky nang cua CUIGame.
+				if i % 30 == 25 and str(lua.run(_NO_TUONG, "no")).contains("\"day\":true"):
+					var nt = lua.run("return require('cocos').raw(g_CUIGame.tSkillIcons[1])", "nut tt")
+					if nt is Control:
+						var ct: Control = nt
+						var pt: Vector2 = LuaRuntime._bien_doi(ct) * (ct.size * 0.5)
+						lua.touch_at("Begin", pt)
+						lua.touch_at("End", pt)
 				if i > 60 and lua.run("local k=g_DramaSystem return not (k and k.dang_chay and k:dang_chay())", "xong kb") == true:
 					print("  (kich ban het sau %d khung)" % (i + 1))
 					break
@@ -340,12 +350,45 @@ func _init() -> void:
 			var thang := str(tc.get("thang", "?")) if tc != null else "?"
 			print("  dong minh nhap tran: %s | tran: thang=%s (%s)" % [co_dong_minh, thang,
 					str(tc.get("chi_tiet", "")) if tc != null else ""])
-			# Dat khi: kich ban dien het (thoai, khong loi), dong minh nhap tran,
-			# VA ai thang duoc (boss bi rut + linh + dong minh don sach).
-			var okkb := so > 0 and loikb == "nil" and co_dong_minh and thang == "true"
-			print("\ndat %d, hong %d" % [1 if okkb else 0, 0 if okkb else 1])
+			# Dat khi: kich ban dien het (thoai, khong loi), dong minh nhap tran, ai
+			# thang duoc (boss bi rut + linh + dong minh don sach), VA moi lenh canh
+			# dien anh deu toi duoc san tran.
+			var nk := str(kb.get("nk", "")) if kb != null else ""
+			# Goi thang cac lenh dien anh de khoa duong di cua chung. Ten hieu ung /
+			# mat la THAT: bien the cua armature DramaDialog va Face, doc tu chinh
+			# sc/plot/drama_*.lua.
+			var da: String = str(lua.run("""
+				local t = require('cocos').tran_nut
+				local a = t:hieu_ung_tai_o('DramaDialog_SmokeWhite', 10, 0, 'PluginPlay', 3)
+				t:phu_mau(0, 0.5, 1)
+				t:rung_man(3, 0.5)
+				return tostring(a) .. ' | ' .. t:do_dien_anh()
+			""", "dien anh"))
+			print("  dien anh: %s" % da)
+			var dskb := [
+				["kich ban dien het thoai", so > 0, str(so)],
+				["kich ban khong loi", loikb == "nil", loikb],
+				["dong minh nhap tran", co_dong_minh, nk.substr(0, 80)],
+				["ai 1 thang duoc dung cach ban goc", thang == "true", thang],
+				["duong di: MoveThenDoAction toi san tran", nk.contains("MoveThenDo"), nk],
+				["dong tac: DoAction toi san tran", nk.contains("DoAction"), nk],
+				["lenh trang thai tran duoc ghi (SetArmyWaiting)", nk.contains("SetArmyWaiting"), nk],
+				["hieu ung ban do dung armature that (DramaDialog_SmokeWhite)",
+						da.begins_with("true"), da],
+				["lop phu mau va rung man dang chay", da.contains("phu ") and
+						not da.ends_with("rung 0.00"), da],
+			]
+			var dat := 0
+			for e in dskb:
+				if bool(e[1]):
+					dat += 1
+					print("  dat   %s" % e[0])
+				else:
+					print("  HONG: %s  (%s)" % [e[0], e[2]])
+			print("
+dat %d, hong %d" % [dat, dskb.size() - dat])
 			san.free()
-			quit(0 if okkb else 1)
+			quit(0 if dat == dskb.size() else 1)
 			return
 		# --kiem: BAM THAT vao nut binh chung (touch_at -> ten cham DuaLinh ->
 		# dispatch), khong qua TouchArrmy. Cho thong soai hoi du 3 roi bam tam nut.
@@ -414,6 +457,9 @@ var _bam_tt := ""
 ## Cho tuong ta DAY NO, bam that vao tam nut thuc tinh dau tien, roi cho don ky
 ## nang. Tra "day A tung B->C": A = so khung cho day no tu nhien, 0 neu phai
 ## dat no bang tay (_dat_no), -1 neu khong co tuong nao.
+const _NO_TUONG := "local ok, s = pcall(function() return require('cocos').tran_nut:no_tuong() end) return ok and s or ''"
+
+
 func _bam_thuc_tinh(lua: LuaRuntime) -> String:
 	const NO := "local ok, s = pcall(function() return require('cocos').tran_nut:no_tuong() end) return ok and s or ''"
 	# Cho NGAN: o L_N_01_01, voi mo hinh cua ta, tuong ta chet truoc khi du 4
@@ -579,7 +625,26 @@ func _kiem(lua: LuaRuntime, may_chu: String, offline: String, canh: String,
 	if cuoi != null:
 		print("  quan tren san: %s, armature thieu: [%s]" % [cuoi["so quan"], cuoi["rig thieu"]])
 		print("  khung san: %s" % str(lua.run("return require('cocos').tran_nut:khung()", "khung")))
+		print("  minimap: %s" % str(lua.run("""
+			local c = g_CUIGame
+			if c == nil then return 'khong co g_CUIGame' end
+			local o = c.ChapterObj
+			if o == nil then return 'khong co ChapterObj' end
+			local b = o.GetMinimapBoardObj and o:GetMinimapBoardObj() or nil
+			local l = o.GetMinimapObj and o:GetMinimapObj() or nil
+			local function ta(n)
+				if n == nil then return 'nil' end
+				local w, h = n:getContentSize()
+				local x, y = n:getPosition()
+				return string.format('%dx%d @(%d,%d) hien=%s', w, h, x, y, tostring(n:getIsVisible()))
+			end
+			return 'board ' .. ta(b) .. ' | layer ' .. ta(l)
+		""", "minimap")))
 		ds.append(["co quan tren san (BattleUnit)", int(cuoi["so quan"]) >= 2, str(cuoi["so quan"])])
+		var mm: String = str(lua.run("return require('cocos').tran_nut:do_minimap()", "minimap"))
+		print("  minimap ve: %s" % mm)
+		ds.append(["minimap: ve cham vao dung nut cua bo cuc goc (510x40)",
+				mm.begins_with("nut 510x40") and not mm.contains("cham 0/"), mm])
 		# "quan 19->23 thong soai 3->0": 5 phan (chu "thong soai" co dau cach).
 		var bn := _bam_nut.split(" ")
 		var bam_ok := bn.size() == 5 and bn[0] == "quan" and bn[2] == "thong"

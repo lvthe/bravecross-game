@@ -471,6 +471,15 @@ return function(C)
 		if loi ~= nil and loi ~= '' then ghi_loi(loi) end
 		T.tran = tran
 		C.tran_nut = tran
+		-- Minimap: ban goc KHONG ve trong Lua, client chi tra ve NUT
+		-- (CUIGame:getMinimap -> ChapterBattle:GetMinimapObj, tag 107 -> con
+		-- tag 104), engine C++ ve cham vao do. Dua dung nut do cho san tran.
+		pcall(function()
+			local ui = rawget(_G, 'g_CUIGame')
+			if ui == nil then return end
+			local mm = ui:getMinimap()
+			if mm ~= nil then tran:dat_minimap(C.raw(mm)) end
+		end)
 		T.hen = C.lich:schedule(hen, 'buoc', 0)
 		bat_dau_thong_soai()
 		bat_dau_thuc_tinh()

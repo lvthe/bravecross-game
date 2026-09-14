@@ -138,10 +138,15 @@ static func doc_quan(ta: Dictionary, dich: Dictionary, rules: Dictionary) -> Dic
 static func _muc(cs: Dictionary, rules: Dictionary, id: int, tuong: bool, pos_x: float,
 		xuat_hien: float, thu_tu: int) -> Dictionary:
 	var co := float(cs.get("NpcSize", 1))
+	# `Location` la LAN cua ban goc: 1..3 (Defender 1, Archer 3...), 0 = khong
+	# co lan co dinh (tuong nguoi choi). `AttackLocation` la lan khi danh, chua
+	# dung. Doi sang chi so 0..2 cho khop `fLaneOffset`/`fLaneWidth` cua
+	# map/global_config.xml; giu -1 cho "khong co lan".
+	var lan := int(cs.get("Location", 0)) - 1
 	return {"f": _chien_binh(cs, rules), "id": id, "tuong": tuong,
 			"ten": String(cs.get("Name", "")), "sprite": String(cs.get("SpriteName", "")),
 			"pos_x": pos_x, "xuat_hien": xuat_hien, "co": co if co > 0.0 else 1.0,
-			"thu_tu": thu_tu}
+			"thu_tu": thu_tu, "lan": lan if lan >= 0 and lan <= 2 else -1}
 
 
 ## Ket qua tran, dung hinh ma lua/san_tran.lua doc:

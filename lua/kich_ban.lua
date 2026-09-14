@@ -248,15 +248,19 @@ return function(c)
 		goi_tran('theo_lai')      -- camera bam quan tro lai sau canh mo
 	end
 
-	-- Tuyet chieu theo kich ban: SetRoleChangeFight(sprite, side, form, action).
-	-- Trieu Van "that tien that xuat" (action "Wake") -> AoE len dich; boss thi
-	-- chi dien. so_don = 3 la DAT (hieu ung that trong C++), sat thuong moi don
-	-- dung chi so + cong thuc THAT.
+	-- SetRoleChangeFight(sprite, side, form, action). Lenh nay doi DONG TAC cua
+	-- mot hinh; chi dong tac KY NANG ("Wake*", "Talent*") moi gay sat thuong,
+	-- con "Fight", "Fight20", "Standby"... chi la doi tu the. San tran loc lai
+	-- (battle/san_tran_ve.gd:tuyet_chieu).
+	-- So don lay tu CAU HINH GOC qua WakeRef (1 + so `fSectionIntervalWake_F<n>`,
+	-- chan tren boi `nAttackSectionLimitWake`): Trieu Van 1, Quan Vu 6, Tao Thuc 3.
+	-- Khong tra duoc thi 1 — khong nhan them con so nao cua ta.
+	-- Sat thuong moi don dung chi so + cong thuc THAT.
 	function KB:SetRoleChangeFight(sprite, side, _form, action)
 		self._nhat_ky[#self._nhat_ky + 1] = 'ChangeFight ' .. tostring(sprite)
 			.. ' ' .. tostring(action)
 		goi_tran('tuyet_chieu', tostring(sprite), tonumber(side) or 0,
-			tostring(action or ''), 3)
+			tostring(action or ''), 1)
 		self._wake_xong = true
 		return hinh_nhan
 	end
@@ -278,6 +282,132 @@ return function(c)
 			.. ' (giay ' .. tostring(giay) .. ', tham2 ' .. tostring(tham2) .. ')'
 		goi_tran('dat_thu_phong', tonumber(ty_le) or 1,
 			tonumber(x) or (1 / 0), tonumber(y) or 0, tonumber(giay) or 0)
+		return hinh_nhan
+	end
+
+	-- ----------------------------------------------------------------
+	-- Canh dien anh. Chu ky lay tu chinh 56 file sc/plot/drama_*.lua
+	-- (dem so tham so o moi cho goi), phan ve nam o battle/san_tran_ve.gd.
+
+	-- EndPlot(): cap cua BeginPlot — het canh dien, tra camera ve bam quan.
+	function KB:EndPlot()
+		self._cho = { kieu = 'ngay' }
+		goi_tran('theo_lai')
+		goi_tran('phu_mau', 0, 0.2, 0)
+		return hinh_nhan
+	end
+
+	-- DoAction(sprite, side, action [, giay, action2]).
+	function KB:DoAction(sprite, side, action, giay, action2)
+		self._nhat_ky[#self._nhat_ky + 1] = 'DoAction ' .. tostring(sprite)
+			.. ' ' .. tostring(action)
+		goi_tran('dien_dong_tac', tostring(sprite), tonumber(side) or 0,
+			tostring(action or ''), tonumber(giay) or 0, tostring(action2 or ''))
+		return hinh_nhan
+	end
+
+	-- MoveThenDoAction(sprite, side, tuyet_doi, action_di, x, y, action_toi).
+	function KB:MoveThenDoAction(sprite, side, tuyet_doi, action_di, x, y, action_toi)
+		self._nhat_ky[#self._nhat_ky + 1] = 'MoveThenDo ' .. tostring(sprite)
+			.. ' -> ' .. tostring(x) .. ',' .. tostring(y) .. ' ' .. tostring(action_toi)
+		goi_tran('di_roi_dien', tostring(sprite), tonumber(side) or 0, tuyet_doi,
+			tostring(action_di or ''), tonumber(x) or 0, tonumber(y) or 0,
+			tostring(action_toi or ''))
+		return hinh_nhan
+	end
+
+	-- SetReversal(sprite, side): lat huong nhin.
+	function KB:SetReversal(sprite, side)
+		goi_tran('lat_hinh', tostring(sprite), tonumber(side) or 0)
+		return hinh_nhan
+	end
+
+	-- PlayEffectInMap(ten, o_x, o_y [, action] [, lap]) va ban tuyet doi.
+	function KB:PlayEffectInMap(ten, x, y, action, _lap)
+		self._nhat_ky[#self._nhat_ky + 1] = 'Effect ' .. tostring(ten)
+		goi_tran('hieu_ung_tai_o', tostring(ten), tonumber(x) or 0, tonumber(y) or 0,
+			tostring(action or 'PluginPlay'), 3)
+		return hinh_nhan
+	end
+	function KB:PlayEffectInMapAbsolute(ten, x, y, action, lap)
+		return self:PlayEffectInMap(ten, x, y, action, lap)
+	end
+	function KB:RemoveEffectInMap() end
+
+	-- PlayEffectThenDisappear(hieu_ung, sprite, side, ?, giay).
+	function KB:PlayEffectThenDisappear(hieu_ung, sprite, side, _t, giay)
+		self._nhat_ky[#self._nhat_ky + 1] = 'EffectThenGone ' .. tostring(sprite)
+		goi_tran('hieu_ung_roi_rut', tostring(hieu_ung or ''), tostring(sprite),
+			tonumber(side) or 0, tonumber(giay) or 0)
+		return hinh_nhan
+	end
+
+	-- AddPhiz(sprite, side, mat, giay): bong bong bieu cam (armature `Face`).
+	function KB:AddPhiz(sprite, side, mat, giay)
+		goi_tran('bong_bong', tostring(sprite), tonumber(side) or 0,
+			tostring(mat or ''), tonumber(giay) or 0)
+		return hinh_nhan
+	end
+	function KB:AddPhizForAllUnit(side, mat, giay)
+		goi_tran('bong_bong', '', tonumber(side) or 0, tostring(mat or ''), tonumber(giay) or 0)
+		return hinh_nhan
+	end
+
+	-- Rung man. RunShakyByLevel(muc, giay, ?); SetVibration(bat) la rung MAY
+	-- (Android) — khong co tren may ban, chi ghi nhat ky.
+	function KB:RunShakyByLevel(muc, giay)
+		goi_tran('rung_man', tonumber(muc) or 1, tonumber(giay) or 0.2)
+		return hinh_nhan
+	end
+	function KB:SetVibration(bat)
+		self._nhat_ky[#self._nhat_ky + 1] = 'Vibration ' .. tostring(bat)
+		return hinh_nhan
+	end
+
+	-- Lop phu mau. FadeIn: mo dan len `alpha` day; FadeOut: mo dan ve trong.
+	function KB:ColorLayerFadeIn(mau, giay)
+		goi_tran('phu_mau', tonumber(mau) or 0, tonumber(giay) or 0.3, 1)
+		return hinh_nhan
+	end
+	function KB:ColorLayerFadeOut(mau, giay)
+		goi_tran('phu_mau', tonumber(mau) or 0, tonumber(giay) or 0.3, 0)
+		return hinh_nhan
+	end
+	function KB:ColorLayerFadeTo(mau, giay, alpha)
+		goi_tran('phu_mau', tonumber(mau) or 0, tonumber(giay) or 0.3,
+			(tonumber(alpha) or 255) / 255)
+		return hinh_nhan
+	end
+	function KB:SetBattleBlackLayerFadeOut(_a, giay)
+		goi_tran('phu_mau', 0, tonumber(giay) or 0, 0)
+		return hinh_nhan
+	end
+
+	-- Cac lenh dieu khien TRANG THAI tran. Ban goc de o C++; o day ghi nhat ky
+	-- de kich ban chay tron, chua co hanh vi rieng — GHI LAI chu khong doan.
+	local function ghi(ten)
+		return function(self, ...)
+			local a = {}
+			for i = 1, select('#', ...) do a[#a + 1] = tostring((select(i, ...))) end
+			self._nhat_ky[#self._nhat_ky + 1] = ten .. ' ' .. table.concat(a, ',')
+			return hinh_nhan
+		end
+	end
+	for _, ten in ipairs({
+		'SetArmyWaiting', 'SetStateImmunity', 'SetRoleIgnoreOrder', 'AddPlugin',
+		'RemovePlugin', 'UnlockArmyByPlugin', 'SetPlugsOnBattleMapVisible',
+		'SetWakeButtonDisable', 'SeDispatchButtonDisable', 'ChangeWakeFuryFlag',
+		'RelateWakeButton', 'EnableRemoveInstructWhenTouchWakeButton',
+		'SetBloodAndShadowVisible', 'SetSpriteZorder', 'SetEnemyAllUnitRebel',
+		'SetArmyUnitOrder', 'SetArmyUnitVisible', 'TakeUnitExpeBattle',
+	}) do
+		KB[ten] = ghi(ten)
+	end
+
+	-- EnableGoNextWhenStatusSucceed(...): cho nhu DelayTime, ban goc cho toi khi
+	-- trang thai dinh duoc — ta khong mo phong trang thai nen di tiep ngay.
+	function KB:EnableGoNextWhenStatusSucceed(bat)
+		if bat == true then self._cho = { kieu = 'ngay' } end
 		return hinh_nhan
 	end
 

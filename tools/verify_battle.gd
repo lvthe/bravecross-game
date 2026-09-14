@@ -154,5 +154,26 @@ func _init() -> void:
 			"giap AM thi khong nhan he so bo qua giap",
 			"%.3f can %.3f" % [Harm.tinh(100.0, danh_bo_qua, chiu_am, false), mong])
 
+	print("
+=== 6. so lieu ky nang thuc tinh (WakeRef) ===")
+	# So don = 1 + so truong `fSectionIntervalWake_F<n>` cua khoi <fight>
+	# `fight_<Sprite>Wake`, chan tren boi `nAttackSectionLimitWake`.
+	_check(WakeRef.so_don("ZhaoYun") == 1,
+			"Trieu Van 1 don (khong co fSectionIntervalWake_F<n>)", str(WakeRef.so_don("ZhaoYun")))
+	_check(WakeRef.so_don("GuanYu") == 6, "Quan Vu 6 don (F1..F5)", str(WakeRef.so_don("GuanYu")))
+	_check(WakeRef.so_don("CaoZhi") == 3, "Tao Thuc 3 don (nAttackSectionLimitWake = 3)",
+			str(WakeRef.so_don("CaoZhi")))
+	_check(absf(WakeRef.them("ZhaoYun") - 0.47) < 0.001, "fDamageBonusWake cua Trieu Van = 0.47",
+			str(WakeRef.them("ZhaoYun")))
+	# `nSplitWake` = so muc tieu CHIA DEU sat thuong (khong phai so don):
+	# global_config.xml ghi <nSplitNumForAOE>6</nSplitNumForAOE> ngay duoi chu
+	# thich "群攻分摊个数" = so muc tieu don danh dien rong chia deu sat thuong.
+	_check(absf(WakeRef.chia("ZhaoYun", 6) - 1.0) < 0.001,
+			"6 muc tieu <= nSplitWake 12 -> khong chia", str(WakeRef.chia("ZhaoYun", 6)))
+	_check(absf(WakeRef.chia("ZhaoYun", 24) - 0.5) < 0.001,
+			"24 muc tieu -> chia con 0.5, chan boi fSplitFloorWake", str(WakeRef.chia("ZhaoYun", 24)))
+	_check(WakeRef.so_don("KhongCoSpriteNay") == 0,
+			"sprite la thi tra 0 chu khong doan")
+
 	print("\n===== dat %d, hong %d =====" % [n_pass, n_fail])
 	quit(0 if n_fail == 0 else 1)

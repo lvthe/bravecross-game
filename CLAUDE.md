@@ -85,17 +85,17 @@ vào, nhưng công thức sát thương, chỗ đứng và tốc độ là CỦA
 trận đã có (nút binh chủng `btnBattlefieldArmy` + thống soái trong
 `lua/san_tran.lua`; cách hồi thống soái là ĐẶT). Thức tỉnh: dòng điều khiển
 nút theo bản gốc (`InitSkillButton`, `SetSkillButton*`, `NoticeCastSkill`),
-còn hiệu ứng kỹ năng là ĐẶT (đòn kế tiếp là đòn kỹ năng) — luật ghép nằm
-trong các lớp C++ `CDFSpriteFight*Wake`, nhưng SỐ thì có trong cấu hình gốc
-(xem mục "Hiệu ứng thức tỉnh" bên dưới). Chỗ đứng theo số thật (1 ô = 100 px,
-`PosX` tính theo ô), camera bám quân với hằng số của `map/global_config.xml`
-và nền trôi theo hệ số parallax `+0x30` của bản ghi node (cách bám là ĐẶT).
+còn hiệu ứng kỹ năng: SỐ lấy từ cấu hình gốc qua `WakeRef`, luật ghép vẫn ở
+các lớp C++ `CDFSpriteFight*Wake` (xem mục "Thức tỉnh" bên dưới). Chỗ đứng theo số thật (1 ô = 100 px, `PosX`
+tính theo ô, làn theo `Location` — xem mục "Chỗ đứng quân" bên dưới), camera
+bám quân với hằng số của `map/global_config.xml` và nền trôi theo hệ số
+parallax `+0x30` của bản ghi node (cách bám là ĐẶT). Minimap: XONG.
 Sát thương trận có hình dùng CÔNG THỨC THẬT của bản gốc (`battle/harm.gd`:
 cấu trúc hàm C++ `0x380c94` + hằng số `<formula>` của `global_config.xml`;
 bật bằng `rules['harm_real']`, chỉ trận có hình). Mô hình đối chiếu ba bên
 (`combat.gd` mặc định / `sim` / `server`) GIỮ NGUYÊN. Ánh xạ trường sang bên
 đánh/chịu ĐÃ ĐO, không còn ĐẶT — xem mục riêng bên dưới. Chưa có:
-minimap (nhưng có kịch bản). Đo và khoá: `tools/do_chien_dich.gd`
+Đo và khoá: `tools/do_chien_dich.gd`
 
 Kịch bản trận (`sc/plot/drama_*.lua`) chạy bằng `lua/kich_ban.lua`
 (`DFDramaScriptSystem` giả, chạy coroutine + điều kiện đi tiếp). Bật bằng cờ
@@ -108,8 +108,8 @@ hướng dẫn và thắng được ải 1. (`--kiem` KHÔNG bật.) Đồng min
 gốc (không chỉnh số). Tuyệt chiêu kịch bản (`SetRoleChangeFight` "Wake" ->
 `tuyet_chieu` AoE, sát thương THẬT, số đòn ĐẶT), quân vào trận từ mép, camera
 lia (`CameraMoveBy` -> `lia_camera`), khớp boss chính-xác-trước cũng đã làm.
-Còn ĐẶT/ghi-lại: `SetCameraScale` (thu phóng lệch toạ độ chạm), đường đi/hiệu
-ứng điện ảnh, lớp phủ `g_CGuideLogical`.
+Toàn bộ 60/60 lệnh `g_DramaSystem` đã có (xem mục "Canh điện ảnh").
+Còn ghi-lại: lớp phủ `g_CGuideLogical`.
 (`--kiem`; chụp giữa trận: `--chup=tran.png`, thêm `--cam=2500` để thấy nền
 trôi; chơi thử một trận: `--xem`; hai chế độ sau chạy KHÔNG `--headless`).
 Armature đổi ảnh theo khung: `+0x2C` (chỉ số ảnh, −1 ẩn) và `+0x40` (số khung
@@ -212,22 +212,53 @@ bằng chính mã gốc — `SkillLogic:CommandReviveAccelerate`
 ghi ngược `LeaderShipResume = 1/addtionPerSec`. Còn ĐẶT: vào trận thì đầy
 thống soái.
 
-Chỗ đứng quân: `ptLayout` là của TỪNG SPRITE, bộ đọc cấu hình
-(`0x35cff8..0x35d026`) ghi vào `+0x460`. Engine có lưới ô thật —
-`InWhichCell` (`0x35ec4c`) loại điểm âm và điểm vượt *kích thước lưới × kích
-thước ô* rồi lấy `int(x)`, `int(y)` làm chỉ số ô. ĐÃ BÁC BỎ: "`ptLayout` =
-đội hình của toán lính" — tích `x*y` chỉ khớp `MaxUnit` ở 2/18 binh chủng.
-Đơn vị của `ptLayout` vẫn chưa xác định.
+Chỗ đứng quân: LÀN là số thật. `Location` (1..3) của bản ghi sprite quyết
+định làn (Defender 1, Archer 3; 0 = không có làn riêng). Khoảng cách lấy từ
+`map/global_config.xml`: `fLaneWidth = 0.4` ô = 40 px, `fLaneOffset = 0.1` ô
+= 10 px, khoảng cách hai quân cùng làn `fArmySpace = 1.1` ô = 110 px. ĐẶT:
+đơn vị của hai hằng làn là ô (suy từ chính file đó — mọi hằng khác trong nó
+đều tính bằng ô), và thứ tự xếp khi `Location = 0`.
 
-Hiệu ứng thức tỉnh: luật ghép nằm trong ~80 lớp C++ `CDFSpriteFight*Wake`,
-nhưng SỐ thì có trong cấu hình gốc — 107 khối `<fight>` của `hero_config.xml`
-+ `sprite_config.xml` mang `fAttackFrameWake` (75 chỗ), `fDamageBonusWake`
-(22), `nAttackSectionLimitWake` + `fSectionIntervalWake_F<n>`, `nStatusWake`.
-Triệu Vân (`fight_ZhaoYunWake`): `fDamageBonusWake 0.47`, `nSplitWake 12`,
-`fSplitFloorWake 0.5`, `nStatusWake 12`. `so_don = 3` trong `lua/kich_ban.lua`
-VẪN LÀ ĐẶT: `nSplitWake` là ứng viên nhưng "split" nghiêng về *chia* sát
-thương hơn *nhân*, và hai chỗ tham chiếu `fDamageBonusWake` trong `.so`
-(`0x435590`, `0x437b98`) chỉ là chỗ đọc vào `+0x36c`, không cho thấy luật ghép.
+`ptLayout`: ĐỪNG đoán tiếp, HAI giả thuyết đã bị bác bỏ bằng số đo — "đội hình
+của toán lính" (tích `x*y` khớp `MaxUnit` ở 0/6 binh chủng) và "kích thước
+chiếm chỗ" (không tương quan `NpcSize`: nhóm `{3,3}` trung bình 0.83 < nhóm
+`{1,1}` 1.02). Chỉ 67 sprite đặt nó, 42 trong số đó là `{1,1}`. Lưu ý phép đo:
+phải bóc theo ĐÚNG khối `<item>`; regex "từ `<sName>` tới `<ptLayout>` gần
+nhất" cho kết quả SAI (lần trước ra "Archer {1,3}, Defender {1,2}" trong khi
+hai sprite đó không hề có `ptLayout`). Bộ đọc cấu hình (`0x35cff8..0x35d026`)
+ghi nó vào `+0x460`, nhưng trong `.text` không có chỗ nào đọc `+0x460` trực
+tiếp (engine đọc qua bảng tên) — nên không khôi phục được nếu không chạy bản
+gốc. `InWhichCell` (`0x35ec4c`) nhận điểm tính bằng PX, loại điểm âm và điểm
+vượt *cỡ ô × số ô*, rồi chia lấy chỉ số ô.
+
+Thức tỉnh: số liệu lấy từ CẤU HÌNH GỐC, không còn con số nào của ta.
+`work/wake_ref.py` → `data_ref/wake_ref.json` (247 khối `<fight>` tên
+`fight_<Sprite>Wake`), tra bằng `WakeRef`. **Số đòn** = 1 + số trường
+`fSectionIntervalWake_F<n>`, chặn trên bởi `nAttackSectionLimitWake` — Triệu
+Vân 1, Quan Vũ 6, Tào Thực 3. `nSplitWake` là **số mục tiêu chia đều sát
+thương**, KHÔNG phải số đòn: `global_config.xml` ghi `<nSplitNumForAOE>6` ngay
+dưới chú thích "群攻分摊个数". ĐẶT: cách ghép (`dmg * (1 + fDamageBonusWake)`,
+hệ số chia `clamp(nSplitWake/n, fSplitFloorWake, 1)`) và việc đánh KHẮP địch —
+luật thật ở ~80 lớp C++ `CDFSpriteFight*Wake`.
+
+Lỗi đã sửa, đáng nhớ: `SetRoleChangeFight` bị ta coi là AoE ở MỌI lần gọi, kể
+cả khi nó chỉ đổi tư thế (`Fight`, `Fight20`). Ở ải 1 là 2 Triệu Vân × 3 lần
+gọi = 6 lần AoE không có thật — chính nó (chứ không phải số đòn) là thứ giữ
+cho ải 1 thắng. Nay chỉ `Wake*` / `Talent*` mới gây sát thương.
+
+Canh điện ảnh: đối chiếu 56 file `sc/plot/drama_*.lua` với `lua/kich_ban.lua`
+cho danh sách lệnh còn thiếu — trước là 35/60, nay **60/60**. Chữ ký đọc từ
+chính chỗ gọi (đếm số tham số ở mọi lần gọi). `MoveThenDoAction` và
+`PlayEffectInMap` tính toạ độ bằng Ô. `AddPhiz` là bong bóng biểu cảm: biến
+thể `Face_*` của armature `Face`, động tác `PluginPlay`. Động tác `Death` /
+`Disappear` RÚT hình khỏi sân — kịch bản dùng nó để hạ boss. Nhóm lệnh trạng
+thái (`SetArmyWaiting`, `SetStateImmunity`, `AddPlugin`, `RelateWakeButton`…)
+chỉ ghi nhật ký.
+
+Minimap: bản gốc KHÔNG vẽ nó trong Lua — client chỉ trả về nút
+(`CUIGame:getMinimap()` → `ChapterBattle:GetMinimapObj()`, tag 107 → con tag
+104), engine C++ vẽ chấm. Đo lúc chạy: dải 510×40, đang hiện. Ta vẽ chấm vào
+đúng nút đó (`san_tran_ve.dat_minimap`). ĐẶT: hình dạng chấm, màu, khung ngắm.
 
 Đốm xanh ở Main (hiệu ứng sáng) — ĐÃ KHOANH VÙNG, CHƯA GIẢI. Nó là armature
 `UITongYong` (UI通用), xương `sad`, các ảnh `UITongYong_Res-lizi*`

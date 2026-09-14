@@ -23,6 +23,7 @@ Số trong ngoặc là **đo được**, không phải ước lượng. Cách đ
 | Module Lua của bản gốc nạp được | **875 / 876** | `boot_goc()` |
 | Màn hình mở được | **~259 / 353** | `tools/quet_show.gd` |
 | Hàm máy chủ `Client*` đã có bản offline | **12 / 411** | đếm `sc/` vs `offline/handlers` |
+| Lệnh kịch bản `g_DramaSystem` đã có | **60 / 60** | đối chiếu `sc/plot/drama_*.lua` |
 | Bộ kiểm | **24**, xanh hết | `tools/check.py` |
 
 > Con số màn hình **dao động ±3 giữa các lần chạy** (đo 3 lần trong ngày:
@@ -179,33 +180,72 @@ Máy chủ cũ đã chết. Mỗi tính năng cần một handler đọc luật 
       thân `CCActionInterval::initWithDuration` của Cocos2d-x. Cả bốn chỗ gọi
       đều truyền 0 nên không đổi hành vi. Khoá bằng 3 phép kiểm trong
       `do_chien_dich --kiem` (22/22)
-- [~] Chỗ đứng quân — đội hình xếp chéo là của ta; toạ độ ô thì thật.
-      Đã truy thêm: `ptLayout` là **của từng sprite**, bộ đọc cấu hình
-      (`0x35cff8..0x35d026`) ghi nó vào `+0x460`; engine có **lưới ô thật** —
-      `InWhichCell` (`0x35ec4c`) loại điểm âm và điểm vượt *kích thước lưới ×
-      kích thước ô*, rồi lấy `int(x)`, `int(y)` làm chỉ số ô (lỗi
-      `"Call InWhichCell failed!"` ở `0x35eecc`); `map/global_config.xml` có
-      `fArmySpace = 1.1`, `fArmySpaceInArena = 1.2`.
-      **Đã bác bỏ**: "`ptLayout` = đội hình của toán lính" — tích `x*y` chỉ
-      khớp `MaxUnit` ở **2/18** binh chủng (Archer `{1,3}` = 3 nhưng `MaxUnit`
-      = 4). Đơn vị của `ptLayout` vẫn chưa xác định
-- [~] Hiệu ứng kỹ năng thức tỉnh — ĐẶT. Nhưng **số liệu thì có trong cấu hình
-      gốc**, không chỉ nằm trong C++: 107 khối `<fight>` của
-      `map/hero_config.xml` + `map/sprite_config.xml` mang tham số thức tỉnh
-      (`fAttackFrameWake` 75 chỗ — khung hình đánh trúng; `fDamageBonusWake`
-      22 chỗ; `nAttackSectionLimitWake` + `fSectionIntervalWake_F<n>` — các
-      nhịp đòn; `nStatusWake`/`nStatusOddsWake`/`fStatusTimeWake` — trạng thái).
-      Triệu Vân (`fight_ZhaoYunWake`, chính chỗ kịch bản ải 1 dùng):
-      `fAttackFrameWake 2.4`, `fDamageBonusWake 0.47`, `nStatusWake 12`,
-      `nStatusOddsWake 100`, `nSplitWake 12`, `fSplitFloorWake 0.5`.
-      **Chưa sửa `so_don = 3`**: `nSplitWake` là ứng viên cho số đòn nhưng
-      "split" nghiêng về *chia* sát thương hơn là *nhân*, và hai chỗ tham chiếu
-      `fDamageBonusWake` trong `.so` (`0x435590`, `0x437b98`) chỉ là chỗ **đọc
-      vào** `+0x36c` chứ không cho thấy luật ghép. Luật ghép vẫn ở
-      `CDFSpriteFight*Wake` (khoảng 80 lớp C++, mỗi tướng một cây hành vi)
-- [ ] Đường đi / hiệu ứng điện ảnh — ĐẶT
-- [ ] Minimap
-- [ ] Trận PvP, đấu trường, quốc chiến (cần mục 4)
+- [x] **Chỗ đứng quân** — làn và khoảng cách nay là **số thật**. `Location`
+      (1..3) của chính bản ghi sprite quyết định làn (Defender 1, Archer 3);
+      khoảng cách làn lấy từ `map/global_config.xml`: `fLaneWidth = 0.4` ô
+      (40 px) và `fLaneOffset = 0.1` ô (10 px) — ba làn gọn trong 90 px < 1 ô,
+      khớp với việc `Location` chỉ nhận 1..3. Khoảng cách giữa hai quân cùng
+      làn dùng `fArmySpace = 1.1` ô (110 px) thay cho 48 px ta đặt trước đây —
+      48 nhỏ hơn thân người (56) nên quân chồng nhau.
+      **ĐẶT còn lại**: đơn vị của `fLaneWidth`/`fLaneOffset` là ô (suy từ chính
+      file đó, chưa đọc được chỗ engine dùng hai hằng này); và thứ tự xếp khi
+      quân **không có làn riêng** (`Location = 0`, ví dụ tướng người chơi) vẫn
+      là của ta.
+      `ptLayout`: **hai giả thuyết đã bị bác bỏ bằng số đo.** (1) "đội hình của
+      toán lính" — tích `x*y` khớp `MaxUnit` ở **0/6** binh chủng có cả hai số
+      (Berserker `{3,3}` = 9 nhưng `MaxUnit` = 2). (2) "kích thước chiếm chỗ" —
+      không tương quan với `NpcSize`: nhóm `{3,3}` trung bình 0.83 còn nhóm
+      `{1,1}` là 1.02. Đo lại cho đúng khối XML thì chỉ **67 sprite** đặt
+      `ptLayout` (42 là `{1,1}`), không phải mọi binh chủng như lần đo hỏng
+      trước. Engine có lưới ô thật — `InWhichCell` (`0x35ec4c`) nhận điểm tính
+      bằng **px**, loại điểm âm và điểm vượt *cỡ ô × số ô*, rồi chia lấy chỉ số
+      ô; `ptLayout` đọc vào `+0x460` của cấu hình. Trong `.text` không có chỗ
+      nào đọc `+0x460` trực tiếp (engine đọc qua bảng tên), nên **ý nghĩa của
+      `ptLayout` không khôi phục được nếu không chạy bản gốc**
+- [x] **Hiệu ứng kỹ năng thức tỉnh** — số liệu nay lấy từ **cấu hình gốc**,
+      không còn con số nào của ta. `work/wake_ref.py` bê 247 khối `<fight>`
+      ra `data_ref/wake_ref.json`; `WakeRef` tra:
+      **số đòn** = 1 + số trường `fSectionIntervalWake_F<n>`, chặn trên bởi
+      `nAttackSectionLimitWake` (Triệu Vân 1, Quan Vũ 6, Tào Thực 3);
+      `fDamageBonusWake` (Triệu Vân 0.47); `nSplitWake` = **số mục tiêu chia
+      đều sát thương** — nghĩa này đọc từ chính bản gốc, `global_config.xml`
+      ghi `<nSplitNumForAOE>6</nSplitNumForAOE>` ngay dưới chú thích
+      *"群攻分摊个数"*, nên giả thuyết "`nSplitWake` là số đòn" **bị bác bỏ**.
+      Đồng thời sửa một lỗi nặng của ta: `SetRoleChangeFight` bị coi là AoE ở
+      **mọi** lần gọi, kể cả khi nó chỉ đổi tư thế (`Fight`, `Fight20`) — ở ải 1
+      là 2 Triệu Vân × 3 lần gọi = 6 lần AoE không có thật. Nay chỉ động tác
+      **kỹ năng** (`Wake*`, `Talent*`) mới gây sát thương. Sau khi sửa cả hai,
+      ải 1 **vẫn thắng** (53 giây) mà không cần con số đặt nào.
+      **ĐẶT còn lại**: cách ghép (`dmg * (1 + fDamageBonusWake)`, hệ số chia
+      `clamp(nSplitWake/n, fSplitFloorWake, 1)`) và việc đánh **khắp** địch —
+      luật thật nằm trong ~80 lớp C++ `CDFSpriteFight*Wake`
+- [x] **Đường đi / hiệu ứng điện ảnh** — **xong**. Đối chiếu 56 file
+      `sc/plot/drama_*.lua` với `lua/kich_ban.lua` thì thiếu **35/60** lệnh
+      `g_DramaSystem`; nay đủ **60/60**. Làm thật (chữ ký đọc từ chính chỗ gọi):
+      `MoveThenDoAction` (đường đi: tới ô rồi diễn động tác), `DoAction`,
+      `SetReversal`, `PlayEffectInMap` / `PlayEffectInMapAbsolute` (armature
+      hiệu ứng tại ô — `DramaDialog_SmokeWhite`… tự lần ra armature gốc),
+      `PlayEffectThenDisappear`, `AddPhiz` (bong bóng biểu cảm: biến thể
+      `Face_*` của armature `Face`, động tác `PluginPlay`), `RunShakyByLevel`,
+      `ColorLayerFadeIn/Out/To`, `SetBattleBlackLayerFadeOut`, `EndPlot`.
+      Động tác kết thúc (`Death`, `Disappear`) nay **rút hình khỏi sân** —
+      kịch bản dùng nó để hạ boss chứ không phải để diễn suông.
+      Nhóm lệnh trạng thái trận (`SetArmyWaiting`, `SetStateImmunity`,
+      `AddPlugin`, `RelateWakeButton`…) **ghi nhật ký** chứ chưa có hành vi
+      riêng — ghi lại chứ không đoán. Khoá bằng 9 phép kiểm (`--kichban`)
+- [x] **Minimap** — **xong**. Bản gốc không vẽ minimap trong Lua: client chỉ
+      trả về **nút** (`CUIGame:getMinimap()` → `ChapterBattle:GetMinimapObj()`,
+      tag 107 → con tag 104), engine C++ vẽ chấm vào đó. Đo lúc chạy thì nút
+      đó là dải **510×40** ở góc trên-phải và đang hiện. Ta vẽ chấm vào **đúng
+      nút đó**: quân ta xanh / địch đỏ, tướng to hơn, cộng khung ngắm cho biết
+      phần sân đang trên màn hình. **ĐẶT**: hình dạng chấm, màu, và việc có
+      khung ngắm — luật thật nằm trong C++
+- [ ] Trận PvP, đấu trường, quốc chiến — **chặn bởi mục 4**, không phải mục
+      này. Cần handler offline cho nhóm "Đấu trường / PvP / giải đấu" (9 màn).
+      Có một đường đi được: bản gốc ship sẵn `KDBGameTournamentRobotConfig`
+      (`ConfigManager:updateTournamentRobotConfig`) — tức đối thủ **máy** có
+      số liệu thật trong cấu hình, nên đấu trường một người chơi là làm được
+      mà không phải bịa đối thủ. Quốc chiến thì cần nhiều người chơi thật
 
 ## 6. Âm thanh
 

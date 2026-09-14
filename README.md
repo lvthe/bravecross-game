@@ -33,6 +33,9 @@ python ../brave-cross/work/config_tables.py
 # 2d. Tốc độ di chuyển của từng sprite (map/*_config.xml). Thiếu nó thì màn
 #     trận rơi về cách tính cũ — quân đi chậm hơn bản gốc.
 python ../brave-cross/work/move_speed.py
+# 2e. Số liệu kỹ năng thức tỉnh (khối `<fight>` tên `fight_<Sprite>Wake`).
+#     Thiếu nó thì tuyệt chiêu kịch bản rơi về 1 đòn cho mọi tướng.
+python ../brave-cross/work/wake_ref.py
 
 # 3. Bảng số liệu cho máy chủ — cũng gitignore, cùng lý do
 python sim/export_stats.py --all

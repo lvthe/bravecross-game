@@ -38,3 +38,6 @@ addons/
 # khong commit.
 /*.png
 /*.png.import
+
+# File .bat chay tay (duong dan Godot rieng tung may) — khong commit
+/*.bat

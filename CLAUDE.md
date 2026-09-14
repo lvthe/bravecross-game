@@ -56,6 +56,9 @@ Máy này Godot không có trong PATH:
 
 ## Đang làm dở
 
+Danh sách đầy đủ mọi phần cần làm và chỗ đang đứng: **`ROADMAP.md`**.
+Mục dưới đây là chi tiết kỹ thuật của những phần đã đụng tới.
+
 Xem README mục "Chạy thẳng mã Lua của bản gốc" → "Việc tiếp theo, theo thứ tự".
 Tóm tắt: (1) nối chạm — **xong**, (2) dựng cảnh `Main` — phần engine xong,
 (3) trạng thái người chơi mới — **xong** (từ mục `*Reset` của bảng cấu hình

@@ -1,5 +1,7 @@
 # bravecross-game
 
+> Đang ở đâu, còn phải làm gì: xem **[ROADMAP.md](ROADMAP.md)**.
+
 Project Godot 4.7 để làm game mới, dùng lại **bộ xương và hoạt ảnh** đã giải
 được từ bản gốc (xem repo `brave-cross`).
 

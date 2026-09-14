@@ -211,7 +211,10 @@ func _them(e: Dictionary, doi: int) -> void:
 	# Tuong ta giu no cho nut thuc tinh (Combat.Fighter.giu_no).
 	if doi == 0 and e["tuong"]:
 		(e["f"] as Combat.Fighter).giu_no = true
-	u.setup(e["f"], doi, _rules, _rng, r[0], float(e["co"]), r[1])
+	# Ten sprite de tra toc do that (MoveRef): bang khoa theo <sName> cua
+	# map/*_config.xml, khop voi SpriteName cua du lieu tran ("Defender").
+	u.setup(e["f"], doi, _rules, _rng, r[0], float(e["co"]), r[1],
+			String(e["sprite"]) if String(e["sprite"]) != "" else String(e["ten"]))
 	_dau.append(["%s%d" % ["T" if doi == 0 else "D", int(e["id"])], u.sx, u.sy])
 	_doi[doi].append(u)
 	_muc[u] = e
@@ -394,6 +397,7 @@ func buoc(dt: float) -> String:
 		budget -= 1
 		out = _mot_buoc(STEP)
 	_buoc_camera(dt)
+	_buoc_thu_phong(dt)
 	_cap_nhat_bang()
 	if out < 0:
 		return ""
@@ -596,6 +600,88 @@ func lia_camera(huong: float) -> void:
 ## Cho camera bam quan tro lai (StartGame sau canh dien anh).
 func theo_lai() -> void:
 	_cam_dung = false
+
+
+## Thu phong camera, giu MOT DIEM tren man hinh dung yen.
+##
+## Kich ban goi `SetCameraScale(giay, ?, ty_le, x, y)` — nam tham so, doc ra tu
+## chinh cho goi (plot/drama_L_XSGK.lua:199) va chu thich cua ban goc ngay tren
+## no: "镜头特写孙尚香" (lay can nhan vat). Tuc tham so 3 la TY LE va (4, 5) la
+## DIEM TAM theo toa do man hinh — kich ban tinh x bang
+## `screenWidth * <o dung> * 0.01`.
+##
+## That: ty le, diem tam VA thoi gian. Ham engine 0x366c7c doc ra nhu sau:
+##   a1 = giay; a3 = ty le (nhan voi ty le nen o `this[0x1c4]`);
+##   (a4, a5) = diem tam, chi dat khi khac nil; a6 = tham so phu.
+##   `if a1 <= 0.001` -> dat ty le NGAY (0x366cf2); nguoc lai dung
+##   CCScaleTo chay dan trong a1 giay (0x366ca8..).
+## Ca bon cho goi deu truyen 0.5 giay nen ban goc CHAY DAN, khong ap ngay.
+##
+## Tham so 2: la mot SO THUC, dua qua 0x4a9040 — ham do cap phat mot doi tuong
+## 0x30 byte, ghi tham so vao +0x24 va thay 0 bang 0x34000000 = FLT_EPSILON.
+## Do dung la than `CCActionInterval::initWithDuration` cua Cocos2d-x, nen tham
+## so 2 la mot KHOANG THOI GIAN nua boc ngoai phep thu phong. Ca bon cho goi
+## deu truyen 0 nen khong doi hanh vi — ghi lai chu khong doan them.
+## Ty le dang dung. 1 = khong phong.
+##
+## Khong dung Tween: node san tran nam NGOAI cay canh (bo do chay headless cho
+## thay "ngoai-cay"), ma Tween thi doi node o trong cay. Chay dan bang chinh
+## buoc khung cua san tran, giong moi thu khac o day.
+var _thu_phong := 1.0
+var _phong_dich := 1.0          ## ty le muc tieu khi dang chay dan
+var _phong_vi_tri := Vector2.ZERO
+var _phong_tu := 1.0            ## ty le luc bat dau chay
+var _phong_tu_vi_tri := Vector2.ZERO
+var _phong_con := 0.0           ## con lai bao nhieu giay
+var _phong_tong := 0.0
+
+func dat_thu_phong(ty_le: float, tam_x: float = INF, tam_y: float = 0.0,
+		giay: float = 0.0) -> void:
+	var t := clampf(ty_le, 0.2, 4.0)
+	if absf(t - _phong_dich) < 0.001:
+		return
+	# Giu diem tam dung yen: trong he toa do CHA, diem do phai ra cung mot cho
+	# truoc va sau khi doi ty le.
+	var tam := Vector2(tam_x, tam_y)
+	if tam_x == INF:
+		tam = Vector2((_trai + _phai) * 0.5 * _thu_phong + position.x, position.y)
+	var vi_tri := tam - (tam - position) * (t / maxf(_thu_phong, 0.001))
+	_phong_dich = t
+	# Nguong 0.001 giay la cua ban goc (0x366c9a so `giay` voi hang so 0.001).
+	if giay <= 0.001:
+		_phong_con = 0.0
+		position = vi_tri
+		scale = Vector2(t, t)
+		_thu_phong = t
+		return
+	_phong_tu = _thu_phong
+	_phong_tu_vi_tri = position
+	_phong_vi_tri = vi_tri
+	_phong_tong = giay
+	_phong_con = giay
+
+
+## Mot buoc cua phep thu phong dang chay dan. Goi tu `buoc()`.
+func _buoc_thu_phong(dt: float) -> void:
+	if _phong_con <= 0.0:
+		return
+	_phong_con = maxf(0.0, _phong_con - dt)
+	var k := 1.0 - _phong_con / maxf(_phong_tong, 0.001)
+	_thu_phong = lerpf(_phong_tu, _phong_dich, k)
+	position = _phong_tu_vi_tri.lerp(_phong_vi_tri, k)
+	scale = Vector2(_thu_phong, _thu_phong)
+
+
+## Ty le thu phong dang dung (de phep kiem doc lai).
+func thu_phong() -> float:
+	return _thu_phong
+
+
+## "<muc tieu> <ty le THAT cua node>" — phep kiem doc de phan biet "ap ngay"
+## voi "chay dan": chay dan thi node chua toi muc tieu ngay sau loi goi.
+func do_thu_phong() -> String:
+	return "%.4f %.4f %s" % [_phong_dich, scale.x,
+			"dan" if _phong_con > 0.0 else "ngay"]
 
 
 ## Do: camera, gioi han, va moi lop da troi bao xa so voi goc.

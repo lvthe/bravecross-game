@@ -132,11 +132,78 @@ Máy chủ cũ đã chết. Mỗi tính năng cần một handler đọc luật 
 - [x] Đưa lính ra trận, nút thức tỉnh theo dòng điều khiển gốc
 - [x] Camera bám quân, nền trôi theo hệ số parallax
 - [x] Thẻ tướng, đội hình xếp chéo, đánh mượt
-- [~] Chỗ đứng và tốc độ quân — **của ta**, không phải của bản gốc
-- [~] Cách hồi thống soái — ĐẶT
-- [~] Hiệu ứng kỹ năng thức tỉnh — ĐẶT; luật thật nằm trong `CDFSpriteFight*Wake`
-- [~] Ánh xạ trường sang bên đánh/chịu — ĐẶT, chưa kiểm byte-exact
-- [~] `SetCameraScale`, đường đi điện ảnh — ĐẶT
+- [x] Tốc độ quân — **số thật của bản gốc**. Hoá ra `MovingSpeed` *không phải*
+      chỗ engine lấy tốc độ: nó **không hề có** trong `libgame.so` (bảng tên chỉ
+      số quanh `0x7b42f0` có `AttackInterval`, `InjuryRates`, `NpcSize`,
+      `ClosePressing`, `Jump`… nhưng không có nó), và client chỉ dùng nó làm chỉ
+      số hiển thị. Tốc độ thật nằm ở `<sMove>` → `<ptVector>` trong
+      `map/*_config.xml`, đơn vị ô, 1 ô = 100 px: bộ binh đi 130 px/s chạy 300,
+      cung 130/250, kỵ 130/350. Bê ra bằng `work/move_speed.py` (124 sprite).
+      **ĐẶT còn lại**: lấy tốc độ ĐI; engine chọn đi hay chạy lúc nào thì do
+      "brain" bên C++
+- [x] **Ánh xạ trường sang bên đánh / bên chịu** — đọc thẳng từ **chỗ điền
+      struct** (`0x41ab82..0x41ad08`), không còn suy theo nghĩa của tên. Hàm
+      `0x380c94` nhận một struct 0x4c byte; chỗ điền lấy từng ô từ hai đối
+      tượng: `r5` = **bên đánh** (có thể NULL — `cmp r5,#0; beq` nhảy thẳng tới
+      chỗ gọi) và `r6` = **bên chịu**. Cả bốn giả định cũ đều **đúng**:
+      `nDp` (+0x64c) và `fReducingDamage` (+0x748) lấy từ bên chịu; nguyên tố,
+      `nPiercingAp`, `nDamageAddition`, `fIgnoreDp`, `Final*` lấy từ bên đánh.
+      Ba chỗ **sửa** theo số đo:
+      (a) `fDamageMultiples` có **ba** ô chứ không phải hai — `0x3d49d4` chọn
+      `AtHero` khi mục tiêu là tướng, `AtBoss` khi `NpcType == 5`
+      (`CUIChapterInfo.lua:1182` dùng `sBossIcon` cho 5), còn lại `AtDogface`;
+      (b) hệ số bỏ qua giáp **chỉ nhân khi `nDp > 0`** (`0x380cde` `ite gt`);
+      (c) `FinalHarm` (`0x380c00`) đã giải hết thứ tự — chặn dưới thật là
+      `-(0.5 + r6[0x59c])` chứ không phải hằng `-1`.
+      Khoá bằng 5 phép kiểm trong `tools/verify_battle.gd` (22/22).
+      **ĐẶT còn lại**: ô +0x18 (trừ vào tỉ lệ né, của bên đánh) không có trong
+      bảng tên của bộ dựng nên chưa biết tên — coi là 0; và chặn dưới của
+      `FinalHarm` giữ −1
+- [x] **Cách hồi thống soái** — `LeaderShipResume` là **số giây để hồi 1 điểm**.
+      Chứng minh bằng chính mã gốc: `SkillLogic:CommandReviveAccelerate`
+      (`sc/share/SkillLogic.lua:579`, chú thích *"领导力恢复速度*2"*) làm
+      `addtionPerSec = 1/LeaderShipResume`, cộng thêm rồi ghi ngược
+      `LeaderShipResume = 1/addtionPerSec`. Ta đang hồi đúng như vậy.
+      **ĐẶT còn lại**: vào trận thì đầy thống soái (engine C++ giữ con số này,
+      client chỉ nhận qua `updateLeaderShip`)
+- [x] **`SetCameraScale`** — giải hết bằng hàm engine `0x366c7c` (tìm qua bảng
+      bind Lua ở `.data:0x939704` → `0x467fb4`). Chữ ký thật
+      `(giây, tham2, tỉ lệ, x, y, tham6)`:
+      `giây` là **thời gian chạy** — `0x366c9a` so với hằng **0.001**, dưới
+      ngưỡng thì đặt tỉ lệ ngay, trên thì `CCScaleTo` chạy dần; cả bốn chỗ gọi
+      trong `sc/plot/drama_L_XSGK.lua` đều truyền **0.5 giây**, nên bản gốc
+      **chạy dần**. Đã sửa: `dat_thu_phong` nội suy trong chính bước khung của
+      sân trận (không dùng `Tween` — node sân trận nằm **ngoài cây cảnh**).
+      `tham2` là một **khoảng thời gian** nữa: nó đi vào `0x4a9040`, hàm đó ghi
+      tham số vào `+0x24` và **thay 0 bằng `0x34000000` = `FLT_EPSILON`** — đúng
+      thân `CCActionInterval::initWithDuration` của Cocos2d-x. Cả bốn chỗ gọi
+      đều truyền 0 nên không đổi hành vi. Khoá bằng 3 phép kiểm trong
+      `do_chien_dich --kiem` (22/22)
+- [~] Chỗ đứng quân — đội hình xếp chéo là của ta; toạ độ ô thì thật.
+      Đã truy thêm: `ptLayout` là **của từng sprite**, bộ đọc cấu hình
+      (`0x35cff8..0x35d026`) ghi nó vào `+0x460`; engine có **lưới ô thật** —
+      `InWhichCell` (`0x35ec4c`) loại điểm âm và điểm vượt *kích thước lưới ×
+      kích thước ô*, rồi lấy `int(x)`, `int(y)` làm chỉ số ô (lỗi
+      `"Call InWhichCell failed!"` ở `0x35eecc`); `map/global_config.xml` có
+      `fArmySpace = 1.1`, `fArmySpaceInArena = 1.2`.
+      **Đã bác bỏ**: "`ptLayout` = đội hình của toán lính" — tích `x*y` chỉ
+      khớp `MaxUnit` ở **2/18** binh chủng (Archer `{1,3}` = 3 nhưng `MaxUnit`
+      = 4). Đơn vị của `ptLayout` vẫn chưa xác định
+- [~] Hiệu ứng kỹ năng thức tỉnh — ĐẶT. Nhưng **số liệu thì có trong cấu hình
+      gốc**, không chỉ nằm trong C++: 107 khối `<fight>` của
+      `map/hero_config.xml` + `map/sprite_config.xml` mang tham số thức tỉnh
+      (`fAttackFrameWake` 75 chỗ — khung hình đánh trúng; `fDamageBonusWake`
+      22 chỗ; `nAttackSectionLimitWake` + `fSectionIntervalWake_F<n>` — các
+      nhịp đòn; `nStatusWake`/`nStatusOddsWake`/`fStatusTimeWake` — trạng thái).
+      Triệu Vân (`fight_ZhaoYunWake`, chính chỗ kịch bản ải 1 dùng):
+      `fAttackFrameWake 2.4`, `fDamageBonusWake 0.47`, `nStatusWake 12`,
+      `nStatusOddsWake 100`, `nSplitWake 12`, `fSplitFloorWake 0.5`.
+      **Chưa sửa `so_don = 3`**: `nSplitWake` là ứng viên cho số đòn nhưng
+      "split" nghiêng về *chia* sát thương hơn là *nhân*, và hai chỗ tham chiếu
+      `fDamageBonusWake` trong `.so` (`0x435590`, `0x437b98`) chỉ là chỗ **đọc
+      vào** `+0x36c` chứ không cho thấy luật ghép. Luật ghép vẫn ở
+      `CDFSpriteFight*Wake` (khoảng 80 lớp C++, mỗi tướng một cây hành vi)
+- [ ] Đường đi / hiệu ứng điện ảnh — ĐẶT
 - [ ] Minimap
 - [ ] Trận PvP, đấu trường, quốc chiến (cần mục 4)
 

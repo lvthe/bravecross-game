@@ -61,7 +61,7 @@ var _death_timer := 0.0
 
 func setup(f: Combat.Fighter, team_index: int, rules: Dictionary,
 		rng: Combat.Rng, art_dir: String = "", art_scale := 1.0,
-		variant := "") -> void:
+		variant := "", ten_sprite := "") -> void:
 	fighter = f
 	team = team_index
 	_rules = rules
@@ -71,9 +71,16 @@ func setup(f: Combat.Fighter, team_index: int, rules: Dictionary,
 	# ho khong bao gio cham duoc nhau — nang san len vua qua than nguoi.
 	reach = maxf(f.reach, 62.0) if f.reach > 0.0 else 58.0
 	min_reach = f.min_reach
-	# Toc do goc (20-80) qua cham cho man 960px; nhan len de tran khong le the,
-	# nhung van giu chenh lech giua ky binh (80) va voi (20).
-	speed = maxf(28.0, f.move_speed * 1.5)
+	# Toc do THAT cua ban goc, theo sprite (MoveRef): bo binh di 130 px/giay,
+	# ky binh 140... Truong `MovingSpeed` cua bang chi so tran KHONG phai cho
+	# engine lay toc do — no khong he co trong libgame.so; xem battle/move_ref.gd.
+	#
+	# DAT: lay toc do DI. Ban goc con co toc do CHAY (bo binh 300, cung 250,
+	# ky binh 350) va chon di hay chay theo "brain" ben C++ — chua giai.
+	speed = MoveRef.di(ten_sprite)
+	if speed <= 0.0:
+		# Khong biet sprite do: giu cach cu de khoi dung im.
+		speed = maxf(28.0, f.move_speed * 1.5)
 	# Don dau tien roi vao luc hoi chieu xong, giong mo phong Python.
 	cooldown = fighter.interval
 	if visual and art_dir != "":

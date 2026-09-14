@@ -100,5 +100,59 @@ func _init() -> void:
 	_check(lo >= 1.0, "don yeu nhat (%s) vao muc thu cao nhat (%s) van >= 1"
 			% [weakest, toughest], str(lo))
 
+	# --- toc do di chuyen lay tu map/*_config.xml, khong tu MovingSpeed
+	# `MovingSpeed` KHONG co trong libgame.so (quet bang ten chi so quanh
+	# 0x7b42f0: co AttackInterval, InjuryRates, NpcSize... khong co no), va
+	# client chi dung no lam chi so hien thi. Toc do that nam o <sMove> ->
+	# <ptVector>, don vi o, 1 o = 100 px.
+	_check(absf(MoveRef.di("Defender") - 130.0) < 0.01,
+			"Defender di 130 px/giay (move_near, 1.3 o)", str(MoveRef.di("Defender")))
+	_check(absf(MoveRef.chay("Defender") - 300.0) < 0.01,
+			"Defender chay 300 px/giay", str(MoveRef.chay("Defender")))
+	_check(absf(MoveRef.chay("Archer") - 250.0) < 0.01,
+			"Archer chay cham hon bo binh (2.5 o)", str(MoveRef.chay("Archer")))
+	_check(absf(MoveRef.chay("Cavalry") - 350.0) < 0.01,
+			"Cavalry chay nhanh hon bo binh (3.5 o)", str(MoveRef.chay("Cavalry")))
+	_check(MoveRef.di("KhongCoSpriteNay") == 0.0,
+			"sprite la thi tra 0 chu khong doan")
+
+	print("\n=== 5. anh xa truong sang ben danh / ben chiu (Harm) ===")
+	# Doc ra tu cho dien struct 0x41ab82..0x41ad08: nDp va fReducingDamage lay tu
+	# BEN CHIU, con nguyen to / xuyen / DamageAddition / DamageMultiples lay tu
+	# BEN DANH. Xem dau battle/harm.gd.
+	var ben_danh := {"FireAp": 40.0, "PiercingAp": 7.0, "DamageMultiplesAtDogface": 1.0,
+			"DamageMultiplesAtBoss": 3.0, "DamageMultiplesAtHero": 2.0}
+	var ben_chiu := {"DP": 0.0, "ReducingDamage": 10.0}
+	# Khong giap: dmg = max(FireAp,0) + atk + PiercingAp - ReducingDamage.
+	_check(absf(Harm.tinh(100.0, ben_danh, ben_chiu, false) - 137.0) < 0.01,
+			"nguyen to + xuyen cua ben danh, giam sat thuong cua ben chiu",
+			str(Harm.tinh(100.0, ben_danh, ben_chiu, false)))
+	# Dat cung nhung con so do o BEN CHIU thi khong duoc an thua gi.
+	var chiu_2 := ben_chiu.duplicate()
+	chiu_2["FireAp"] = 999.0
+	chiu_2["PiercingAp"] = 999.0
+	chiu_2["DamageAddition"] = 9999.0
+	_check(absf(Harm.tinh(100.0, ben_danh, chiu_2, false) - 137.0) < 0.01,
+			"nguyen to / xuyen / DamageAddition cua BEN CHIU khong duoc tinh",
+			str(Harm.tinh(100.0, ben_danh, chiu_2, false)))
+	# 0x3d49d4: chon o he so nhan theo LOAI muc tieu. NpcType 5 = boss
+	# (CUIChapterInfo.lua:1182 dung sBossIcon cho NpcType == 5).
+	var chiu_boss := ben_chiu.duplicate()
+	chiu_boss["NpcType"] = 5
+	_check(absf(Harm.tinh(100.0, ben_danh, chiu_boss, false) - 137.0 * 3.0) < 0.01,
+			"muc tieu NpcType == 5 -> dung DamageMultiplesAtBoss",
+			str(Harm.tinh(100.0, ben_danh, chiu_boss, false)))
+	_check(absf(Harm.tinh(100.0, ben_danh, chiu_boss, true) - 137.0 * 2.0) < 0.01,
+			"muc tieu la tuong thi AtHero thang, du NpcType == 5",
+			str(Harm.tinh(100.0, ben_danh, chiu_boss, true)))
+	# 0x380cde: he so bo qua giap chi nhan khi nDp > 0.
+	var danh_bo_qua := {"IgnoreDp": 0.5, "DamageMultiplesAtDogface": 1.0}
+	var chiu_am := {"DP": -100.0}
+	var dd := -100.0
+	var mong := 100.0 * (1.0 - minf(1.0, dd / (dd + 1500.0)))
+	_check(absf(Harm.tinh(100.0, danh_bo_qua, chiu_am, false) - mong) < 0.01,
+			"giap AM thi khong nhan he so bo qua giap",
+			"%.3f can %.3f" % [Harm.tinh(100.0, danh_bo_qua, chiu_am, false), mong])
+
 	print("\n===== dat %d, hong %d =====" % [n_pass, n_fail])
 	quit(0 if n_fail == 0 else 1)

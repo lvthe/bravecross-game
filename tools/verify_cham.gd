@@ -154,6 +154,25 @@ func _gia_lap() -> void:
 	t("doi tuong tra theo ten bien toan cuc (meta touch_obj)", s == "file End true", s)
 	t("cho trong: khong ai an", not _bam(lua, Vector2(900, 600)))
 
+	# THU PHONG. Kich ban tran goi g_BattleField:SetCameraScale, va truoc day
+	# ta khong lam voi ly do "thu phong lam lech toa do cham". Kiem lai cho ra
+	# nhe: phep phan phoi di tron chuoi bien doi CanvasItem roi nghich dao
+	# (LuaRuntime._bien_doi), nen mot node CHA bi phong to van cham dung.
+	#
+	# Phong doi len 2 lan quanh goc: o A (100,100 rong 200x100) chuyen thanh
+	# (200,200 rong 400x200), nen diem (240,220) phai trung A, con diem cu
+	# (120,110) thi khong con.
+	goc.scale = Vector2(2, 2)
+	_bam(lua, Vector2(240, 220))
+	s = _nhat(lua)
+	t("phong to 2x: bam theo toa do da phong thi van trung",
+			s == "A Begin true|A End true", s)
+	t("phong to 2x: diem cu khong con trung", not _bam(lua, Vector2(120, 110)))
+	goc.scale = Vector2.ONE
+	_bam(lua, Vector2(120, 110))
+	s = _nhat(lua)
+	t("ve ty le 1: bam lai binh thuong", s == "A Begin true|A End true", s)
+
 	var hoi = lua.run(
 			"return A:getLuaTouchName() == 'Nut' and A:getCallbackLuaObject() == O",
 			"hoi A")

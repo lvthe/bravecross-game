@@ -30,6 +30,9 @@ python ../brave-cross/work/emu_join.py --ghi
 #     chúng lúc chạy, thiếu là màn hình trống chữ và trống phần thưởng.
 python ../brave-cross/work/text_table.py
 python ../brave-cross/work/config_tables.py
+# 2d. Tốc độ di chuyển của từng sprite (map/*_config.xml). Thiếu nó thì màn
+#     trận rơi về cách tính cũ — quân đi chậm hơn bản gốc.
+python ../brave-cross/work/move_speed.py
 
 # 3. Bảng số liệu cho máy chủ — cũng gitignore, cùng lý do
 python sim/export_stats.py --all
@@ -825,7 +828,7 @@ godot --path . --script tools/do_chien_dich.gd -- --chup=tran.png   # chụp gi�
 lại theo điều kiện "đi tiếp": hết giờ chờ (`DelayTimeThenGoNext`), qua thoại
 (`ShowDialogue`), gặp quân (`EncounterArmyBegin`), nhận thông báo trận
 (`Notification_*`), tướng thức tỉnh xong (`HeroWakeEnd`). Ghi lại chuỗi thoại
-và mọi lời gọi. Chạy bằng cờ `G_KICHBAN` (mặc định TẮT để `--kiem` giữ 16/16);
+và mọi lời gọi. Chạy bằng cờ `G_KICHBAN` (mặc định TẮT để `--kiem` giữ 22/22);
 đo bằng `do_chien_dich.gd --kichban` — nạp `drama_L_N_01_01.lua` và diễn trọn
 20 câu thoại hướng dẫn tân thủ (giới thiệu → mở khoá đao binh → Lăng Thống →
 Lữ Bố → Triệu Vân) không lỗi.
@@ -864,7 +867,7 @@ bịt no-op; thoại tự đi tiếp sau 0,4 s.
 
 **Chơi thật thì kịch bản CHẠY.** `--xem` (và `--chup`) bật cờ `G_KICHBAN`, nên
 chơi tay là diễn trọn hướng dẫn tân thủ: mở khoá binh chủng, đồng minh đi vào,
-Lữ Bố bị rút, và ải 1 thắng được. `--kiem` KHÔNG bật (giữ 16/16, vì kịch bản ẩn
+Lữ Bố bị rút, và ải 1 thắng được. `--kiem` KHÔNG bật (giữ 22/22, vì kịch bản ẩn
 nút / dừng trận, đè lên phép kiểm đưa lính).
 
 `OnKillEnemy` (`szId`): với **ải thường** đây là no-op — `ChapterBattle` (màn

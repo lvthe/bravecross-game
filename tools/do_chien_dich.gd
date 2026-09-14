@@ -597,6 +597,31 @@ func _kiem(lua: LuaRuntime, may_chu: String, offline: String, canh: String,
 		ds.append(["bam that vao nut thuc tinh khi day no: tuong tung ky nang", tt_ok, _bam_tt])
 		ds.append(["nut thuc tinh sang khi day no, bao NoticeCastSkill",
 				str(cuoi["tt nhat ky"]) == "true", str(cuoi["tt nhat ky"])])
+		# SetCameraScale: ham engine 0x366c7c so `giay` voi 0.001 — duoi nguong
+		# thi dat ty le NGAY, tren thi chay dan bang CCScaleTo. Ca bon cho goi
+		# trong sc/plot/drama_L_XSGK.lua deu truyen 0.5 giay.
+		var z0: String = str(lua.run(
+				"local t = require('cocos').tran_nut t:dat_thu_phong(1.5, 300, 0, 0) return t:do_thu_phong()",
+				"phong ngay"))
+		var z0p := z0.split(" ")
+		ds.append(["thu phong duoi nguong 0.001 giay: ap NGAY",
+				z0p.size() == 3 and absf(float(z0p[1]) - 1.5) < 0.01 and z0p[2] == "ngay", z0])
+		var z1: String = str(lua.run(
+				"local t = require('cocos').tran_nut t:dat_thu_phong(1.0, 300, 0, 0.5) return t:do_thu_phong()",
+				"phong dan"))
+		var z1p := z1.split(" ")
+		ds.append(["thu phong 0.5 giay: CHAY DAN, node chua toi muc tieu ngay",
+				z1p.size() == 3 and absf(float(z1p[0]) - 1.0) < 0.01
+						and absf(float(z1p[1]) - 1.5) < 0.01 and z1p[2] == "dan", z1])
+		# Chay du 0.5 giay thi toi noi.
+		var z2: String = str(lua.run(
+				"local t = require('cocos').tran_nut t:_buoc_thu_phong(0.6) return t:do_thu_phong()",
+				"phong xong"))
+		var z2p := z2.split(" ")
+		ds.append(["chay du giay thi toi dung ty le muc tieu",
+				z2p.size() == 3 and absf(float(z2p[1]) - 1.0) < 0.01 and z2p[2] == "ngay", z2])
+		# Tra ve nguyen trang cho cac phep do sau.
+		lua.run("require('cocos').tran_nut:dat_thu_phong(1.0, 300, 0, 0)", "phong lai")
 		ds.append(["dua linh: 2 toan x4 nguoi, thong soai 6 -> 0 (lan 3 bi tu choi)",
 				int(cuoi["dua q"]) == 8 and str(cuoi["dua ld"]) == "6/0/6",
 				"them %s quan, thong soai truoc/sau/toi da %s" % [cuoi["dua q"], cuoi["dua ld"]]])

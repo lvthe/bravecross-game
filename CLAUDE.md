@@ -85,20 +85,21 @@ vào, nhưng công thức sát thương, chỗ đứng và tốc độ là CỦA
 trận đã có (nút binh chủng `btnBattlefieldArmy` + thống soái trong
 `lua/san_tran.lua`; cách hồi thống soái là ĐẶT). Thức tỉnh: dòng điều khiển
 nút theo bản gốc (`InitSkillButton`, `SetSkillButton*`, `NoticeCastSkill`),
-còn hiệu ứng kỹ năng là ĐẶT (đòn kế tiếp là đòn kỹ năng) — luật thật nằm
-trong các lớp C++ `CDFSpriteFight*Wake`. Chỗ đứng theo số thật (1 ô = 100 px,
+còn hiệu ứng kỹ năng là ĐẶT (đòn kế tiếp là đòn kỹ năng) — luật ghép nằm
+trong các lớp C++ `CDFSpriteFight*Wake`, nhưng SỐ thì có trong cấu hình gốc
+(xem mục "Hiệu ứng thức tỉnh" bên dưới). Chỗ đứng theo số thật (1 ô = 100 px,
 `PosX` tính theo ô), camera bám quân với hằng số của `map/global_config.xml`
 và nền trôi theo hệ số parallax `+0x30` của bản ghi node (cách bám là ĐẶT).
 Sát thương trận có hình dùng CÔNG THỨC THẬT của bản gốc (`battle/harm.gd`:
 cấu trúc hàm C++ `0x380c94` + hằng số `<formula>` của `global_config.xml`;
 bật bằng `rules['harm_real']`, chỉ trận có hình). Mô hình đối chiếu ba bên
 (`combat.gd` mặc định / `sim` / `server`) GIỮ NGUYÊN. Ánh xạ trường sang bên
-đánh/chịu là ĐẶT (chưa kiểm byte-exact, cần máy ảo). Chưa có: kịch bản,
+đánh/chịu ĐÃ ĐO, không còn ĐẶT — xem mục riêng bên dưới. Chưa có:
 minimap (nhưng có kịch bản). Đo và khoá: `tools/do_chien_dich.gd`
 
 Kịch bản trận (`sc/plot/drama_*.lua`) chạy bằng `lua/kich_ban.lua`
 (`DFDramaScriptSystem` giả, chạy coroutine + điều kiện đi tiếp). Bật bằng cờ
-`G_KICHBAN` (mặc định TẮT để `--kiem` giữ 16/16); đo: `do_chien_dich.gd
+`G_KICHBAN` (mặc định TẮT để `--kiem` giữ 22/22); đo: `do_chien_dich.gd
 --kichban`; và `--xem`/`--chup` cũng bật `G_KICHBAN` nên chơi tay diễn trọn
 hướng dẫn và thắng được ải 1. (`--kiem` KHÔNG bật.) Đồng minh kịch bản NHẬP TRẬN thật
 (`TakeUnitJoinBattle` -> `san_tran_ve.dua_dong_minh`, chỉ số từ
@@ -166,6 +167,68 @@ bản gốc chứ không dựng một cái bang giả. `GuildId ~= 0` là phép 
 mà chính client dùng. Tạo bang / xin vào / quyên góp / chiến bang đều cần
 người chơi khác — nếu làm thì thuộc về máy chủ thật, không phải lớp offline.
 
+Tốc độ di chuyển: **đừng dùng `MovingSpeed`** của bảng chỉ số trận. Nó không
+hề có trong `libgame.so` — quét bảng tên chỉ số của engine (quanh `0x7b42f0`)
+thì có `AttackInterval`, `InjuryRates`, `MaxAttackDistance`, `NpcSize`,
+`ClosePressing`, `Jump`… mà không có nó; client cũng chỉ dùng nó làm chỉ số
+hiển thị (`PropertyType.MovingSpeed = 21`). Tốc độ thật: mỗi sprite có
+`<sMove>` trỏ tới một khối `<move>` trong `map/*_config.xml`, khối đó ghi
+`<ptVector>` (đi) và `<ptRunVector>` (chạy), đơn vị **ô**, 1 ô = 100 px
+("单位:格 100pix"). Bê ra bằng `work/move_speed.py` → `data_ref/move_ref.json`,
+tra bằng `MoveRef.di()` / `MoveRef.chay()`. ĐẶT: ta lấy tốc độ ĐI; engine chọn
+đi hay chạy lúc nào thì do "brain" bên C++.
+
+`SetCameraScale(giây, tham2, tỉ lệ, x, y)` — ĐÃ GIẢI HẾT bằng hàm engine
+`0x366c7c` (tìm qua bảng bind Lua `.data:0x939704` → `0x467fb4`). Tỉ lệ ở tham
+số **3**, điểm tâm ở (4, 5). Tham số **1 là thời gian chạy**: `0x366c9a` so nó
+với hằng **0.001** — dưới ngưỡng thì đặt tỉ lệ NGAY, trên thì `CCScaleTo` chạy
+dần. Cả bốn chỗ gọi (`plot/drama_L_XSGK.lua`) đều truyền **0.5 giây**, nên bản
+gốc chạy dần; `dat_thu_phong` nay nội suy trong chính bước khung của sân trận
+(KHÔNG dùng `Tween`: node sân trận nằm ngoài cây cảnh, `Tween` đòi node trong
+cây — bộ đo headless chỉ ra điều này). Tham số **2 cũng là một khoảng thời
+gian**: nó đi vào `0x4a9040`, hàm đó ghi tham số vào `+0x24` và thay 0 bằng
+`0x34000000` = `FLT_EPSILON` — đúng thân `CCActionInterval::initWithDuration`
+của Cocos2d-x; cả bốn chỗ gọi đều truyền 0 nên không đổi hành vi.
+Lý do cũ "thu phóng làm lệch toạ độ chạm" **không còn đúng**
+— `LuaRuntime._bien_doi` đi trọn chuỗi biến đổi rồi nghịch đảo nên node cha bị
+phóng to vẫn chạm đúng (khoá bằng `verify_cham.gd`).
+
+Sát thương — ánh xạ trường sang bên đánh / bên chịu: ĐÃ ĐO, đọc thẳng từ **chỗ
+điền struct** (`0x41ab82..0x41ad08`) chứ không suy theo nghĩa của tên.
+`0x380c94` nhận một struct 0x4c byte; chỗ điền lấy từng ô từ hai đối tượng:
+`r5` = bên đánh (CÓ THỂ NULL — `cmp r5,#0; beq` nhảy thẳng tới chỗ gọi),
+`r6` = bên chịu. Bảng đối chiếu đầy đủ nằm ở đầu `battle/harm.gd`. Cả bốn giả
+định cũ đều đúng. Ba chỗ đã sửa theo số đo: `fDamageMultiples` có **ba** ô
+(`0x3d49d4`: `AtHero` khi mục tiêu là tướng, `AtBoss` khi `NpcType == 5`, còn
+lại `AtDogface` — `NpcType 5` = boss theo `CUIChapterInfo.lua:1182`); hệ số bỏ
+qua giáp **chỉ nhân khi `nDp > 0`** (`0x380cde`); `FinalHarm` (`0x380c00`) đã
+giải hết thứ tự, chặn dưới thật là `-(0.5 + r6[0x59c])` chứ không phải `-1`
+(vẫn giữ −1 vì chưa đọc được giá trị mặc định). Tên trường lấy từ bộ dựng
+`0x3808d8` (strcmp), khoá bằng 5 phép kiểm trong `tools/verify_battle.gd`.
+
+Hồi thống soái: `LeaderShipResume` là **số giây để hồi 1 điểm**, chứng minh
+bằng chính mã gốc — `SkillLogic:CommandReviveAccelerate`
+(`sc/share/SkillLogic.lua:579`) làm `addtionPerSec = 1/LeaderShipResume` rồi
+ghi ngược `LeaderShipResume = 1/addtionPerSec`. Còn ĐẶT: vào trận thì đầy
+thống soái.
+
+Chỗ đứng quân: `ptLayout` là của TỪNG SPRITE, bộ đọc cấu hình
+(`0x35cff8..0x35d026`) ghi vào `+0x460`. Engine có lưới ô thật —
+`InWhichCell` (`0x35ec4c`) loại điểm âm và điểm vượt *kích thước lưới × kích
+thước ô* rồi lấy `int(x)`, `int(y)` làm chỉ số ô. ĐÃ BÁC BỎ: "`ptLayout` =
+đội hình của toán lính" — tích `x*y` chỉ khớp `MaxUnit` ở 2/18 binh chủng.
+Đơn vị của `ptLayout` vẫn chưa xác định.
+
+Hiệu ứng thức tỉnh: luật ghép nằm trong ~80 lớp C++ `CDFSpriteFight*Wake`,
+nhưng SỐ thì có trong cấu hình gốc — 107 khối `<fight>` của `hero_config.xml`
++ `sprite_config.xml` mang `fAttackFrameWake` (75 chỗ), `fDamageBonusWake`
+(22), `nAttackSectionLimitWake` + `fSectionIntervalWake_F<n>`, `nStatusWake`.
+Triệu Vân (`fight_ZhaoYunWake`): `fDamageBonusWake 0.47`, `nSplitWake 12`,
+`fSplitFloorWake 0.5`, `nStatusWake 12`. `so_don = 3` trong `lua/kich_ban.lua`
+VẪN LÀ ĐẶT: `nSplitWake` là ứng viên nhưng "split" nghiêng về *chia* sát
+thương hơn *nhân*, và hai chỗ tham chiếu `fDamageBonusWake` trong `.so`
+(`0x435590`, `0x437b98`) chỉ là chỗ đọc vào `+0x36c`, không cho thấy luật ghép.
+
 Đốm xanh ở Main (hiệu ứng sáng) — ĐÃ KHOANH VÙNG, CHƯA GIẢI. Nó là armature
 `UITongYong` (UI通用), xương `sad`, các ảnh `UITongYong_Res-lizi*`
 (粒子 = hạt), vẽ bằng `SngRig` ngay trên hai nút `spFirstPayGiftBg` /
@@ -197,5 +260,6 @@ Lớp offline (thay máy chủ) nằm ở `../brave-cross/work/offline`, test b�
 `python run_tests.py` ở đó. Sửa nó xong phải chạy lại `tools/import_lua.py`.
 
 Bấm được: `lua/cocos.lua` (`M.cham`) + `LuaRuntime.touch_at`, kiểm bằng
-`tools/verify_cham.gd`. 243/353 màn mở được; phần lớn 88 màn hỏng là vì thiếu
-dữ liệu người chơi, không phải thiếu engine.
+`tools/verify_cham.gd`. Số màn mở được: xem bảng đầu `ROADMAP.md` (đo bằng
+`tools/quet_show.gd`, con số dao động ±3 giữa các lần chạy). Phần lớn màn hỏng
+là vì thiếu dữ liệu người chơi, không phải thiếu engine.

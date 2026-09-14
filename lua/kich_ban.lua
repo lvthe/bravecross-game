@@ -261,13 +261,26 @@ return function(c)
 		return hinh_nhan
 	end
 
-	-- CameraMoveBy(huong, giay): lia camera canh dien anh. SetCameraScale: chua
-	-- lam (thu phong lam lech toa do cham) — ghi lai.
+	-- CameraMoveBy(huong, giay): lia camera canh dien anh.
 	function KB:CameraMoveBy(huong)
 		self._nhat_ky[#self._nhat_ky + 1] = 'CameraMoveBy ' .. tostring(huong)
 		goi_tran('lia_camera', tonumber(huong) or 0)
 		return hinh_nhan
 	end
+	-- SetCameraScale(giay, tham2, ty_le, x, y) — nam tham so, doc ra tu ham
+	-- engine 0x366c7c (xem battle/san_tran_ve.gd:dat_thu_phong). giay > 0.001
+	-- thi ban goc CHAY DAN chu khong ap ngay; ca bon cho goi deu 0.5 giay.
+	-- tham2 la mot khoang thoi gian nua (CCActionInterval), luon 0 o ca bon
+	-- cho goi — chuyen xuong nhat ky chu khong dung.
+	function KB:SetCameraScale(giay, tham2, ty_le, x, y)
+		self._nhat_ky[#self._nhat_ky + 1] = 'SetCameraScale ' .. tostring(ty_le)
+			.. ' tam ' .. tostring(x) .. ',' .. tostring(y)
+			.. ' (giay ' .. tostring(giay) .. ', tham2 ' .. tostring(tham2) .. ')'
+		goi_tran('dat_thu_phong', tonumber(ty_le) or 1,
+			tonumber(x) or (1 / 0), tonumber(y) or 0, tonumber(giay) or 0)
+		return hinh_nhan
+	end
+
 	function KB:SetInPlotAndShowDiag() end
 
 	function KB:FinishGame(r)

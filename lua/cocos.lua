@@ -323,6 +323,27 @@ function Node:setLuaTouchName(ten)
 	raw(self):set_meta('touch', tostring(ten or ''))
 end
 
+-- Ten LUA cua node — ten instance ghi trong .xgg, KHONG phai ten lop. Ban goc
+-- de ham nay trong engine C++ chu khong trong Lua: 20 cho goi, khong cho nao
+-- dinh nghia. Truoc day no roi vao bo dem `M.missing` (Node __index tra ve ham
+-- rong) nen tra nil, va nhu vay thi im lang dung o cho nguy hiem:
+-- CUIMainBuildingManager:onTouchEnd_btnBuilding lay
+-- `self.tBuildingData[obj:getLuaName()].pTouchFunction` — khoa nil thi
+-- `tBuildingData[nil]` la nil, roi `.pTouchFunction` nem loi. Cac cho khac
+-- (CPublic.lua:1658, CActionManager.lua:135) co tu chan nil nen khong lo.
+--
+-- Tra nil khi node KHONG co ten instance, dung nhu ban goc va dung nhu
+-- xgg_layout.gd: chi 2.778/33.472 node co ten that, va "khong ten" khong duoc
+-- phep hoa thanh ten lop — neu khong thi ten gia trung nhau (xem chu thich
+-- 'TEN INSTANCE va TEN LOP' o ui/xgg_layout.gd).
+function Node:getLuaName()
+	local gd = raw(self)
+	if gd:has_meta('xgg_name') then
+		return tostring(gd:get_meta('xgg_name'))
+	end
+	return nil
+end
+
 function Node:getLuaTouchName()
 	local gd = raw(self)
 	return gd:has_meta('touch') and tostring(gd:get_meta('touch')) or ''
@@ -376,6 +397,19 @@ function M.cham(pha, gd, a, b, c)
 			M.loi_cham[#M.loi_cham + 1] = k .. ': ' .. tostring(err)
 		end
 	end
+	-- Node DA DANG KY thi nuot cham ke ca khi no khong co ham cho pha nay:
+	-- ccTouchBegan cua no tra true (doi tuong khong co onTouchBegin_ thi khong
+	-- co gi de goi, nhung cham VAN bi giu) — nen nut o DUOI khong nhan duoc
+	-- Begin nao. Do lai bang tools/verify_cham.gd: node B chi co
+	-- onTouchEnd_Tren, ma cu bam vao B chi de lai dung 'B End true' — node A
+	-- nam duoi khong he nhan Begin.
+	--
+	-- Da thu nuot CO DIEU KIEN (khong co ham cho pha nay thi tra false) va do
+	-- duoc la SAI: ba bo phai chung minh luat nay do xuong — verify_cham.gd
+	-- (3 hong), chien dich (Lua) (3 hong), bam that Main -> tran (5 hong).
+	-- Ha tang that cua lan do la lop phu lNormalDlgTouchMask cua hop thoai
+	-- dang mo phu kin man (960x640 o (0,0)) — no NUOT la dung, hop thoai la
+	-- modal; cho can sua la phep do, khong phai luat nuot.
 	return true
 end
 

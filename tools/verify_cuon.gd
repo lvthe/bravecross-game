@@ -173,6 +173,12 @@ func _ten_ung_vien(p: Vector2) -> String:
 	return ", ".join(ten)
 
 
+func _ten(n: Node) -> String:
+	if n == null:
+		return "-"
+	return "%s[%s]" % [String(n.get_meta("xgg_name", n.name)), String(n.get_meta("touch", ""))]
+
+
 func _do(lop: Node) -> void:
 	# 1. Hinh dang — doc thang tu .xgg, khong lay tu lua/cuon.lua.
 	t("lop la Control", lop is Control)
@@ -260,6 +266,23 @@ func _do(lop: Node) -> void:
 	t("bam khong di chuyen -> co node nhan End", _co_end(), nk_bam)
 	t("bam -> khong cuon", is_equal_approx(_lech(), 0.0), str(_lech()))
 
+	# Cu bam do trung nut nao thi man cua nut do MO ra — do la duong cua BAN
+	# GOC, va no chi mo duoc tu khi `Node:getLuaName` co that (xem chu thich
+	# ham do o lua/cocos.lua, va muc 10 ben duoi). He qua cho phep do: hop
+	# thoai dang mo thi lop phu lNormalDlgTouchMask phu kin man (960x640 o
+	# (0,0)) va NUOT cham — modal thi phai chan, do la hanh vi dung, khong phai
+	# loi. Nen phan do cuon ben duoi phai chay luc KHONG con hop thoai nao.
+	var man_truoc := str(lua.run("return tostring(g_CUINormalDlg:GetCurrentUIName())", "man dang mo"))
+	t("cu bam mo dung man cua nut bi bam (LotteryDefault)", man_truoc == "LotteryDefault", man_truoc)
+	# lNormalDlgMask khong tat ngay: CPublic:SetMaskIsEnable(false)
+	# (CPublic.lua:1207) chay CCFadeTo(0.2, 0) roi moi CCHide — 0,2 giay = 12
+	# khung. Cho 20 khung cho chac.
+	lua.run("g_CUINormalDlg:Close() return true", "dong hop thoai")
+	_tick(20)
+	var ung := _ten_ung_vien(Vector2(600, 200))
+	t("dong hop thoai xong thi lop phu khong con duoi ngon tay",
+			not ung.contains("lNormalDlgTouchMask") and not ung.contains("lNormalDlgMask"), ung)
+
 	_xoa_nhat_ky()
 	_cham("Begin", _p(600, 200))
 	_cham("Move", _p(500, 200))
@@ -285,6 +308,99 @@ func _do(lop: Node) -> void:
 	_keo(600, 200, -200.0)
 	t("enableScroll(false) thi khong cuon", is_equal_approx(_lech(), 0.0), str(_lech()))
 	lua.run("g_MainUIScrollLayer:enableScroll(true) return true", "bat cuon")
+
+	# 10. KET QUA: cuon de LAM GI. Cuon het co roi BAM THAT vao nha thi man
+	#     ai vo tan phai MO, va khong duoc co vet loi nao moi.
+	#
+	#     Duong di cua cu bam la duong cua BAN GOC, khong phai duong tat:
+	#     node mang ten cham 'btnBuilding' -> CUIMainBuildingManager:onTouchEnd_btnBuilding
+	#     -> _isBuildingOpen -> tBuildingData[obj:getLuaName()].pTouchFunction
+	#     = _btnMainEvilCastle -> g_CUINormalDlg:Show('InfiniteLevelUI').
+	#
+	#     Do duoc: o CAP 1 thi cua bi KEP lai — va dung the, khong phai loi cua
+	#     ta. Luat do la cua ban goc: CGuideEvent.lua:421 dat nguong mo
+	#     CUIMainEvilCastle = 45, roi :760 mo no khi nguoi choi len 45. Ta chi
+	#     keo nguong do bang CHINH ham ma ban goc dung (SetGameFuncUnLockData),
+	#     khong tu ha cong nao.
+	if nut != null:
+		var loi_truoc := lua.errors.size()
+		lua.run("g_MainUIScrollLayer:resetContentLayerPos() return true", "reset")
+		_tick(2)
+		_keo(600, 200, -2000.0)
+		_tick(20)
+		var tam2 := _tam_cocos(nut as Control)
+		_xoa_nhat_ky()
+		_cham("Begin", _p(tam2.x, tam2.y))
+		var nhan: Node = lua._dang_cham
+		_cham("End", _p(tam2.x, tam2.y))
+		_tick(60)
+		var goi := _nhat_ky()
+		var man := str(lua.run(
+				"return tostring(g_CUINormalDlg:GetCurrentUIName())", "man dang mo"))
+		print("  bam nha o %s -> nhan: %s, goi: %s" % [
+				tam2.round(), _ten(nhan), goi.substr(0, 160)])
+		t("cu bam vao nha den duoc onTouchEnd_btnBuilding", goi.contains("onTouchEnd_btnBuilding"), goi)
+
+		# Trang thai THAT cua cua, doc tu trong Lua.
+		var chan := str(lua.run("""
+			local function lay(f) local ok, v = pcall(f) return ok and tostring(v) or ('?' .. tostring(v):sub(1,80)) end
+			local n = btnMainEvilCastle
+			local d = g_CUIMainBuildingManager
+			local khoa = n:getChildByTag(5000)
+			return 'luaName=' .. lay(function() return n:getLuaName() end)
+				.. ' | IsFuncOpening=' .. lay(function()
+					local _, o = g_CGameFuncOpeningManager:IsFuncOpening('CUIMainEvilCastle') return o end)
+				.. ' | _isBuildingOpen=' .. lay(function() return d:_isBuildingOpen(n) end)
+				.. ' | nhan khoa (tag 5000) hien=' .. lay(function()
+					return khoa ~= nil and khoa:getIsVisible() end)
+				.. ' | cap nguoi choi=' .. lay(function()
+					local _, b = G_UserLogic:GetBaseInfo() return b and b.Level end)
+		""", "chan"))
+		print("  chan: %s" % chan)
+		t("getLuaName tra dung ten trong .xgg (truoc day nil)",
+				chan.contains("luaName=btnMainEvilCastle"), chan)
+		# KHONG doi hoi man nao dang mo: muc 7 da dong hop thoai lai, nen o day
+		# cho doi dung mot dieu — cua ai vo tan KHONG duoc mo. Truoc day phep
+		# kiem ghi `man == nil` va no do oan, vi luc do con hop thoai Lottery
+		# cua muc 7.
+		t("nha KHONG mo o cap 1 — dung luat goc (nguong 45)",
+				man != "InfiniteLevelUI", man)
+		t("cua bi kep bang chinh nhan khoa tag 5000 cua ban goc",
+				chan.contains("IsFuncOpening=false") and chan.contains("hien=true"), chan)
+
+		# Mo bang dung ham ma ban goc dung (CGuideEvent.lua:762), roi cho
+		# CGameFuncOpeningManager ap lai — OnDialogShow la duong no van di.
+		lua.run("""
+			G_UserLogic:SetGameFuncUnLockData('CUIMainEvilCastle', true)
+			g_CGameFuncOpeningManager:OnDialogShow(g_CUIMain:GetUIName())
+			return true
+		""", "mo cua nhu ban goc")
+		_tick(2)
+		print("  sau khi mo: %s" % str(lua.run("""
+			local function lay(f) local ok, v = pcall(f) return ok and tostring(v) or ('?' .. tostring(v):sub(1,80)) end
+			local n = btnMainEvilCastle
+			local khoa = n:getChildByTag(5000)
+			return '_isBuildingOpen=' .. lay(function() return g_CUIMainBuildingManager:_isBuildingOpen(n) end)
+				.. ' | nhan khoa hien=' .. lay(function() return khoa ~= nil and khoa:getIsVisible() end)
+		""", "sau khi mo")))
+
+		_xoa_nhat_ky()
+		_cham("Begin", _p(tam2.x, tam2.y))
+		_cham("End", _p(tam2.x, tam2.y))
+		_tick(90)
+		goi = _nhat_ky()
+		man = str(lua.run("return tostring(g_CUINormalDlg:GetCurrentUIName())", "man dang mo"))
+		print("  bam lai -> goi: %s | man: %s" % [goi.substr(0, 200), man])
+		t("nha ai vo tan MO ra", man == "InfiniteLevelUI", man)
+		# Loi cu cua lop offline: bang GameUserEndlessChapter tra {} thay vi nil,
+		# nen EndlessChapterLogic bo qua ham dung hinh dang cua chinh client va
+		# CUIInfiniteLevelMain.lua:619 doc so nil. Nay phai sach.
+		var vet := ""
+		for i in range(loi_truoc, lua.errors.size()):
+			var e := str(lua.errors[i])
+			if e.contains("CUIInfiniteLevelMain.lua:619") or e.contains("FirstPassRewards.lua:211"):
+				vet = e
+		t("mo nha ai vo tan khong loi :619 / :211", vet == "", vet.substr(0, 200))
 
 	print("  loi Lua: %d" % lua.errors.size())
 	for e in lua.errors.slice(0, 6):

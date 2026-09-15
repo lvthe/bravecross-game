@@ -25,6 +25,9 @@ SUITES = [
     ('action + anh (Lua)',  'script', 'tools/verify_lua_actions.gd', False, []),
     ('cham (Lua)',          'script', 'tools/verify_cham.gd',    False, []),
     ('canh Main (Lua)',     'script', 'tools/verify_main.gd',    False, []),
+    # Lop CUON CCScrollLayer (lua/cuon.lua) tren canh Main that: do lech, bien,
+    # nha ve bien, va nut nha ben phai (ai vo tan) co bam duoc sau khi cuon.
+    ('cuon lop thanh pho',  'script', 'tools/verify_cuon.gd',    False, []),
     # Main -> chon ai -> bo tri quan -> tran (g_BattleField gia) -> man ket
     # thuc, qua lop offline: ca chuoi chien dich cua ban goc.
     ('chien dich (Lua)',    'script', 'tools/do_chien_dich.gd',  False, ['--kiem']),

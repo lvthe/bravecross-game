@@ -207,6 +207,11 @@ function M.install_cocos()
 	-- engine tran C++ cua ban goc. Phai dang ky TRUOC khi nap canh Battle —
 	-- loadLevelFile boc node ngay luc nap (_G[ten] = c.wrap(...)).
 	c.lop_rieng['g_BattleField'] = require('san_tran')(c)
+	-- Lop CUON cua engine (typeName 'CCScrollLayer'): lop thanh pho o Main va
+	-- 314 node nua trong 296 file bo cuc. Cung phai dang ky TRUOC khi nap canh
+	-- dau tien — wrap() chot __index ngay lan boc node dau.
+	c.cuon = require('cuon')(c)
+	c.lop_theo_loai['CCScrollLayer'] = c.cuon
 	-- DFDramaScriptSystem: lop C++ chay kich ban tran (sc/plot/drama_*.lua).
 	-- khoi_dong_game (d.235) goi DFDramaScriptSystem:new() -> g_DramaSystem.
 	DFDramaScriptSystem = require('kich_ban')(c)

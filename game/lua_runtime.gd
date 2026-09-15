@@ -594,6 +594,11 @@ func touch_at(pha: String, p: Vector2) -> bool:
 	if state == null or goc == null:
 		return false
 	var c := _toa_do_cocos(goc, p)
+	# Goc cham, cho lop cuon (lua/cuon.lua) doi toa do ve khong gian cua chinh
+	# no: a/b/c truyen cho Lua la toa do trong khong gian cua GOC nay, con
+	# position cua cac con lai o khong gian cua lop. Khong co no thi mot phep
+	# phong to nam giua hai thu do se lam do keo sai ti le. Xem cuon.lua doi_vao.
+	state.globals["_cham_goc"] = goc
 	if pha == "Begin":
 		_dang_cham = null
 		var ds: Array = []

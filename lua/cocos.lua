@@ -28,6 +28,14 @@ M.cell_errors = {}   -- o danh sach dung hong -> de doc ra
 -- Lop RIENG theo ten node trong .xgg: node mang ten nay tra ham o bang nay
 -- truoc (bang do tu __index ve Node). g_BattleField: lua/san_tran.lua.
 M.lop_rieng = {}
+-- Lop RIENG theo LOAI node (meta 'type_name', tuc typeName cua .xgg), dung
+-- cho nhung lop ma moi node cung loai deu phai xu su nhu engine: hien co
+-- CCScrollLayer (lua/cuon.lua). Ten node cu the van thang loai — lop_rieng
+-- xet truoc — vi lop_rieng gan chat voi mot node duy nhat.
+M.lop_theo_loai = {}
+-- Lop CUON (lua/cuon.lua). cocos.lua khong biet gi ve cuon; no chi goi vao
+-- day o hai cho: M.cham (nhan truoc, co the nuot) va M.tick (hieu ung nha).
+M.cuon = nil
 
 local function note(name)
 	M.missing[name] = (M.missing[name] or 0) + 1
@@ -67,7 +75,10 @@ local function wrap(gd)
 		u = newproxy(true)
 		local mt = getmetatable(u)
 		local ten = gd:has_meta('xgg_name') and tostring(gd:get_meta('xgg_name')) or nil
-		mt.__index = (ten ~= nil and M.lop_rieng[ten]) or Node
+		local loai = gd:has_meta('type_name') and tostring(gd:get_meta('type_name')) or nil
+		mt.__index = (ten ~= nil and M.lop_rieng[ten])
+			or (loai ~= nil and M.lop_theo_loai[loai])
+			or Node
 		mt.__tostring = function() return '<CCNode>' end
 		gd_of[u] = gd
 		boxed[id] = u
@@ -335,6 +346,13 @@ end
 function M.cham(pha, gd, a, b, c)
 	local ten = gd:has_meta('touch') and tostring(gd:get_meta('touch')) or ''
 	if ten == '' then return false end
+	-- Lop cuon nhan truoc. No co the NUOT pha End: mot lan keo da qua nguong
+	-- thi khong tinh la mot cu bam nua, neu khong thi nha vao nut ma keo se
+	-- vua cuon vua mo man. Pha Begin thi lop cuon KHONG nuot — nut van phai
+	-- nhan Begin thi moi biet duoc nguoi choi dang cham vao dau.
+	if M.cuon ~= nil and M.cuon.cham(pha, gd, a, b, c) then
+		return true
+	end
 	local obj = doi_tuong_cua(gd)
 	if type(obj) ~= 'table' then return false end
 	local k = 'onTouch' .. pha .. '_' .. ten
@@ -1152,6 +1170,7 @@ end
 function M.tick(dt)
 	local n = M.actions.tick(dt) or 0
 	lich.tick(dt)
+	if M.cuon ~= nil then M.cuon.tick() end
 	return n + lich.cho()
 end
 

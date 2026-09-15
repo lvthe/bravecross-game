@@ -24,7 +24,7 @@ Số trong ngoặc là **đo được**, không phải ước lượng. Cách đ
 | Màn hình mở được | **264–265 / 353** | `tools/quet_show.gd` |
 | Hàm máy chủ `Client*` đã có bản offline | **13 / 411** | đếm `sc/` vs `offline/handlers` |
 | Lệnh kịch bản `g_DramaSystem` đã có | **60 / 60** | đối chiếu `sc/plot/drama_*.lua` |
-| Bộ kiểm | **24**, xanh hết | `tools/check.py` |
+| Bộ kiểm | **25**, xanh hết | `tools/check.py` |
 
 > Con số màn hình **dao động ±3 giữa các lần chạy** (đo 3 lần trong ngày:
 > 258, 259, 260; hôm sau: 258, 257; hôm nay, **sáu lần chạy cùng một mã**:
@@ -121,7 +121,9 @@ của ải vô tận **không** được tính: chúng đăng ký để client k
 - [x] Mở màn hình bằng đúng đường của bản gốc: `<quản lý>:Show(<tên>)`
 - [x] Công cụ xem màn: `tools/xem_man.tscn`
 - [ ] **94 màn chưa mở được** — 71 hỏng (xem mục 4), 23 đòi tham số
-- [ ] Còn thiếu ở `Main`: `sngFixInfoReflash`, kéo cuộn lớp thành phố
+- [x] Kéo cuộn lớp thành phố ở `Main` (`lua/cuon.lua` — lớp `CCScrollLayer` của
+      engine; số đo ở mục 8) — nhờ đó với tới được `btnMainEvilCastle` (ải vô tận)
+- [ ] Còn thiếu ở `Main`: `sngFixInfoReflash`
 - [ ] Lớp phủ hướng dẫn `g_CGuideLogical`
 
 ## 4. Máy chủ offline — phần dài nhất còn lại
@@ -737,6 +739,39 @@ dao động đã ghi. `check.py` 24/24 xanh (gồm `verify.gd` 3.142 đạt / 0 
    Đây là **việc engine, có biên**: một khung cuộn + ô, không phải đi tìm dữ liệu.
    Nhưng **chưa đo được nó mở thêm bao nhiêu màn** — 19 file là số gọi, không
    phải số màn sẽ mở; muốn biết thì làm rồi đo bằng `quet_show.gd`
+6. ~~**Lớp cuộn `CCScrollLayer`**~~ — **xong**, và đây là chìa khoá vào ải vô
+   tận: `btnMainEvilCastle` nằm ở x = 1582,9 trong khi sân khấu rộng 1152, nên
+   **không cuộn thì không có điểm màn hình nào chạm tới nó được**.
+   Vì sao phải làm ở tầng engine: cả **bốn** hàm `CUIMain` đăng ký cho lớp thành
+   phố (`CUIMain.lua:1682-1695`) đều là **bóng rỗng**, chỉ có một dòng chú thích
+   — Lua chỉ bảo engine *bật* cuộn (`setMarginSpace(-50)`, `setIsElastic(true)`,
+   `setLuaCallbackForDrag`), còn việc cuộn nằm hẳn trong C++.
+   Số đo lấy từ bảng đăng ký phương thức của engine, `.data 0x93386c` (32 mục,
+   12 byte/mục, con trỏ hàm mang **bit Thumb**, phải `& ~1` trước khi dịch) trên
+   `vn/apk/.../libgame.so` (md5 `245edda2…`): `+0x1bc` lề, `+0x1b0` cắt hình,
+   `+0x1af` trục dọc, `+0x1b4` neo berth, `+0x1dc` lớp nội dung, `+0x245` cổng
+   tính bề rộng cuộn; `resetContentLayerPos` = `core(self, gettop>0 ?
+   checknumber : 0)`; **158** chỗ gọi nó, **73** chỗ gọi `enableScroll`
+   (39 bật / 34 tắt), và **0** chỗ gọi cho cả hệ berth.
+   Phép đo: `tools/verify_cuon.gd` — **24 đạt / 0 hỏng**, ba lần chạy đều như
+   nhau, và đã vào `check.py`. Trên cảnh `Main` thật: kéo −200 thì lệch đúng
+   −200; `resetContentLayerPos()` về 0; kéo −2000 rồi thả thì nhả về biên
+   **−784** (con số **tính lại độc lập** trong bộ đo từ kích thước đọc ra từ cây
+   Godot, không lấy hằng số của `cuon.lua`), và `btnMainEvilCastle` từ
+   **ngoài khung** (tâm 1582,9) vào **trong khung** (tâm 798,9) rồi **bấm được**
+   — kiểm bằng chính bộ lọc chạm của engine, không phải bằng mắt.
+   Chống hồi quy: `quet_show.gd` — so **danh sách TÊN màn hỏng** giữa hai lượt
+   cùng mức (65 hỏng): **giống hệt nhau**; các lượt còn lại nằm trong dải đã ghi
+   (`264–265 / 23 / 65–66`, dao động ±3). `check.py` 25/25 xanh.
+   Ba chỗ **ĐẶT**, ghi rõ trong `cuon.lua`: ngưỡng phân biệt bấm-với-kéo **12 px**
+   (ranh giới ấy nằm trong C++, không có trong bảng phương thức), thời gian nhả
+   về biên **0,2 giây** (hằng số ở `0x2c0d34`/`0x2c18da` chưa giải), và **trục
+   mặc định là ngang**. `setIsCropDraw` **mới ghi cờ, chưa cắt hình** — bật
+   `clip_contents` sẽ đổi luôn bộ lọc chạm của 12 màn, phải đo riêng.
+   Một lỗi tự bắt được trước khi chốt, đáng nhớ: `goc_cua` tự chỉnh gốc khi vị
+   trí lệch khỏi `gốc + lệch`, mà `day_lech` lại truyền **độ lệch mới** — nên
+   mỗi lần kẹp biên hay nhả về biên là gốc **trôi**, và lần kẹp sau sai tiếp.
+   Nay `day_lech(gd, t, mới)` đọc gốc theo độ lệch **đang áp** rồi mới ghi.
 
 Việc 2(b) rẻ, mở đường cho việc 4, và nay là việc có giá trị nhất. Sau đó là
 việc 3 (âm thanh) — nó là mảng lớn còn nguyên vẹn duy nhất.

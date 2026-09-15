@@ -69,6 +69,45 @@ func _init() -> void:
 	# deu bi no nuot, dung nhu ban goc. Phai cho no tan roi moi do cuon.
 	_tick(40)
 
+	# Cua hang Van Du (GameUserCloudShop). Ban goc TAT tinh nang nay: Setting.lua
+	# cua chinh no (kenh vi) khong dinh nghia IS_OPEN_TOURMERCHANT, va ma goc noi
+	# thang ra — ClientTourMerchantLogic.lua:112, chu thich cua rong34 nam 2016:
+	# "neu tinh nang chua mo thi GameUserCloudShop khong co gia tri".
+	#
+	# Lop offline tra {} thi `{}` KHAC nil, nen ClientTourMerchantLogic.lua:57 di
+	# vao nhanh else va lam so hoc tren ComeTime nil. Loi do nem ra NGAY GIUA
+	# CUIMain:postOnMainShowEvent (OnMainShowUI -> refreshDyncBuilding ->
+	# isLeftStandingTime), va no CAT NGANG ham do: g_CUILevelTarget:show() voi
+	# self:Tick() phia sau khong bao gio chay (CUIMain.lua:314-324).
+	#
+	# Phep kiem thu nhat goi THANG ham cua ban goc tren duong du lieu that, nen
+	# no khong the vo nghia: tra {} thi no vo ngay.
+	var shop := str(lua.run("""
+		local ok, s = pcall(function()
+			local bOk, nLeft = G_CloudShopLogic:getLeftStandingTime()
+			return tostring(bOk) .. ' / ' .. tostring(nLeft)
+		end)
+		if not ok then return 'LOI: ' .. tostring(s) end
+		return s
+	""", "cua hang Van Du"))
+	t("getLeftStandingTime tra true / 0 (bang VANG MAT chu khong phai {})",
+			shop == "true / 0", shop)
+
+	# Va khong duoc con vet loi nao cua ho nay trong hang hen gio — day chinh la
+	# thu da do duoc truoc khi sua.
+	var hen := str(lua.run("""
+		local c = require('cocos')
+		local ds = {}
+		for _, e in ipairs(c.loi_hen) do
+			e = tostring(e)
+			if e:find('TourMerchant', 1, true) or e:find('ComeTime', 1, true) then
+				ds[#ds + 1] = e
+			end
+		end
+		return table.concat(ds, ' || ')
+	""", "loi hen merchant"))
+	t("khong co loi hen gio nao tu cua hang Van Du", hen == "", hen.substr(0, 220))
+
 	var lop := _tim(san, "g_MainUIScrollLayer")
 	if lop == null:
 		t("thay g_MainUIScrollLayer", false)

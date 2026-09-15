@@ -28,6 +28,11 @@ SUITES = [
     # Lop CUON CCScrollLayer (lua/cuon.lua) tren canh Main that: do lech, bien,
     # nha ve bien, va nut nha ben phai (ai vo tan) co bam duoc sau khi cuon.
     ('cuon lop thanh pho',  'script', 'tools/verify_cuon.gd',    False, []),
+    # BANG danh sach cua engine (lua/bang.lua): LuaTableView_create. Do tung
+    # con so cua hop dong CCTableView tren mot uy quyen gia (xep o, kho o dung
+    # lai, bien cuon, scrollTo theo ti le, mot cu bam ra dung chi so), roi mo
+    # hai man THAT da chet o <bong LuaTableView_create()>.
+    ('bang danh sach',      'script', 'tools/verify_bang.gd',    False, []),
     # Main -> chon ai -> bo tri quan -> tran (g_BattleField gia) -> man ket
     # thuc, qua lop offline: ca chuoi chien dich cua ban goc.
     ('chien dich (Lua)',    'script', 'tools/do_chien_dich.gd',  False, ['--kiem']),

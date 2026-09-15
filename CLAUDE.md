@@ -27,7 +27,7 @@ từ bản đã dịch ngược. Hai repo, nằm cạnh nhau:
 ## Trước khi làm gì
 
 ```bash
-python tools/check.py          # 25 bộ, phải xanh hết
+python tools/check.py          # 26 bộ, phải xanh hết
 ```
 
 Kéo `brave-cross` mới về thì dựng lại `ui_ref` + `layout_ref` + tag (README,

@@ -90,6 +90,11 @@ return function(C)
 	local tt = {}
 	local keo = nil     -- lan keo dang dien ra (mot cai mot luc)
 
+	-- Diem moc goi khi mot cu BAM ket thuc (Begin + End, khong keo qua nguong)
+	-- tren mot lop cuon. Lop cuon khong biet gi ve o danh sach, nen phan
+	-- `tableCellTouched` cua CCTableView do lua/bang.lua gan vao day.
+	local moc_bam = {}
+
 	local function lay(gd)
 		local id = gd:get_instance_id()
 		local t = tt[id]
@@ -100,6 +105,7 @@ return function(C)
 				bat = true,       -- enableScroll; mac dinh BAT (xem ĐẶT 3)
 				doc = false,      -- setVerticalDirection; mac dinh NGANG
 				doc_that = false, -- truc dang dung (co the doi — xem chon_truc)
+				mot_truc = false, -- tat phep thu truc kia (xem dat_mot_truc)
 				le = 0.0,         -- setMarginSpace
 				neo = 0.0,        -- setBerthAnchor (chi ghi co)
 				cat = false,      -- setIsCropDraw (chi ghi co)
@@ -239,6 +245,7 @@ return function(C)
 	-- kia (xem ĐẶT 3).
 	local function chon_truc(gd, t)
 		t.doc_that = t.doc
+		if t.mot_truc then return end
 		if mien(t, gd, t.doc_that) == nil and mien(t, gd, not t.doc_that) ~= nil then
 			t.doc_that = not t.doc
 		end
@@ -298,12 +305,27 @@ return function(C)
 		return false
 	end
 
+	--[[ Node nao la LOP CUON.
+
+		Hai nguon: lop CCScrollLayer nap tu .xgg, va node do `LuaTableView_create`
+		dung LUC CHAY (lua/bang.lua) — node do khong den tu file bo cuc nen khong
+		co typeName nao ca, ta tu dat 'CCTableView' cho no.
+
+		Phai nhan ca hai: thieu ve thu hai thi `tim_lop` di tiep len tren va cuon
+		NHAM lop cuon ben ngoai — mot man vua co lop cuon vua co bang thi keo
+		danh sach se lam ca man chay.
+	]]
+	local function la_cuon(n)
+		if not n:has_meta('type_name') then return false end
+		local tn = tostring(n:get_meta('type_name'))
+		return tn == 'CCScrollLayer' or tn == 'CCTableView'
+	end
+
 	-- Lop cuon gan nhat bao quanh gd (ke ca chinh gd) ma dang bat cuon.
 	local function tim_lop(gd)
 		local n = gd
 		while n ~= nil do
-			local tn = n:has_meta('type_name') and tostring(n:get_meta('type_name')) or ''
-			if tn == 'CCScrollLayer' then
+			if la_cuon(n) then
 				local t = lay(n)
 				chon_truc(n, t)
 				if t.bat and mien(t, n, t.doc_that) ~= nil then return n end
@@ -364,7 +386,17 @@ return function(C)
 			-- Nguoi choi cham lai giua luc dang nha: dung hieu ung lai.
 			t.dang_nha = false
 			local x, y = doi_vao(keo.lop, b, c)
-			local d = t.doc_that and (y - keo.y) or (x - keo.x)
+			-- DAU CUA QUANG KEO. `doi_vao` tra toa do COCOS cua lop (y huong LEN,
+			-- xem `convertToNodeSpace` o cocos.lua), con `goc`/`day_lech`/`mien`
+			-- lam viec trong khong gian GODOT cua lop (y huong XUONG). Truc NGANG
+			-- thi hai khong gian cung chieu, truc DOC thi NGUOC — nen chi truc doc
+			-- phai lat dau.
+			--
+			-- Thieu phep lat nay thi truc doc CHAY NGUOC: keo len lam noi dung
+			-- chay xuong, va vi moi do lech am nam ngoai mien (mien cua danh sach
+			-- o goc la [am, 0]) nen no bi KEP ve 0 — danh sach dung yen hoan toan.
+			-- Do duoc: tools/verify_bang.gd, "keo len 100 thi lech = -100" ra 0.0.
+			local d = t.doc_that and (keo.y - y) or (x - keo.x)
 			if not keo.dau then
 				if math.abs(d) < NGUONG then return false end
 				keo.dau = true
@@ -381,8 +413,20 @@ return function(C)
 		-- End
 		local da_keo = keo.dau
 		local lop = keo.lop
+		local node_bat = keo.node
 		keo = nil
-		if not da_keo then return false end
+		if not da_keo then
+			-- MOT CU BAM (khong keo): bao cho lop nao da dang ky. Lop cuon
+			-- khong biet gi ve o danh sach, nhung CCTableView thi phai goi
+			-- `tableCellTouched(tableView, cell)` cua uy quyen — xem
+			-- lua/bang.lua. Toa do o day la TOA DO COCOS CUA LOP (y huong len,
+			-- goc o duoi-trai lop) chu khong phai `position` cua Godot — do la
+			-- thu ma mot danh sach kieu Cocos can de tim ra o bi bam, va no cung
+			-- la thu ma `doi_vao` tra ve san.
+			local bx, by = doi_vao(lop, b, c)
+			for _, f in ipairs(moc_bam) do f(lop, node_bat, bx, by) end
+			return false
+		end
 		local m1, m2 = mien(t, lop, t.doc_that)
 		local dich = t.lech
 		if m1 ~= nil then dich = kep(t.lech, m1, m2) end
@@ -439,6 +483,59 @@ return function(C)
 
 	function S:getVerticalDirection()
 		return lay(C.raw(self)).doc
+	end
+
+	--[[ Bat che do MOT TRUC: khong thu truc kia khi truc da dat khong cuon duoc.
+
+		Lop CCScrollLayer cua .xgg khong biet truc nao co gi de cuon nen phai
+		thu ca hai (ĐẶT 3). CCTableView thi BIET: no chi cuon theo truc da dat
+		bang setDirection. Thieu co nay thi mot o RONG HON khung lam mien truc
+		dong tra ve nil, va ca danh sach quay sang cuon NGANG trong khi cac o
+		xep doc — sai hanh vi ma khong bao loi gi.
+
+		Chi lua/bang.lua goi.
+	]]
+	function S:dat_mot_truc(b)
+		local t = lay(C.raw(self))
+		t.mot_truc = (b ~= false)
+		t.doc_that = t.doc
+	end
+
+	--[[ Dat do lech noi dung theo TI LE cua quang cuon duoc (0 = dau, 1 = cuoi).
+
+		KHONG phai ti le cua be cao noi dung: do la loi cua chinh ban goc, ghi ro
+		o CUISign.lua:905 ("由于tableView的scrollTo是根据 总容器高度-列表可视区域高度
+		做偏移比") va khop voi so hoc cua CUIAssist.scrollToItem (CUIAssist.lua:1455:
+		nRate = nIndex / (nTotal - nLayerLen/nItemLen)). Quang cuon duoc = be cao
+		noi dung tru be cao khung, va chi biet duoc SAU khi xep xong cac o — nen
+		`reloadData` cua bang goi lai ham nay bang ti le da xin truoc do.
+
+		Ban goc lam ham nay trong C++ (khong co trong bang phuong thuc 0x93386c),
+		nen day la ham cua lop gia lap, khong phai ban chep.
+	]]
+	function S:dat_theo_ty_le(ty)
+		local gd = C.raw(self)
+		local t = lay(gd)
+		chon_truc(gd, t)
+		local x0, y0, x1, y1 = hop_noi_dung(t, gd)
+		if x0 == nil then return end
+		local k = tonumber(ty) or 0.0
+		if k < 0 then k = 0 end
+		if k > 1 then k = 1 end
+		local xa
+		if t.doc_that then
+			xa = (y1 - y0) - gd.size.y
+		else
+			xa = (x1 - x0) - gd.size.x
+		end
+		if xa < 0 then xa = 0 end
+		t.dang_nha = false
+		day_lech(gd, t, -k * xa)
+	end
+
+	-- Ghi danh mot ham nhan cu BAM (xem `moc_bam`).
+	function S.dang_ky_bam(f)
+		moc_bam[#moc_bam + 1] = f
 	end
 
 	-- setIsCropDraw: MOI GHI CO, khong cat hinh — xem chu thich dau file.

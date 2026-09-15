@@ -212,6 +212,21 @@ function M.install_cocos()
 	-- dau tien — wrap() chot __index ngay lan boc node dau.
 	c.cuon = require('cuon')(c)
 	c.lop_theo_loai['CCScrollLayer'] = c.cuon
+	-- BANG danh sach cua engine (CCTableView / CCTableViewCell). Ban goc de
+	-- engine C++ dang ky hai ham `LuaTableView_create` / `LuaTableViewCell_create`
+	-- (khong file Lua nao dinh nghia chung, ca 973 file), nen thieu thi
+	-- CUITableViewZ:init nhan ve mot BONG va moi thu doc so tu bong deu chet —
+	-- 'cocos.lua:391: diem neo khong phai so (nil, nil) cua
+	-- <bong LuaTableView_create()>', do duoc o CUIPetIllustrated.
+	--
+	-- Bang KE THUA lop cuon (keo, bien, dan hoi, le la cua lua/cuon.lua), nen
+	-- phai dang ky SAU c.cuon. Cung phai dang ky truoc khi nap canh dau tien:
+	-- wrap() chot __index ngay lan boc node dau.
+	c.bang = require('bang')(c)
+	c.lop_theo_loai['CCTableView'] = c.bang.B
+	c.lop_theo_loai['CCTableViewCell'] = c.bang.O
+	LuaTableView_create = c.bang.tao
+	LuaTableViewCell_create = c.bang.tao_o
 	-- DFDramaScriptSystem: lop C++ chay kich ban tran (sc/plot/drama_*.lua).
 	-- khoi_dong_game (d.235) goi DFDramaScriptSystem:new() -> g_DramaSystem.
 	DFDramaScriptSystem = require('kich_ban')(c)

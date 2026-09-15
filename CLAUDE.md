@@ -74,8 +74,8 @@ chạy trọn và `g_MainUIScene` lên màn hình,
 `godot --path . --script tools/vao_main.gd -- --chup=main.png`; mở cửa sổ
 để bấm tay: `... -- --xem` (bấm tới trận được — khoá bằng `tools/bam_that.gd`;
 lớp phủ nào nuốt cú bấm thì bộ đó chỉ ra node và vết gọi),
-(7) **còn thiếu ở Main**: hiệu ứng sáng vẽ thành đốm xanh, `sngFixInfoReflash`,
-kéo cuộn lớp thành phố,
+(7) **còn thiếu ở Main**: `sngFixInfoReflash`, kéo cuộn lớp thành phố (hiệu ứng
+sáng vẽ thành đốm xanh — **xong**, xem mục "Đốm xanh ở Main"),
 (8) **chiến dịch chạy trọn**: Main → chọn ải → bố trí quân → trận → màn kết
 thúc, qua handler offline `handlers/chapter.lua` (gọi luật server có sẵn trong
 `sc/share/share_ChapterLogic.lua`) và `g_BattleField` giả (`lua/san_tran.lua`
@@ -260,32 +260,67 @@ Minimap: bản gốc KHÔNG vẽ nó trong Lua — client chỉ trả về nút
 104), engine C++ vẽ chấm. Đo lúc chạy: dải 510×40, đang hiện. Ta vẽ chấm vào
 đúng nút đó (`san_tran_ve.dat_minimap`). ĐẶT: hình dạng chấm, màu, khung ngắm.
 
-Đốm xanh ở Main (hiệu ứng sáng) — ĐÃ KHOANH VÙNG, CHƯA GIẢI. Nó là armature
-`UITongYong` (UI通用), xương `sad`, các ảnh `UITongYong_Res-lizi*`
-(粒子 = hạt), vẽ bằng `SngRig` ngay trên hai nút `spFirstPayGiftBg` /
-`新手特权` của `lMainToolbarRightTop`. Đã đo:
+Đốm xanh ở Main (hiệu ứng sáng) — **XONG**. Nó là armature `UITongYong`
+(UI通用), xương `sad`, các ảnh `UITongYong_Res-lizi*` (粒子 = hạt), vẽ bằng
+`SngRig` ngay trên hai nút `spFirstPayGiftBg` / `新手特权` của
+`lMainToolbarRightTop`.
 
-  * Ảnh nguồn ĐÚNG: 128×128 RGBA, alpha thật (81% pixel trong), màu phần hiện
-    là xanh (60,100,238). Không phải lỗi giải `.pkm`.
-  * Bản ghi armature KHÔNG có cờ trộn màu: quét 418 file `.xml` / 13.543 bản
-    ghi sprite — `+0x18` và `+0x1C` luôn bằng 0; byte cờ trong bản ghi REF
-    (`+0x10`) chia ~50/50 ở CẢ hai nhóm (hạt và bộ phận thường) nên không phải
-    cờ đánh dấu hạt.
-  * Game CÓ lưu cách trộn màu, nhưng ở chỗ khác: các `.plist` HẠT THẬT của
-    Cocos (`beachfirebig.plist`…) có `blendFuncSource` / `blendFuncDestination`.
-    Armature thì không.
+**Cách trộn nằm trong TỪNG KHUNG, không phải một chế độ của cả armature.**
+Bản ghi khung (`anim.py`, 80 byte) có ở `+0x38` một cặp `(str_off, str_len)`
+trỏ tới một **tên cách trộn** trong pool chuỗi. Hàm phân nhánh của engine ở
+`libgame.so` `0x25d476..0x25d4ce` (Thumb-2; `findstr` giải được hai chuỗi nó
+đem so: `0x25d496` → `"screen"`, `0x25d4ac` → `"multiply"`), đọc ra đúng cặp
+hệ số:
 
-Nên rất có thể bản gốc vẽ mấy ảnh này theo kiểu CỘNG (additive) — xanh cộng
-vào nền trời ra ánh sáng, còn vẽ thường thì ra khối xanh đặc như hiện nay.
-NHƯNG chưa chứng minh được, và `libgame.so` có `setBlendFunc`, `glBlendFunc`,
-`sngShaderFlashBlend` nên câu trả lời nằm bên C++.
+| tên trong khung | `+0x78` | `+0x7c` (nguồn) | `+0x80` (đích) | GL |
+|---|---|---|---|---|
+| rỗng, hoặc tên lạ | 0 | 1 | `0x303` | `GL_ONE, GL_ONE_MINUS_SRC_ALPHA` (mặc định Cocos) |
+| `'screen'` | 1 | `0x302` | 1 | `GL_SRC_ALPHA, GL_ONE` — **trộn CỘNG** |
+| `'multiply'` | 2 | `0x306` | `0x303` | `GL_DST_COLOR, GL_ONE_MINUS_SRC_ALPHA` |
 
-Hai cách giải dứt điểm, chưa làm: (1) chụp màn `Main` của BẢN GỐC trong máy ảo
-Android — cách đã dùng để đo tag, một lần chạy là xong; (2) đọc chỗ vẽ armature
-trong `libgame.so` xem có gọi `setBlendFunc` không (`armdis.py`, `xref.py`).
+Thứ tự hai hệ số chốt được nhờ cặp `multiply`. Tên lạ rơi vào nhánh mặc định
+(`0x25d4c6`) — nên **trả về `null` (vẽ thường) mới là theo bản gốc**, không
+phải đoán.
 
-ĐỪNG đặt đại additive khi chưa có một trong hai — sẽ thành một chỗ "đẹp hơn
-nhưng không biết có đúng không", và đó là kiểu sai khó gỡ nhất.
+Từ vựng đo trên **418 file `.xml` / 644.623 khung**: `'normal'` 462.413, rỗng
+157.033, `'screen'` 22.083, `'undefined'` 3, `'overlay'` 3, `'lighten'` 1,
+cộng vài chỗ rác ở `BingYing.xml` / `XSJiYouHeTiJi.xml`. **`'multiply'` không
+xuất hiện lần nào** — nên chưa viết shader cho nó, chỉ `push_warning` một lần
+thay vì vẽ im lặng sai.
+
+Đối chiếu hai đường độc lập, khớp nhau:
+
+* **Đo trên máy ảo** (`work/emu_dom.py`, bản gốc chạy trên nền trời sáng,
+  9/9 biến thể đúng như dữ liệu nói): `UITongYong_ItemLight` có 32/32 khung
+  `'screen'` và đo ra **sáng lên ở MỌI kênh** — nền `(100,245,248)` → có hiệu
+  ứng `(164,251,251)`, đỉnh `(255,255,255)`, Δ kênh r = `+64`. Trộn thường cần
+  `src_r ≥ 164` trong khi ảnh nguồn chỉ `78,7` — bất khả; trộn cộng cho
+  `a_eff = 64/78,7 = 0,81`, dự đoán Δg = 102 / Δb = 201, cả hai bão hoà 255
+  (đo 251). Hình tượng `DaQuZhanShi` (0 khung `screen`) ngược lại: r −16, g −94,
+  b −84 — **trộn cộng không bao giờ làm tối một kênh nào**, nên nó vẽ thường.
+* **Đọc mã** như bảng trên.
+
+**Bẫy đã mắc, đáng nhớ.** `SngRig` lần đầu gắn `CanvasItemMaterial` lên **node
+xương** (`Node2D`) — phép thử trong `verify.gd` vẫn xanh (nó cũng đọc node
+xương) mà ảnh `Main` **không đổi một điểm ảnh nào**. Đo bằng điểm ảnh thật
+(`tools/do_tron.gd`) mới ra: **vật liệu của node CHA không truyền xuống
+`Sprite2D` con trong Godot 4** — nền 0,235 + ảnh xám 0,392: không vật liệu
+0,3882, vật liệu ở node cha 0,3882 (y hệt), vật liệu ở chính `Sprite2D` 0,6235.
+Nay `_dat_tron()` gắn lên **từng `Sprite2D`**, và phép thử đọc `Sprite2D`.
+Bẫy thứ hai: **đường phương thức của `AnimationPlayer` không chạy khi gọi
+`advance()`/`seek()`**, kể cả với `ANIMATION_CALLBACK_MODE_METHOD_IMMEDIATE` —
+phải để khung thật chạy qua (`await process_frame`), nên rig phải nằm trong cây
+và phép thử phải là hàm chờ.
+
+Kết quả: A/B trên ảnh `Main` (`--chup` hai lượt, một lượt để `BLEND_CONG` thành
+chuỗi không khớp) đổi **6.493 điểm ảnh**, lệch lớn nhất 239, gọn trong vùng hai
+nút (x 261..471, y 39..142) — đúng chỗ đốm xanh. Vệt sáng nay ra **cung trắng**
+chứ không còn khối xanh đặc. `tools/verify.gd`: 3142 đạt / 0 hỏng.
+
+Godot không có chế độ tương ứng `(GL_DST_COLOR, GL_ONE_MINUS_SRC_ALPHA)` của
+`'multiply'` (`BLEND_MODE_MUL` là `dst*src`, khác hẳn) — gặp thật thì phải viết
+shader riêng. Còn `'screen'` thì khớp sẵn: `CanvasItemMaterial.BLEND_MODE_ADD`
+= `GL_SRC_ALPHA, GL_ONE`.
 
 Lớp offline (thay máy chủ) nằm ở `../brave-cross/work/offline`, test bằng
 `python run_tests.py` ở đó. Sửa nó xong phải chạy lại `tools/import_lua.py`.

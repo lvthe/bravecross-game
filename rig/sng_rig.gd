@@ -39,6 +39,29 @@ const FPS := 24.0
 ## hay hitbox vao, chi la khong co Sprite2D.
 const MARKER_PREFIXES := ["PlugIn", "Collision", "ShootPoint", "Bone", "Effect"]
 
+## Ten cach tron trong truong "blend" cua khung, ung voi phep tron CONG.
+##
+## Ban goc KHONG co mot che do tron chung cho armature: cach tron nam trong
+## TUNG KHUNG (anim.py, +0x38 cua ban ghi khung), nen cung mot bien the co the
+## vua ve thuong vua ve cong — `UIWuDaoHui_HeroLightFront` co 6 khung 'screen'
+## lan trong 19 khung 'normal'. Dat dai additive cho moi SngRig la SAI.
+##
+## Doi chieu hai duong doc lap, khop nhau:
+##
+##   * do tren ban goc chay trong may ao (`work/emu_dom.py`): hieu ung nao co
+##     khung 'screen' thi sang len o MOI kenh (chi tron cong lam duoc the),
+##     hieu ung khong co thi toi di o kenh nao do (tron cong khong bao gio lam
+##     toi) — 9/9 bien the dung nhu du lieu noi;
+##   * ham phan nhanh trong `libgame.so`, 0x25d476..0x25d4ce — doc thang cap
+##     he so ra: 'screen' -> (0x302, 1) = GL_SRC_ALPHA, GL_ONE = phep tron CONG.
+##     ('' / 'normal' -> (1, 0x303); 'multiply' -> (0x306, 0x303).)
+##
+## Ten la tra ve MIX KHONG phai lam au: chinh ham cua ban goc lam vay — chuoi
+## khac 'screen'/'multiply' roi vao nhanh 0x25d4c6, tuc che do mac dinh. Do tren
+## 418 file .xml / 644.623 khung: 'normal' 462.413, rong 157.033, 'screen'
+## 22.083, con lai 9 khung ten rac. KHONG co khung 'multiply' nao.
+const BLEND_CONG := "screen"
+
 ## Bo phan la ve tich cua file goc: ten lop Photoshop con sot lai, hoac lop
 ## hieu ung logic. Chung khong thuoc dang nguoi va nam rat xa than —
 ## MaChao/Fight co "Layer006" cach goc 436 px, to hon ca nhan vat.
@@ -66,6 +89,12 @@ var missing_sprites: PackedStringArray = []
 var nested_rigs: PackedStringArray = []
 var hide_clutter := false
 var _chain: Dictionary = {}
+## Dung chung cho MOI xuong cua rig nay: vai tram node tro cung mot vat lieu,
+## khong phai moi xuong mot cai.
+var _vat_lieu_cong: CanvasItemMaterial = null
+## 'multiply' co dinh nghia trong engine nhung KHONG xuat hien trong du lieu
+## nao ca (0 tren 644.623 khung). Canh bao mot lan, dung im lang roi ve sai.
+var _da_canh_bao_multiply := false
 
 
 ## Dung nhan vat tu thu muc da xuat. Tra ve null neu doc khong duoc.
@@ -320,7 +349,7 @@ func _build_bones() -> void:
 		bones[bone] = node
 		displays[bone] = ds
 		# Chua dong tac nao chon thi hien o dau, nhu truoc.
-		_doi_anh(bone, 0)
+		_dat_khung(bone, 0)
 
 
 ## Mot thu co the hien cua xuong: anh trong atlas, hoac CA MOT RIG KHAC nam
@@ -348,7 +377,21 @@ func _display_for(ref: String, bone: String) -> Node2D:
 ## Hien o thu `idx` cua xuong, an cac o khac; -1 an het. Chi so ngoai bang
 ## (BingYing.xml, XSJiYouHeTiJi.xml — bo cuc khung khac, xem anim.py) thi giu
 ## o dau nhu cach cu, khong doan.
-func _doi_anh(bone: String, idx: int) -> void:
+##
+## Dat luon CACH TRON cua khung: vat lieu gan vao TUNG Sprite2D dang hien.
+##
+## KHONG gan len node xuong: vat lieu cua node CHA khong truyen xuong Sprite2D
+## con trong Godot 4 — do bang diem anh that (`tools/do_tron.gd`: Sprite2D xam
+## 0.392 tren nen 0.235 ra dung 0.3882 khi node cha mang vat lieu ADD, y het luc
+## khong co vat lieu; gan truc tiep len Sprite2D thi ra 0.6235 = 0.235+0.392).
+## Gan len node xuong thi phep thu van xanh ma man hinh khong doi mot diem anh
+## nao — dung cai bay da mac.
+##
+## Bo phan la mot rig long nhau (dau CaoCao, than ZhuGeLiang) thi BO QUA: rig
+## con co khung rieng cua no, dat de len la hai ben gianh nhau. Do tren ca
+## assets_ref: khong xuong nao vua la rig long nhau vua co khung 'screen'.
+func _dat_khung(bone: String, idx: int, blend := "") -> void:
+	_dat_tron(bone, blend)
 	var ds: Array = displays.get(bone, [])
 	if ds.is_empty():
 		return
@@ -357,6 +400,30 @@ func _doi_anh(bone: String, idx: int) -> void:
 	for i in ds.size():
 		if ds[i] != null:
 			ds[i].visible = i == idx
+
+
+## Vat lieu cho mot ten cach tron. MIX tra ve null (mac dinh cua Godot, khong
+## gan gi) de cay node khong phai mang them vat lieu nao.
+func _vat_lieu_theo(ten: String) -> CanvasItemMaterial:
+	if ten != BLEND_CONG:
+		if ten == "multiply" and not _da_canh_bao_multiply:
+			_da_canh_bao_multiply = true
+			push_warning(("SngRig: khung mang cach tron 'multiply' — ban goc dung "
+					+ "(GL_DST_COLOR, GL_ONE_MINUS_SRC_ALPHA), Godot khong co che do "
+					+ "tuong ung nen ve tam bang MIX. Chua tung gap trong du lieu "
+					+ "goc; gap thi phai viet shader rieng."))
+		return null
+	if _vat_lieu_cong == null:
+		_vat_lieu_cong = CanvasItemMaterial.new()
+		_vat_lieu_cong.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	return _vat_lieu_cong
+
+
+func _dat_tron(bone: String, ten: String) -> void:
+	var vat := _vat_lieu_theo(ten)
+	for d in displays.get(bone, []):
+		if d is Sprite2D:
+			(d as Sprite2D).material = vat
 
 
 func _build_animations() -> void:
@@ -390,7 +457,7 @@ func _build_animations() -> void:
 			var bone: String = b.get("name", "")
 			if not bones.has(bone):
 				continue
-			# Doi anh theo khung: MOT duong goi _doi_anh cho MOI xuong. Dung
+			# Doi anh theo khung: MOT duong goi _dat_khung cho MOI xuong. Dung
 			# chung mot duong thi hai xuong co keyframe cung luc se ghi de nhau
 			# (track_insert_key cung thoi diem thay khoa cu) — do duoc: Standby
 			# cua nhan vat dau tien con 537/675 khoa.
@@ -424,7 +491,9 @@ func _build_animations() -> void:
 				anim.track_insert_key(t_scl, t, Vector2(
 						float(k.get("sx", 1.0)), float(k.get("sy", 1.0))))
 				anim.track_insert_key(t_anh, t,
-						{"method": "_doi_anh", "args": [bone, int(k.get("d", 0)) if tin else 0]})
+						{"method": "_dat_khung", "args": [bone,
+							int(k.get("d", 0)) if tin else 0,
+							String(k.get("blend", ""))]})
 
 		lib.add_animation(a.get("name", "?"), anim)
 

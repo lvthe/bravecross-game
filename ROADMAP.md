@@ -1,7 +1,7 @@
 # Lộ trình dựng lại Búa Tạ
 
 Danh sách mọi phần cần làm để ra được game, kèm chỗ đang đứng. Cập nhật
-2026-09-14.
+2026-09-15.
 
 **Cách đọc dấu**
 
@@ -21,18 +21,39 @@ Số trong ngoặc là **đo được**, không phải ước lượng. Cách đ
 | | số | đo bằng |
 |---|---|---|
 | Module Lua của bản gốc nạp được | **875 / 876** | `boot_goc()` |
-| Màn hình mở được | **~259 / 353** | `tools/quet_show.gd` |
-| Hàm máy chủ `Client*` đã có bản offline | **12 / 411** | đếm `sc/` vs `offline/handlers` |
+| Màn hình mở được | **264–265 / 353** | `tools/quet_show.gd` |
+| Hàm máy chủ `Client*` đã có bản offline | **13 / 411** | đếm `sc/` vs `offline/handlers` |
 | Lệnh kịch bản `g_DramaSystem` đã có | **60 / 60** | đối chiếu `sc/plot/drama_*.lua` |
 | Bộ kiểm | **24**, xanh hết | `tools/check.py` |
 
 > Con số màn hình **dao động ±3 giữa các lần chạy** (đo 3 lần trong ngày:
-> 258, 259, 260). Bộ quét mở 353 hộp thoại liên tiếp trong một máy ảo dùng
-> chung trạng thái, nên đừng đọc chênh lệch một vài màn là tiến bộ — muốn biết
-> một sửa đổi có ăn thua không thì mở thẳng màn đó mà xem.
+> 258, 259, 260; hôm sau: 258, 257; hôm nay, **sáu lần chạy cùng một mã**:
+> mở được 255, 256, 257, 257, 258, 258 — hỏng 75, 74, 73, 74, 73, 72). Bộ quét
+> mở 353 hộp thoại liên tiếp trong một máy ảo dùng chung trạng thái, nên đừng
+> đọc chênh lệch một vài màn là tiến bộ — muốn biết một sửa đổi có ăn thua
+> không thì **so danh sách tên màn, không so con số tổng**. Hai lần đã gặp đúng
+> bẫy này: (1) một sửa đổi làm số tổng đổi ±3 mà **chỉ một** trong ba màn đổi
+> chỗ là nhờ nó; (2) lần gỡ `scrollTo`, số hỏng đứng yên ở 73 ở cả hai bản
+> nhưng **một màn ra, một màn vào** — màn vào (`MoreGoldDialog`) thiếu `data`
+> của người gọi và có mặt ở cả hai bản.
+>
+> Lần gần nhất con số **vượt hẳn dải dao động**, nên đọc được như tiến bộ thật:
+> **264–265 / 23 / 65–66** (353 màn) sau khi ghép đường chỉ số con, sửa `xoay`
+> và đo thẳng các neo bị chặn — so với dải 255–258 ở trên là +6 đến +10, và
+> **cả ba lượt đều kiểm bằng danh sách tên màn** chứ không chỉ bằng tổng: lượt
+> ghép đổi 5 màn và cả 5 **mở được ở cả hai lần chạy lại**; lượt `xoay` không
+> nhằm vào màn nào đang hỏng (xem mục 8, việc 2); lượt `--neo` nhắm đúng
+> `CUIBarracksMain` và đo **theo từng màn** mới thấy (`Show` lỗi → `Show: ok`).
+>
+> Bẫy này gặp lần thứ ba khi sửa `getChildByStringTag` (xem mục 4): tổng chỉ đổi
+> 1 màn (258→259), nhưng **danh sách tên** đổi 5 chỗ — và **hai lần chạy cùng bản
+> đã sửa đã khác nhau 2 màn**, cho thấy 4 trong 5 chỗ đó chỉ là dao động. Nếu chỉ
+> nhìn tổng thì đã không phân biệt nổi cái nào là công của mình.
 
-Con số 12/411 là thước đo thật của phần còn lại: **giao diện gần xong, máy
-chủ mới làm được phần đi chiến dịch.**
+Con số 13/411 là thước đo thật của phần còn lại: **giao diện gần xong, máy
+chủ mới làm được phần đi chiến dịch.** Đếm theo "có hành vi thật", nên 10 RPC
+của ải vô tận **không** được tính: chúng đăng ký để client khỏi treo ở lớp
+"đang tải" và ghi lý do chưa làm, chứ không đổi trạng thái nào.
 
 ---
 
@@ -43,7 +64,15 @@ chủ mới làm được phần đi chiến dịch.**
 - [x] Bộ xương + hoạt ảnh (`sngXml`) — 397 atlas, 7.999 động tác
 - [x] 104 bảng cấu hình, 16.894 dòng chữ tiếng Việt
 - [x] Mã nguồn Lua — 973 file / 518.585 dòng, quy về UTF-8
-- [x] Tag node đo từ bản gốc chạy trong máy ảo Android (phủ 90,7% lượt hỏi)
+- [x] Tag node đo từ bản gốc chạy trong máy ảo Android — **27.887/33.472 node
+      (83,3%) có tag**; xét theo lượt hỏi lúc chạy thì 9.786/11.448 lượt
+      `getChildByTag` trả về node (85,5%). Hai số khác nhau và đều đúng: số đầu
+      là độ phủ trên bố cục, số sau là tỉ lệ trúng lúc chạy (màn mở được càng
+      nhiều thì mã đi càng sâu, mẫu số càng lớn). Đếm độc lập bằng
+      `work/kiem_tag.py`. Số cuối này gồm **ba lượt**: áp đường ghép theo CHỈ SỐ
+      CON (58,1% → 78,6%), sửa `xoay` và hợp ba nhánh đo lại 6 màn còn neo chưa
+      tới (78,6% → 83,3%), rồi đo thẳng các neo bị chặn bằng `--neo` (→ 83,3%,
+      +11 node nhưng **mở được một màn đang hỏng**) — xem mục 2 dưới
 - [x] Nền cảnh trận, ảnh chương
 - [x] Công thức sát thương giải từ `libgame.so` (`0x380c94`)
 - [ ] ~45 mảnh trang trí nền cảnh: atlas `Scene_*.plist` **không có trong
@@ -59,9 +88,31 @@ chủ mới làm được phần đi chiến dịch.**
 - [x] Điểm neo: `CCLayer`/`CCScene` bỏ qua neo khi đặt chỗ
 - [x] Bấm được: phân phối chạm → hàm `onTouchEnd_*` của bản gốc
 - [x] Bảng chữ, tầng cấu hình, `cjson`, `ProtoRPC` giả
+- [x] **Widget bảng** (`G_CTableViewMgr` của `lua/cocos.lua`): dựng ô, cắt phần
+      tràn, `reloadData`, `cellAtIndex`, và **`scrollTo`** — thứ làm
+      `CUIInfiniteLevelFirstPassRewards.lua:75` vỡ. Tỉ lệ cuộn tính theo
+      **quãng cuộn được** (`cao nội dung − cao khung`), 0 là mép trên — đúng
+      như chú thích của chính bản gốc (`CUISign.lua:905`) và khớp số học của
+      `CUIAssist.scrollToItem` (`CUIAssist.lua:1455`). Đối số thứ hai là **có
+      chạy hiệu ứng hay không**, không phải "có cuộn hay không"
+      (`CUIGuildTableView:ScrollTo` truyền `false` mà vẫn là hàm để nhảy tới
+      một mục — `CUISBHeroList.lua:119`); lớp giả lập đặt thẳng vì chưa có hệ
+      chạy hiệu ứng, trạng thái cuối y hệt. **Đo** (đặt tiến độ giả
+      `BestProsees = 25`, 20 tầng đầu đã nhận → tỉ lệ 20/250 = 0.08): 250 ô,
+      nội dung cao 23.750, khung cao 440 → lệch 1.864,8 pixel, và ô 21 (tầng
+      chưa nhận thưởng đầu tiên — đúng chỗ `skipToLastUnGet` nhắm tới) nằm ở
+      y = 35,2 trong khung. Phép đo này **bắt được một lỗi của chính bản vá**:
+      lần đầu tôi lưu thẳng `percent` vào chỗ đáng ra là số pixel, ra lệch
+      0,08 thay vì 1.864,8 — nhìn "không crash" thì không thấy được
 - [x] Bóng: mọi biến toàn cục chưa làm đều ghi lại lượt gọi
 - [?] `CCLayerColorRoundRect` có bỏ qua neo không — chưa đo
-- [?] Cách trộn màu của armature (đốm xanh ở Main) — đã khoanh vùng, chưa giải
+- [x] Cách trộn màu của armature (đốm xanh ở Main) — **xong**: cách trộn nằm
+      trong **từng khung**, tên gọi ở `+0x38` của bản ghi khung; `'screen'` =
+      trộn CỘNG, `'multiply'` = `GL_DST_COLOR, GL_ONE_MINUS_SRC_ALPHA`, còn lại
+      (kể cả tên lạ) = trộn thường. Giải bằng cả hai đường: đo trên máy ảo
+      (`work/emu_dom.py`, 9/9 biến thể) và đọc hàm phân nhánh trong `libgame.so`
+      ở `0x25d476..0x25d4ce`. `SngRig` nay đặt `BLEND_MODE_ADD` theo khung;
+      A/B trên ảnh `Main` đổi 6.493 điểm ảnh (trước là 0)
 
 ## 3. Giao diện
 
@@ -69,7 +120,7 @@ chủ mới làm được phần đi chiến dịch.**
 - [x] Vẽ `Main`: trời, thành phố, nhà (armature), dải nút, biển tên, số người chơi
 - [x] Mở màn hình bằng đúng đường của bản gốc: `<quản lý>:Show(<tên>)`
 - [x] Công cụ xem màn: `tools/xem_man.tscn`
-- [ ] **95 màn chưa mở được** — 72 hỏng (xem mục 4), 23 đòi tham số
+- [ ] **94 màn chưa mở được** — 71 hỏng (xem mục 4), 23 đòi tham số
 - [ ] Còn thiếu ở `Main`: `sngFixInfoReflash`, kéo cuộn lớp thành phố
 - [ ] Lớp phủ hướng dẫn `g_CGuideLogical`
 
@@ -78,7 +129,7 @@ chủ mới làm được phần đi chiến dịch.**
 Máy chủ cũ đã chết. Mỗi tính năng cần một handler đọc luật có sẵn trong
 `sc/share/` rồi trả kết quả về, không bịa số.
 
-**Đã có (7 handler):**
+**Đã có (8 handler):**
 
 - [x] `login` — đăng nhập, người chơi mới tinh (từ mục `*Reset` của cấu hình)
 - [x] `chapter` — chiến dịch: bắt đầu ải, thắng, thua, lên cấp, mở ải sau
@@ -93,9 +144,42 @@ Máy chủ cũ đã chết. Mỗi tính năng cần một handler đọc luật 
       (`CompeleteProgress`, đo được P 0→1), đánh (`CompeleteFight`), nhận thưởng,
       đặt lại, hồi sinh, mua đồ. **CHƯA**: làm mới hàng cửa hàng và quét nhanh
       (luật sinh danh sách hàng không nằm trong `CavernLogic`, chưa tìm ra)
+- [~] `endless` — Ải vô tận: **hai màn hết vỡ vì dữ liệu** (xem mục "Chưa có"
+      ngay dưới), và bảng xếp hạng trả lời trung thực là **rỗng** — offline chỉ
+      có một người chơi, cùng loại với `ClientGetGuildInfo`. 10 RPC còn lại của
+      họ này **đăng ký nhưng cố ý không làm gì** ngoài dọn lớp "đang tải" và ghi
+      lý do: nửa máy chủ của tính năng **không được ship** (`EndlessChapterLogic`
+      557 dòng chỉ có hàm ĐỌC, không hàm nào đổi trạng thái người chơi). Mỗi lý do
+      ghi tại chỗ trong `handlers/endless.lua`
 - [x] Bảng người chơi không có mục `<bảng>Reset` thì lấy hình dạng từ
       `InitData()` của chính client (`GamePet`, `GameUserStarSoul`) — trước đây
       để `{}` rỗng, và rỗng làm client chết ở dòng sau chứ không báo gì
+- [x] `OfflineStore.TU_DUNG` — danh sách bảng mà client **tự dựng** hình dạng,
+      nhưng chỉ khi bảng là `nil`. Có những bảng `{}` **không** vô hại mà còn
+      độc: `CavernDataManager:GetUserCavern` và
+      `EndlessChapterLogic:GetUserEndlessChapterData` đều kiểm `== nil` rồi mới
+      gọi hàm dựng của mình, nên `{}` làm chúng bỏ qua bước dựng và màn hình
+      chết vì số học trên `nil` (`CUICavern.lua:971`,
+      `CUIInfiniteLevelMain.lua:619`). Danh sách này là **một nguồn duy nhất**;
+      `init.lua` và `bootstrap.lua` đều đọc lại nó, và cả hai vòng lặp trong
+      `bootstrap.lua` phải **bỏ qua** bảng thuộc `TU_DUNG` — nhét `{}` vào là
+      bịt mất đúng đường vừa mở
+- [x] Phiên bản định dạng file lưu (`OfflineStore.PHIEN_BAN`) — cần vì lỗi
+      `{}` ở trên **đã kịp ghi ra file lưu** của những bản build trước. Bản lưu
+      ấy có khoá **có mặt** nhưng dữ liệu hỏng, nên sửa `TU_DUNG` không cứu được
+      (client thấy khác `nil` là bỏ qua hàm dựng). Đo được trên file lưu thật:
+      bảng chỉ có đúng 5 trường mà `GetUserEndlessChapterData` vá được
+      (`:133-152`) và **thiếu cả 5 bộ đếm**. Lệch phiên bản thì **bỏ** các bảng
+      `TU_DUNG` để client dựng lại — không đoán trường nào còn thiếu, vì đoán
+      danh sách trường là bịa. Khoá phiên bản nằm trong file nhưng **không** nằm
+      trong `OfflineStore.data`, vì `all()` đưa nguyên khối đó cho
+      `G_DataManager:Init`
+      * **Giới hạn đã biết**: bản build trung gian (đã sửa `TU_DUNG` nhưng chưa
+        có khoá phiên bản) cũng ghi file **không** khoá, nên **không phân biệt
+        được** với bản lỗi — chúng bị bỏ như nhau. Mất mát thật chỉ có thể là
+        tiến trình Ma Khu (handler `cavern` chạy được thật); tiến trình ải vô tận
+        thì không, vì chưa có RPC nào đẩy nó lên được. Bản build đó chỉ tồn tại
+        trên máy dev, chưa từng phát đi, và nhật ký ghi rõ đã bỏ bảng nào
 - [~] Danh sách rơi đồ (`DropData.DropList`) — **đánh xong có rơi đồ**, và phần
       thưởng đi vào dữ liệu người chơi qua `SetDataWithPrizeData` (40/40 mục
       rơi của ải 1 phát được). Số lấy
@@ -115,21 +199,274 @@ Máy chủ cũ đã chết. Mỗi tính năng cần một handler đọc luật 
 > chỉ vì bộ quét gọi `Show(tên)` trần. Trước khi viết handler cho một nhóm,
 > đọc xem giá trị nil đó từ đâu ra.
 
-- [ ] Ải vô tận / Epic / SB / COG (11 màn)
+**Đã phân loại hết 72 màn hỏng (2026-09-15).** Cách làm: với từng dòng hỏng, đọc
+**hàm chứa nó**, rồi đọc **chỗ gọi hàm đó** trong `sc/` — không suy theo tên file
+như bảng nhóm ở dưới. Danh sách lấy từ `quet_show.gd` chạy trên cây `sc/` đã đồng
+bộ (`import_lua.py` rồi `check.py` xanh). **Soát lại lần hai** bằng chỗ gọi cho
+**24 chỗ hỏng lồng nhau (30 màn)**: bảng dưới đây là bản đã sửa theo lần soát đó,
+và **hai chỗ phân loại sai đã được gỡ** — xem "Đã sửa so với bản đầu".
+
+| nhóm | số | nghĩa |
+|---|---|---|
+| **A. người gọi thiếu tham số** | **41** | Màn **chạy tốt trong game thật**; chỉ bộ quét gọi `Show(tên)` trần. Không có lỗ hổng nào để vá |
+| **B. thiếu dữ liệu người chơi / máy chủ** | **15** | Lỗ hổng thật; 6 trong đó là tính năng nhiều người chơi |
+| **C. thiếu bố cục / tag / tài sản** | **16** | 3 màn thiếu hẳn file `.xgg`. Trong số từng ghi là "thiếu tag con", đo lại thì **cả 3 màn đều KHÔNG thiếu tag**: hai màn (tag đã đo được từ trước) bị chặn ở khâu **áp** dữ liệu, còn `CUIBarracksMain` bị chặn ở **trần đo** — và trần ấy đã phá được bằng `--neo`, tag `getChildByTag(1)` của `snsMainToolArmySoul` **có thật trong bản gốc**, màn nay `Show: ok` |
+
+Ghi chú từng nhóm:
+
+* **A** — 15 màn kiểm chắc nhất: đã đọc thẳng **chỗ gọi** trong `sc/` và thấy nó
+  **luôn truyền tham số** (`CMessageBox.lua:244` gọi
+  `g_CUITipsDlg:Show("MessageBox", {Title=…, Content=…})`; `CUIHero.lua:1645` gọi
+  `g_CUISubDialog:Show("CDlgHeroDropOut", self, hero)`; `CUISubDialog.lua:1556` gọi
+  `…:Show(g_CDlgVipTipsBox:GetUIName(), self, {Level=6})`; và hai màn ở "Đã sửa").
+  26 màn còn lại suy từ
+  **chữ ký hàm chứa dòng hỏng** (`onShow(lastUIName, data)` rồi `data.X`) — mạnh,
+  nhưng chưa đọc hết chỗ gọi. Trong A có **cả nhóm hộp thoại `CMessageBox`** (5
+  màn) và **3 màn Thú cưng** — những thứ *trông* như nhóm đông nhất
+* **B** — 15 màn, và **6 trong đó là nhiều người chơi**: 3 màn APR (`APRData:
+  setRecordList` dựng từ gói tin máy chủ), 1 COG, 1 bang hội, 1 quốc chiến. **Ba
+  màn cấu hình hoạt động** (`TimeLimitedHeroUI`, `SevenDaysEventsRewardView`,
+  `ActivityAdventure`) hỏng vì `G_ActivityLogic:GetActivityConfigWithType` trả
+  `nil` — `login.lua` trả `OnGetAcvitityList({}, {})` — nhưng **không lấy lại được
+  từ dữ liệu ship**: `WeeklyFunDef.KeyTable` có `Plan` / `NewCommonConfig` và
+  chính mã gốc ghi "原来从配置文件中读，现在改成从Plan中组装", còn GodHero thì
+  hình dạng chỉ nằm trong một chú thích (`ActivityGodHeroLogic.lua:53`) mà **số
+  thì không bảng nào có**. Bịa là sai kiểu `AchieveType` — xem nguyên tắc 1. Còn
+  lại **3 màn** là dữ liệu người chơi một người chơi và làm được:
+  `lEpicBattleChestMain`, `CUIQuestInfo`, `CUITreasureHunt`. Cộng thêm **3 màn
+  quét nhanh** vừa chuyển từ nhóm D sang (xem "Đã sửa") — nhưng chúng chỉ mở khi
+  người chơi **đã có** món thừa, nên offline không với tới mà cũng đừng bịa món
+* **C** — ba màn thiếu `.xgg` đối chiếu với **296 bố cục giải được**: mã gốc trỏ
+  `conf/UI_CharacterDressInfo_960_640.xgg`, `conf/UI_VIPRight_960_640.xgg`,
+  `conf/UI_Store_UI_960_640.xgg`, **không file nào có mặt** trong APK lẫn OBB (bản
+  gốc tải lúc chạy từ máy chủ vá) — cùng loại với ~45 mảnh `Scene_*.plist` ở mục 1.
+  **Không sửa được, đừng tính vào việc còn lại.** Ba màn nữa (`CUIXingHun`,
+  `RedPacketMainDlg`, `XingHunBook`) cùng chết ở một chỗ: `CUIAssist.switchTab`
+  (`CUIAssist.lua:817`) gọi `node:getChildByTag(2)` mà nút ấy **thiếu tag con**.
+  Đúng loại "tag còn thiếu" ấy còn **ba màn nữa, và node thì có mặt** —
+  `CUIFriendsChatting` (3 tag con), `CUIArmyGroupCampsite` (**9 tag** ở hai tầng),
+  `CUIBarracksMain` (node nằm ở HUD Main dùng chung) — xem khối "nay là thiếu TAG
+  CON" bên dưới. Tag là thứ **chỉ đo được bằng máy ảo**, nên đây chính là chỗ việc
+  2 của mục 8 trả công — và khi làm xong thì hoá ra **hai trong ba màn ấy không hề
+  thiếu tag**, còn màn thứ ba (`CUIBarracksMain`) vẫn vướng trần đo, nhưng nay đã
+  **khu trú được vào khối neo #38–#42** (xem mục 8, việc 2). `CUITurnplate` khác hẳn:
+  `initTurnplate` **không tồn tại** ở đâu trong `sc/` (grep: chỉ có ở
+  `CUIActivityLoginTurnplate:52` và `CUIActivityTurnplate:77`, không phải lớp cha)
+  — tính năng chết trong chính bản gốc, không phải lỗi của ta
+* **D — nhóm này nay đã bỏ.** Ba màn "quét nhanh" (`CUIContestShopQuickSell`,
+  `CUIWCSShopQuickSell`, `CUIMysteriousStoreQuickSell`) **không** tự vỡ trong bản
+  gốc: cả ba đều có chốt `hasItemToSell()` trước khi mở
+  (`CUIContestShopQuickSell.lua:28`, `CUIWCSShopQuickSell.lua:28`, và người gọi
+  `CUIMysteriousStore.lua:34-35`), nên game thật **không bao giờ** mở chúng khi
+  danh sách rỗng — chỉ bộ quét mở trần. Chúng thuộc **B**: thiếu dữ liệu người
+  chơi (món thừa / món có `ItemCount > 0`), không phải lỗi của mã gốc. Câu cũ
+  "bản gốc vỡ y hệt khi người chơi không có món thừa nào" là **sai**.
+
+**Đã sửa so với bản phân loại đầu (hai chỗ, đều là ghi vào B rồi hoá ra là A):**
+
+* `CUITourMerchantConfirm` — `CUITourMerchant.lua:398` đặt
+  `self.tViewData = tUserData`, tức **chính tham số của người gọi**, và chỗ gọi
+  thật `:342` (`g_CUIMultiLayerDialog:Show(…, tData)`) có truyền. Dòng hỏng `:444`
+  chỉ là bộ quét gọi trần.
+* `HeroCombDetail` — `CUIHeroCombItem.lua:73` gọi
+  `g_CUIHeroCombDetail:show(tag)` với `tag = obj:getStringTag()` (`:70`), nên
+  `_szCombName` do người gọi đặt. Đã đối chiếu thêm: `FightPropertyAddtion` **có**
+  trong bảng ship (`data_ref/config/share/KDBGameCommonConfig.xgg`) và hai chỗ đọc
+  khác đều chặn y hệt, nên đây không phải lỗ hổng cấu hình.
+
+Ghi hai màn ấy vào B là sai kiểu "đi viết handler không cần thiết" — đúng thứ mà
+khối cảnh báo ở đầu mục này dặn.
+
+**Ba màn từng ghi là "thiếu node" — nay đo ra HAI nguyên nhân khác nhau, và hai
+trong ba KHÔNG phải thiếu tag** (tag không nằm trong `.xgg` — engine sinh lúc nạp,
+ta đo từ máy ảo, xem `ui/xgg_layout.gd:306-312`):
+
+* `CUIFriendsChatting.lua:143` — `lFriendsChattingEmoticonClose =
+  blockPanel:getChildByTag(5)`, mà `blockPanel` (`cls=聊天隔挡层`, tag 1) có 5 con
+  và ba con đầu **không tag nào**, nên `getChildByTag(2)/(4)/(5)` đều `nil`.
+  **Tag KHÔNG thiếu**: `tags_cay.json` có `lFriendChattingUI/1` với năm con mang
+  tag **2, 5, 4, 1, 3** — đúng từng dòng so với `:139-143`. Ba con ấy trùng khít
+  nhau (1429×768 @ −234,5, −64) nên **đường ghép theo VỊ TRÍ** không phân biệt
+  nổi, còn **đường ghép theo CHỈ SỐ CON** thì được — mà đường ấy **chưa từng được
+  áp** vào `layout_ref`. Áp vào: `hoi=19 hut=0`, `Show` ok.
+* `CUIArmyGroupCampsite.lua:533` — `ttfCampCountdownTree` (bố cục `/1/3/2/31`) cùng
+  ba con và sáu `CCLabelTTF` cháu: trước `tag=None` cả hai tầng (9 tag). **Cũng
+  KHÔNG thiếu tag**: `tags_cay.json` có sẵn `ndArmyGroupCampsiteShot/3/2/31`
+  (tag 0, 40×40) với `/3/2/31/1` = 2 và `/3/2/31/2` = 3 — đúng đường chỉ số con
+  mà khâu ghép bỏ qua. Sau khi áp: `hoi=12 hut=0`, màn đi **qua** `:533` và nay
+  chết ở `:2748` `addNightEffect` (`<bong NightEffectLayer.new().create()>` trả
+  bảng, `cocos.lua:391` đòi số) — thiếu **hàm engine**, không phải thiếu tag.
+* `CUIBarracksMain.lua:203` — `snsMainToolArmySoul` **có** trong
+  `UI_Main_ControlPanel_960_640.xgg`, ở đường chỉ số con `/14/1/snsMainToolArmySoul`,
+  nhưng `tag` vẫn `None`. Trước đây ghi "thiếu tag THẬT" kèm lý do "màn đó chưa đo
+  được node nào" — **lý do ấy nay sai**: đo lại thì màn ấy có **207 node** trong
+  `tags_cay.json`. Cái thật sự chặn là **trần đo**: `snsMainToolArmySoul` là **neo
+  thứ 41/75** của màn, mà đầu dò chỉ với tới neo **1..21** (xem mục "trần thật của
+  phép đo" ở trên). Nó **không hề có** trong `tags_cay.json` (0 chỗ) nên chưa từng
+  được mở tới. Vậy chưa đủ căn cứ để gọi đây là "thiếu tag thật": phải phá được
+  trần neo rồi mới biết. Nhánh đối chứng `traideu` đang chạy gồm chính màn này —
+  nếu nó tới được neo 41 thì tag sẽ có, và kết luận "thiếu tag" phải rút lại.
+
+**Lỗi của lớp giả lập, đã sửa: `getChildByStringTag` khớp sai trường.** Hàm này
+không có trong `sc/` (nó là hàm engine), nên ta tự viết trong `lua/cocos.lua` — và
+đã viết sai: khớp `cls`. Đo trên 296 bố cục, với 267 chuỗi mà `sc/` hỏi bằng hàm
+này: **15 chuỗi CHỈ có ở `res`** và **0 chuỗi chỉ có ở `cls`**. Nghĩa là phép khớp
+theo `cls` làm 15 chuỗi ấy (và mọi chỗ gọi chúng) **không bao giờ tìm thấy**, trên
+bản gốc đã ship — lỗi của lớp giả lập, không phải lỗ hổng của game. Hai ví dụ đo
+được: `petslist` có `res="list"`, `cls="petslist"`; `selectTab` có
+`res="selectTab"`, `cls="切换标签"` (chú thích của hoạ sĩ). Nay khớp `res` trước,
+`cls` sau — giữ `cls` vì `setStringTag` ghi vào đó lúc chạy.
+
+Kết quả đo (`quet_show.gd`, so **tên màn** chứ không so tổng). **Hai con số tổng
+dưới đây là của RIÊNG lượt sửa này** — lúc đó đường ghép theo chỉ số con còn chưa
+được chạy, nên chúng không phải tình trạng hiện tại; tình trạng hiện tại ở bảng
+"trước / sau" của lượt ghép, phía dưới (`260 / 22 / 71` → `263 / 23 / 67`), rồi
+lượt sửa `xoay` đưa tiếp lên **`264 / 22 / 67`**, và lượt `--neo` lên
+**`264–265 / 23 / 65–66`**.
+
+| | trước | sau |
+|---|---|---|
+| mở được / im / hỏng | 258 / 23 / 72 | 259 / 23 / 71 |
+| `g_CUISubDialog/AnniversaryRankReward` | hỏng (`:47`, `selectTab` nil) | **mở được** |
+
+`AnniversaryRankReward` là màn **duy nhất** thật sự đổi chỗ *trong lượt sửa này*
+(lượt ghép theo chỉ số con về sau còn sửa thêm 5 màn khác — xem bảng dưới): nó **hỏng** ở lần chạy
+trước khi sửa và **mở được ở cả hai** lần chạy sau — nhất quán, không phải may. Nút
+`selectTab` (`res="selectTab"`) có đủ 3 con
+mang tag 1/2/3, nên sửa xong `__initUI` chạy trọn vòng lặp và đi tiếp tới `:59`.
+Sáu tên còn lại đổi chỗ ở một trong hai lần so (`XingHunMsgDlg`, `EquipmentInfoDialog`,
+`MoreGoldDialog`, `MoreDiamondDialog`, `CUIGuildInfoDonate`, `GuildScienceDlg`) đều
+nằm trong **tập dao động** — và lần này đo được thêm một điều: ba trong số đó
+(`MoreDiamondDialog`, `GuildScienceDlg`, `CUIGuildInfoDonate`) nhảy **giữa mở-được
+và im**, tức **nhóm "im" cũng nằm trong phần dao động**, không chỉ hỏng↔im. Cách
+kiểm: hai lần chạy **cùng bản đã sửa** đã khác nhau 2 màn. `check.py` vẫn 24/24
+xanh, gồm cả hai bộ chạm.
+
+`PetIllustration` **không** mở được, nhưng đi xa hơn hẳn: hỏng cũ ở `:74` là vì
+`getChildByStringTag("list")` trả nil; nay `list` tìm thấy và màn chết ở chỗ khác —
+`cocos.lua:391: diem neo khong phai so … cua <bong LuaTableView_create()>`. Tức
+`CUITableViewZ:init` (`CUITableViewZ.lua:180`) gọi một hàm engine **chưa làm**:
+`LuaTableView_create` không có trong `lua/` lẫn file `.gd` nào. Muốn màn này mở thì
+phải làm binding đó — việc engine, không phải việc dữ liệu.
+
+Một hệ quả nữa của cơ chế bong, ghi lại để đừng đi nhầm: `spStoreUITag_1` của
+`CUIShop` là **bong** (đọc qua `_G`), nên nó **truthy**, `CUITab:RegItem` chạy trọn
+rồi `tonumber(bong)` ra nil ở `:129`. Chỗ hỏng thật là **thiếu file
+`UI_Store_UI_960_640.xgg`**, không phải dòng 129.
+
+**Hệ quả cho mục 8, và nó đổi việc tiếp theo:** "nhóm đông nhất" **không phải một
+tính năng nào cả**. Nhóm đông nhất là A, và A không cần gì. **32 trong 72 màn
+không thuộc nhóm tính năng nào** (hộp thoại dùng chung), và 21 trong số đó là A.
+Sau khi trừ nhiều người chơi (APR/COG/bang hội/quốc chiến) và ba màn cấu hình hoạt
+động không lấy lại được, **phần B còn làm được chỉ còn 3 màn rời rạc**
+(`lEpicBattleChestMain`, `CUIQuestInfo`, `CUITreasureHunt`) — không còn "nhóm đông"
+nào để việc 1 nhắm vào, nên **việc 1 coi như đã cạn**.
+
+**Việc 2 (máy ảo Android) lên làm trước — và lần soát này đo được vì sao.** Tag
+**không nằm trong `.xgg`**: engine sinh ra lúc nạp, ta đo từ máy ảo
+(`ui/xgg_layout.gd:306-312`, `work/emu_tags.py`), nên chỗ nào máy ảo chưa trả về thì
+ta **không có cách nào suy ra** — chỉ đo được. Và nay biết tag thiếu là nguyên nhân
+của **6 trong 16 màn C**: `CUIFriendsChatting` (3 tag), `CUIArmyGroupCampsite`
+(9 tag ở hai tầng), `CUIBarracksMain`, và ba màn chết chung ở
+`CUIAssist.switchTab` (`CUIXingHun`, `RedPacketMainDlg`, `XingHunBook`). Đo bằng
+máy ảo là cách duy nhất điền chúng mà không bịa — và cùng lần chạy đó chốt luôn đốm
+xanh ở Main.
+
+**Con số "6 màn, một nguyên nhân" ấy SAI, và sai vì chưa đo tới nơi.** Làm xong
+việc 2 mới tách được **bốn nguyên nhân**, trong đó nguyên nhân lớn nhất **không
+phải thiếu tag** mà là **tag đã đo rồi mà chưa ghép**:
+
+| màn | nguyên nhân thật | cách kiểm |
+|---|---|---|
+| `CUIFriendsChatting` | **ghép thiếu** — tag 2/5/4/1/3 có sẵn trong `tags_cay.json` | `do_mot_man.gd`: `hoi=19 hut=0`, `Show` ok |
+| `RedPacketMainDlg` | **ghép thiếu** — `switchTab` gọi `getChildByTag(2)` rồi `(1)` | `hoi=12 hut=0`, `Show` ok |
+| `CUIArmyGroupCampsite` | **ghép thiếu** — 9 tag có sẵn ở `ndArmyGroupCampsiteShot/3/2/31` | `hoi=12 hut=0`, nay chết ở hàm engine `NightEffectLayer` |
+| `CUIBarracksMain` | **KHÔNG thiếu tag — trần đo, và trần ĐÃ PHÁ** — `do_mot_man.gd` đòi `getChildByTag(1)` trên `snsMainToolArmySoul`; đo thẳng neo ấy bằng `--neo` thì nó ra **tag 2** và bốn con ra tag **2, 1, 0, 0** — vậy tag ấy **có thật trong bản gốc**, chỉ là đầu dò chưa từng tới (neo 41/75, thuộc khối #38–#42). Nay `hoi=88 hut=17`, **`Show: ok`** (trước là `:203 attempt to index a nil value`). 17 chỗ hụt còn lại là lớp khác: `lSelectedUnit` hỏi tag 10/20/30/40 mà con nó mang tag 1..4 | `tools/do_mot_man.gd` + `--neo` |
+| `CUIXingHun` | **KHÔNG phải `switchTab`** — chết ở `CUIZhanXing.lua:232` (`getChildByTag(0)` trên `hunWeiN`) | `quet_show.gd` |
+| `XingHunBook` | **KHÔNG phải `switchTab`** — chết ở `CUIXingHunBook.lua:132` `CUITableViewZ:new():init` | trùng với việc 5 (`LuaTableView_create`) |
+
+Nghĩa là **"chỉ máy ảo mới điền được"** không còn đúng cho màn nào theo nghĩa ban
+đầu: **ba** màn (`CUIFriendsChatting`, `CUIArmyGroupCampsite`, `RedPacketMainDlg`)
+đã có dữ liệu đo từ trước, thứ chặn chúng là khâu **áp**; **hai** màn
+(`CUIXingHun`, `XingHunBook`) chặn vì lý do khác hẳn, không liên quan tới tag;
+còn `CUIBarracksMain` chặn ở **trần đo** — và trần ấy **đã phá được** bằng cách đo
+thẳng neo bị chặn (`--neo`), nên tag nó cần **có thật trong bản gốc**. Nói cách
+khác: **không màn nào trong nhóm này thiếu tag thật.** Ba màn nhóm đầu bị chặn ở khâu **áp** dữ liệu vào
+`layout_ref`: `emu_join.py --ghi` có **hai đường**, đường theo VỊ TRÍ (dự phòng,
+dò hình học) và đường theo **CHỈ SỐ CON** (đường chính, khớp chỉ số của bản gốc),
+chạy nối tiếp đường sau đè đường trước — và đường chỉ số con **chưa từng được
+chạy** trên kho `tags_cay.json` hiện có. Chạy nó (đo bằng `work/kiem_tag.py`, đếm
+từ chính bố cục, và `tools/quet_show.gd`):
+
+| | trước | sau ghép | sau khi sửa `xoay` | sau `--neo` |
+|---|---|---|---|---|
+| node có tag trong `layout_ref` | 19.456 / 33.472 (58,1%) | **26.315 / 33.472 (78,6%)** | **27.876 / 33.472 (83,3%)** | **27.887 / 33.472 (83,3%)** |
+| màn mở được / im / hỏng | 260 / 22 / 71 | **263 / 23 / 67** | **264 / 22 / 67** | **264–265 / 23 / 65–66** |
+
+Sửa được **5 màn, và sửa được ở CẢ HAI lần chạy lại** (đây là phép kiểm, vì
+`quet_show.gd` dao động): `CUIFriendsChatting`, `CUIContest`, `RedPacketMainDlg`,
+`CUICOGCityInfo`, `TimeHeroUI`. Không màn nào đang mở bị hỏng thêm: hai lần chạy
+sau khi ghép lệch nhau đúng **một** màn (`MoreGoldDialog`), và nó nằm trong nhóm
+dao động đã ghi. `check.py` 24/24 xanh (gồm `verify.gd` 3.142 đạt / 0 hỏng).
+
+
+- [~] Ải vô tận / Epic / SB / COG (11 màn) — **con số 11 sai, và sai kiểu đã
+      cảnh báo ở trên**: nó đếm theo đường dẫn file ném lỗi nên gộp **bốn họ
+      riêng** (InfiniteLevel 7 màn đăng ký, Epic 6, SB 6, COG 22) với **hai
+      nguyên nhân khác hẳn nhau**. Đọc mã ra:
+      * **Đúng 2 màn** hỏng vì dữ liệu máy chủ — `CUIInfiniteLevelMain.lua:619`
+        và `CUIInfiniteLevelFirstPassRewards.lua:211`. **Cả hai đã hết**, và đo
+        được bằng cách gỡ tạm `TU_DUNG` rồi quét lại: trước 255 mở / 75 hỏng,
+        sau 258 / 72. Nhưng trong mức ±3 đó **chỉ một màn thật sự đổi chỗ**
+        (`InfiniteLevelUI`); hai màn khác chỉ chuyển qua lại giữa các nhóm —
+        đúng lý do phải mở thẳng màn mà xem chứ đừng đọc số tổng.
+        `FirstPassRewards` **chỉ tiến thêm được**: `:211` nằm trong `initUI`
+        (gọi ở `:47`) mà nay tới được `:75` (ở `:49`), tức `initUI` chạy trọn.
+        `:75` **đã gỡ xong** — xem mục "widget bảng" bên dưới. Đo lần cuối:
+        `InfiniteLevelFirstPassRewards` **có mặt trong nhóm hỏng ở cả 3 lần chạy
+        bản chưa sửa**, và **vắng mặt ở mọi lần chạy bản đã sửa**; cùng lúc
+        `MoreGoldDialog` có mặt ở **cả hai** bản nên không phải do sửa đổi này
+        (nó thiếu `data` của người gọi — đúng loại lỗi của 6 màn kia)
+      * **6 màn** còn lại (`CUISBMain`, `CUISBWayToGet`, `CUISBDegrade`,
+        `CUICOGCityInfo`, `CUIEpicBattleLevelUp`, `CUIEpicBattleReward`) hỏng
+        **chỉ vì bộ quét gọi `Show(tên)` trần** — chúng lấy `data` từ người gọi,
+        **không cần handler nào**
+      * SB không phải "SeaBoss" mà là **MagicWeapon** (`sc/user/UI/sb/`); COG là
+        **giải đấu liên máy chủ** (`sc/share/COGDef.lua`) — phần nhiều người chơi
+        nằm ngoài phạm vi, cùng loại với bang hội
 - [~] Bang hội / quân đoàn — handler `guild` đã có, và `GuildControlMain` mở
       được. Nhưng nhóm này **không phải 10 màn**: đọc mã ra thì 4 màn chỉ dùng
       chung widget `CUIGuildTableViewList` (thật ra là APR/Activity), 2 màn đòi
       đối số của người gọi, 1 màn hỏng vì thiếu **tag** chứ không thiếu dữ liệu.
       Phần còn lại (tạo bang, xin vào, chiến bang) cần người chơi khác — việc
       của máy chủ thật, không phải lớp offline
-- [ ] Hoạt động, sự kiện, điểm danh, nạp tích luỹ (9 màn)
-- [ ] Đấu trường / PvP / giải đấu (9 màn)
-- [ ] Thú cưng (6 màn)
-- [ ] Võ tướng, doanh trại, hồn tướng, cánh, thời trang (6 màn)
-- [ ] Cửa hàng, nạp, VIP (5 màn)
+- [ ] Hoạt động, sự kiện, điểm danh, nạp tích luỹ — **đo ra 8 màn, không phải 9:
+      3 A / 3 B / 2 C**; sau khi sửa `res`/`cls` thì còn **7 màn: 3 A / 3 B / 1 C**
+      (`AnniversaryRankReward` đã mở được). Ba màn B là cấu hình hoạt động, và
+      **không lấy lại được** (xem ghi chú B ở trên); màn C còn lại là `CUITurnplate`
+      — tính năng chết trong chính bản gốc
+- [ ] Đấu trường / PvP / giải đấu — **đo ra 11 màn, không phải 9: 6 A / 3 B / 2 C.**
+      Cả 3 màn B đều là APR (`APRData` dựng từ gói tin máy chủ) — nhiều người chơi
+- [ ] Thú cưng — **đo ra 5 màn: 4 A / 1 C. Không có lỗ hổng dữ liệu nào** — bốn
+      màn kia chỉ thiếu tham số của người gọi. Màn C là `PetIllustration`: sau khi
+      sửa `res`/`cls` nó **không còn** hỏng vì tra chuỗi nữa mà vì thiếu hàm engine
+      `LuaTableView_create` (xem mục "Lỗi của lớp giả lập")
+- [ ] Võ tướng, doanh trại, hồn tướng, cánh, thời trang — **đo ra 6 màn:
+      2 A / 0 B / 4 C** (`HeroCombDetail` là A, không phải B — xem "Đã sửa"); bốn
+      màn C là `ArmyGroupCampsite` (**ghép thiếu** 9 tag con ở node
+      `ttfCampCountdownTree` — tag đã đo được từ trước, không phải thiếu),
+      `CUIBarracksMain` (node `snsMainToolArmySoul` nằm ở HUD Main, là neo 41/75
+      của màn đó, trong khối neo #38–#42 chưa tới được — **trần đo**, đã khu trú;
+      sau khi sửa `xoay` màn tới 68/75 neo nhưng vẫn chưa tới khối ấy),
+      `XingHunBook` (thiếu hàm engine `LuaTableView_create`, không phải `switchTab`)
+      và `CUICharacterDress` (thiếu `.xgg`)
+- [ ] Cửa hàng, nạp, VIP — **đo ra 5 màn: 2 A / 1 B / 2 C**; hai màn C là thiếu
+      `.xgg` (`Shop`, `CUIVIPRight` — đừng lẫn với `UI_VipStore_UI_960_640.json`,
+      file ấy **có**). Màn B là `MysteriousStoreQuickSell` (nhóm D cũ, xem "Đã sửa")
+- [ ] Nhiệm vụ, thương nhân, bạn bè, chat — **đo ra 5 màn: 3 A / 1 B / 1 C**
+      (`TourMerchantConfirm` là A, không phải B — xem "Đã sửa")
 - [~] Hang / ma khu (1 màn) — mở được + handler `cavern` (xem mục "Đã có"); còn
       làm mới hàng cửa hàng và quét nhanh
-- [ ] Nhiệm vụ, thương nhân, bạn bè, chat (4 màn)
 
 ## 5. Trận đánh
 
@@ -249,11 +586,13 @@ Máy chủ cũ đã chết. Mỗi tính năng cần một handler đọc luật 
       phần sân đang trên màn hình. **ĐẶT**: hình dạng chấm, màu, và việc có
       khung ngắm — luật thật nằm trong C++
 - [ ] Trận PvP, đấu trường, quốc chiến — **chặn bởi mục 4**, không phải mục
-      này. Cần handler offline cho nhóm "Đấu trường / PvP / giải đấu" (9 màn).
-      Có một đường đi được: bản gốc ship sẵn `KDBGameTournamentRobotConfig`
-      (`ConfigManager:updateTournamentRobotConfig`) — tức đối thủ **máy** có
-      số liệu thật trong cấu hình, nên đấu trường một người chơi là làm được
-      mà không phải bịa đối thủ. Quốc chiến thì cần nhiều người chơi thật
+      này. Đo lại (2026-09-15) thì nhóm "Đấu trường / PvP / giải đấu" là **11 màn,
+      trong đó 6 màn chỉ thiếu tham số của người gọi**; chỉ 3 màn thật sự cần dữ
+      liệu máy chủ, và cả 3 là APR. Có một đường đi được: bản gốc ship sẵn
+      `KDBGameTournamentRobotConfig` (`ConfigManager:updateTournamentRobotConfig`)
+      — tức đối thủ **máy** có số liệu thật trong cấu hình, nên đấu trường một
+      người chơi là làm được mà không phải bịa đối thủ. Quốc chiến thì cần nhiều
+      người chơi thật
 
 ## 6. Âm thanh
 
@@ -271,16 +610,133 @@ Máy chủ cũ đã chết. Mỗi tính năng cần một handler đọc luật 
 
 ## 8. Việc tiếp theo, xếp theo giá trị
 
-1. **Handler offline cho nhóm đông nhất.** Nhưng đọc mã trước khi chọn nhóm —
-   xem cảnh báo ở mục 4. Nhóm gọn và chắc chắn cần dữ liệu thật: **bang hội**
-   (10 màn) và **ải vô tận / Epic** (11 màn).
-   Mẹo đã dùng được hai lần: bảng nào client tự khai `InitData()` thì lấy hình
-   dạng từ đó; luật nào server giữ thì tìm SỐ trong bảng cấu hình trước khi kết
-   luận là mất.
-2. **Chốt đốm xanh ở Main** bằng máy ảo Android — một lần chạy là xong, và
-   máy ảo còn dùng lại được để đo tiếp 9,3% tag còn thiếu.
+1. ~~**Handler offline cho nhóm đông nhất**~~ — **đã cạn, và cách nó cạn đáng
+   ghi lại.** Hai nhóm §8 từng nhắm vào đều xong: ải vô tận có handler
+   (`handlers/endless.lua`) và bang hội có handler `guild` từ trước. Nhưng khi
+   **phân loại hết 72 màn hỏng** (bảng ở mục 4) thì lộ ra nhóm đông nhất
+   **không phải một tính năng**: 41 màn chỉ thiếu tham số của người gọi — màn
+   chạy tốt trong game thật, bộ quét gọi `Show(tên)` trần. Trừ tiếp nhiều người
+   chơi và ba màn cấu hình hoạt động không lấy lại được từ dữ liệu ship, phần
+   dữ liệu người chơi/máy chủ còn làm được chỉ còn **3 màn rời rạc**
+   (`lEpicBattleChestMain`, `CUIQuestInfo`, `CUITreasureHunt`). Mẹo đã dùng được
+   bốn lần, giữ lại để lần sau: bảng nào client tự khai `InitData()` thì lấy hình
+   dạng từ đó; luật nào server giữ thì **tìm SỐ trong bảng cấu hình trước khi
+   kết luận là mất**; và **đọc chỗ gọi hàm, không chỉ đọc hàm** — bài học đắt
+   nhất của mục này (lần thứ tư: hai màn ghi nhầm vào B hoá ra là A, tức suýt
+   nữa thì đi viết handler không cần thiết)
+2. ~~**Chốt đốm xanh ở Main + đo nốt tag còn thiếu**~~ — **xong cả hai nửa**,
+   và nửa (b) hoá ra không phải việc đo. Nửa (a): cách trộn nằm trong **từng
+   khung** của armature (`+0x38` của bản ghi khung), `'screen'` = trộn CỘNG
+   (`GL_SRC_ALPHA, GL_ONE`), và `SngRig` nay đặt `BLEND_MODE_ADD` theo khung.
+   Chốt bằng **cả hai** đường đã vạch ra chứ không đoán: máy ảo
+   (`work/emu_dom.py`, 9/9 biến thể) **và** đọc mã (`libgame.so`
+   `0x25d476..0x25d4ce`). A/B trên ảnh `Main`: 6.493 điểm ảnh đổi, trước là 0.
+   Chi tiết và hai cái bẫy Godot đã mắc: CLAUDE.md mục "Đốm xanh ở Main".
+   **Nửa (b) — XONG, và câu trả lời bác bỏ chính câu hỏi.** Hỏi "9,3% tag còn
+   thiếu" thì đo ra: **phần lớn trong đó chưa bao giờ là thiếu ĐO — nó là thiếu
+   KHÂU ÁP.** `tags_cay.json` (đường CHỈ SỐ CON, đo từ lâu) đã có sẵn tag của
+   gần hết chỗ được ghi là "thiếu", nhưng `emu_join.py --ghi` **chưa từng chạy
+   đường ấy**. Chạy nó: node có tag **19.456/33.472 (58,1%) → 26.315/33.472
+   (78,6%)**, `quet_show.gd` **71 màn hỏng → 67**, và 5 màn mở được ở **cả hai**
+   lần chạy lại (`CUIFriendsChatting`, `CUIContest`, `RedPacketMainDlg`,
+   `CUICOGCityInfo`, `TimeHeroUI`). `check.py` 24/24 xanh. Bảng đầy đủ ở mục 4.
+
+   **Lượt thứ hai của nửa (b): phá trần đo bằng cách sửa `xoay`.** Phần thiếu
+   còn lại không phải khâu áp mà là **trần đo** — chỉ **6 trong 287 màn** còn neo
+   chưa tới được, nên đối chứng chỉ chạy trên 6 màn ấy (cùng mã, cùng trần 16
+   lượt, **cả hai nhánh khởi đầu `bo` rỗng**, biến duy nhất khác là `xoay`):
+   **`UI_Hero` 73 → 147/168 neo**, **`UI_Main_ControlPanel` 2 → 66/75**,
+   `UI_Destiny` 7 → 34/42, `UI_Friends` 28 → 30/33; `UI_ArmyGroup_Campsite_Info`
+   (9/22) và `UI_Mail` (1/7) không nhích. Hợp ba nhánh rồi ghép lại: node có tag
+   **26.315 → 27.876/33.472 (83,3%)**, `quet_show.gd` **`264 / 22 / 67`**,
+   `getChildByTag` **9.563/11.225 (85,2%)**, `check.py` 24/24 xanh. Neo chưa tới
+   được trên toàn kho: **243 (8,7%) → 86 (3,1%)**.
+   **Một dự đoán của tôi trong lượt này đã SAI và được ghi lại:** nhìn số đo của
+   nhánh `--khong-xoay` (16/16 đường chết của `UI_Main_ControlPanel` tụm trong
+   neo #2) tôi kết luận trần do "cụm đường chết trong một neo" nên **quay cũng
+   không phá được** — sai, vì suy từ **một** màn ra **sáu** màn; đo mới thấy quay
+   trải đều phủ được phần đuôi (2 → 66). Chi tiết ở README, mục "Quay neo".
+
+   **Lượt thứ ba của nửa (b): đo thẳng neo bị chặn.** Trần đo còn lại phá nốt
+   bằng một đường khác hẳn, không cần thêm lượt: vì neo là thứ **đã biết tên**,
+   nên bỏ hẳn phần đầu danh sách đi mà đo phần đuôi — thêm cờ `--neo` cho
+   `emu_tags.py` (nhận danh sách neo theo **đúng thứ tự người gọi đưa vào**, tên
+   gõ sai thì **cảnh báo** chứ không im lặng bỏ qua). Bỏ phần đầu thì những đường
+   làm chết tiến trình ở phần đầu cũng không còn được chạy, nên neo cuối tới được
+   ngay. Đo `UI_Main_ControlPanel`: **68 → 73/75** neo, neo `snsMainToolArmySoul`
+   (41/75) ra **tag 2** và bốn con ra tag **2, 1, 0, 0**. Toàn kho: node có tag
+   **27.876 → 27.887 (83,3%)**, neo chưa tới **86 (3,1%) → 81 (2,9%)**,
+   `quet_show.gd` **`264–265 / 23 / 65–66`**, `getChildByTag`
+   **9.786/11.448 (85,5%)**, `check.py` 24/24 xanh.
+   Chỉ **35 neo** còn chưa tới trên các màn đo được (46 neo còn lại thuộc 4 màn
+   không ra dữ liệu, xem mục dưới).
+
+   **"6 màn, một nguyên nhân" SAI — đo tới nơi thì ra BỐN nguyên nhân, và KHÔNG
+   màn nào là "thiếu tag thật" theo nghĩa ban đầu:** `CUIFriendsChatting` và
+   `CUIArmyGroupCampsite` là
+   ghép thiếu (tag 2/5/4/1/3 và chín tag dưới `ndArmyGroupCampsiteShot/3/2/31`
+   đã có sẵn trong file đo); `RedPacketMainDlg` cũng ghép thiếu; còn
+   `CUIXingHun` **không hề chết ở `switchTab`** — nó chết ở `CUIZhanXing.lua:232`
+   (`getChildByTag(0)` trên `hunWeiN`, bố cục bị lệch chỉ số), và `XingHunBook`
+   chết vì thiếu hàm engine `LuaTableView_create` (việc 5). **`CUIBarracksMain`
+   thì KHÔNG thiếu tag — nó chặn ở trần đo, và trần ấy đã phá.** `do_mot_man.gd`
+   trên màn ấy đòi `getChildByTag(1)` trên node **`snsMainToolArmySoul`**, mà cả
+   node đó lẫn 4 con của nó đều **không có tag nào** trong `layout_ref` — vì nó là
+   **neo 41/75** của `UI_Main_ControlPanel` và neo ấy chưa từng tới được (sau lượt
+   sửa `xoay` màn tới **68/75**, còn khối #38–#42 thì chưa; `lMainToolbarTop` #40
+   là **cha** của nó). Đo thẳng neo ấy bằng `--neo`: `snsMainToolArmySoul` ra
+   **tag 2**, bốn con ra **2, 1, 0, 0** — tức `getChildByTag(1)` **có thật trong
+   bản gốc**. Kiểm lại theo **từng màn** (không dùng con số tổng):
+   `hoi=88 hut=17`, **`Show: ok`**, trước đó là `CUIBarracksMain.lua:203: attempt
+   to index a nil value`. Vậy **cả 3 màn từng bị ghi là "thiếu tag con" đều
+   KHÔNG thiếu tag** — thứ chặn chúng là khâu áp (2 màn) và trần đo (1 màn).
+
+   Chẩn đoán cũ về chỗ tắc vì thế cũng phải sửa hai lần. Bản đầu nói "không tên
+   màn nào trong 6 màn trên khớp tên file `.xgg` nào" — **sai hẳn**: ánh xạ ấy
+   do chính mã Lua khai (`self.ResourceXggList` / `self.RootUIName`) và bộ quét
+   in ra ở mọi màn. Bản thứ hai nói chỗ tắc nằm ở khâu ghép theo VỊ TRÍ — đúng,
+   nhưng **chưa đủ**: đường ghép khớp-khít-theo-hình chỉ là đường DỰ PHÒNG, còn
+   đường CHÍNH (chỉ số con, đo được 65/65 và 172/172 đường không trượt) **có
+   dữ liệu mà chưa từng được chạy**. Bài học ghi lại: **thêm một đường đo mới
+   thì phải chạy nó rồi mới được kết luận là thiếu dữ liệu.**
+
+   **Còn một trần thật của phép đo, đo được luôn:** `PROBE_CAY` đi lần lượt
+   từng neo, mà bản dịch ARM chết giữa đường nên neo sau chỗ chết không được đi
+   — chết cả tiến trình, nên vòng lặp neo bị cắt ngang. Đếm trên 287 màn /
+   **2.778 neo**: sau lượt sửa `xoay` và lượt đo thẳng `--neo` còn **81 neo chưa
+   từng được mở tới (2,9%)** — trước hai lượt đó là **243 (8,7%)**. Chỗ thiếu ấy
+   gồm **hai loại khác hẳn nhau**: **4 màn không ra dữ liệu nào** (46 neo,
+   550/33.472 node — cả 4 không được `sc/` nhắc tới ở đâu, hai trong đó trông là
+   bố cục thử, lý do chết sớm **chưa truy**) và **6 màn đo được nhưng còn neo chưa
+   tới** — nay chỉ còn **35 neo** (trước là 197): `UI_Hero` 163/168,
+   `UI_Main_ControlPanel` 73/75, `UI_Destiny` 34/42, `UI_Friends` 32/33,
+   `UI_Mail` 1/7, `UI_ArmyGroup_Campsite_Info` 9/22. Hai neo còn lại của
+   `UI_Main_ControlPanel` là hoạ tiết theo mùa (`spMainUITheme_newYear_0`,
+   `spMainUITheme_christmas_0`). Cả 6 màn đều **không `DOTREO`**, **không
+   `DOCUT`** — phần còn thiếu không phải do tên hay cây hỏng. Nghĩa là **83,3%
+   vẫn là CẬN DƯỚI**, không phải số cuối.
+   Hình dạng tập neo còn là **phép kiểm cho `xoay`**: trước lượt sửa cả 6 màn đều
+   ra một **tiền tố liền mạch từ vị trí 1** (kể cả khi đã dùng hết 16 lượt); nay
+   **4/6 màn có LỖ** và trải tới cuối danh sách — đúng như đã tuyên bố trước khi
+   đo. Bản đầu của `xoay` làm `k = xoay % len(names)` với `xoay` chỉ chạy 0..15
+   nên **với màn nhiều neo thì vị trí mở đầu chỉ nhích trong 16 chỗ đầu** — đó
+   chính là vì sao số đo cũ vẫn ra tiền tố. Nay bước nhảy là `len(names)/16`.
+   **Cách phá trần cho từng neo, khi cần:** `--neo` đo thẳng những neo được kể
+   tên (xem mục 4, bảng `layout_ref`) — không cần thêm lượt, vì bỏ phần đầu danh
+   sách thì những đường làm chết tiến trình ở phần đầu cũng không còn chạy.
+
 3. **Âm thanh.** Chưa có gì; game câm thì cảm giác vẫn chưa phải game.
 4. **Bỏ mấy chỗ ĐẶT trong trận** — chỗ đứng, tốc độ, hồi thống soái — bằng
    cách đọc tiếp `libgame.so` hoặc đo trong máy ảo.
+5. **Làm binding engine `LuaTableView_create`** — **19 file** gọi
+   `CUITableViewZ:new()` mà `CUITableViewZ.lua:180` gọi hàm này, và ta **chưa có
+   nó** (không có trong `lua/` lẫn `.gd` nào), nên `tv` là **bong**: những màn
+   ấy chạy được là nhờ may — bong trả bong và không chạm chỗ nào kiểm tra. Màn
+   nào chạm thì chết: `PetIllustration` nay chết đúng ở đó
+   (`cocos.lua:391: diem neo khong phai so … cua <bong LuaTableView_create()>`).
+   Đây là **việc engine, có biên**: một khung cuộn + ô, không phải đi tìm dữ liệu.
+   Nhưng **chưa đo được nó mở thêm bao nhiêu màn** — 19 file là số gọi, không
+   phải số màn sẽ mở; muốn biết thì làm rồi đo bằng `quet_show.gd`
 
-Việc 1 là việc nhiều nhất và ít rủi ro nhất. Việc 2 rẻ và mở đường cho việc 4.
+Việc 2(b) rẻ, mở đường cho việc 4, và nay là việc có giá trị nhất. Sau đó là
+việc 3 (âm thanh) — nó là mảng lớn còn nguyên vẹn duy nhất.

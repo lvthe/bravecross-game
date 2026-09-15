@@ -26,6 +26,21 @@ python ../brave-cross/work/layout.py --all --out layout_ref
 #     nó (getChildByTag: 9.529 lần). Dữ liệu đo sẵn nằm trong repo brave-cross
 #     nên bước này chỉ ghép, không cần máy ảo.
 python ../brave-cross/work/emu_join.py --ghi
+#     Hai đường đo, hai cách ghép, chạy nối tiếp trong lệnh trên:
+#       tags_that.json — đầu dò HỎI TỪNG TAG; đường dẫn là DÃY TAG, nên phải
+#                        ghép bằng VỊ TRÍ (đường dự phòng).
+#       tags_cay.json  — đầu dò ĐI CẢ CÂY; đường dẫn là CHỈ SỐ CON, nên ghép
+#                        thẳng, không dò gì (đường CHÍNH XÁC: chỉ số con của
+#                        engine trùng khít thứ tự con trong file .xgg).
+#     Muốn ĐO LẠI (cần máy ảo Android đang chạy), hai lệnh, mỗi màn ~9 giây,
+#     và lần đi cả cây tự chạy lại lượt sau khi bản dịch ARM chết giữa đường:
+python ../brave-cross/work/emu_tags.py --all --out ../brave-cross/work/tags_that.json
+python ../brave-cross/work/emu_tags.py --cay --all --out ../brave-cross/work/tags_cay.json
+#     Đo là đụng vào MÁY ẢO dùng chung, nên `emu_tags.py` tự giữ **khoá** theo
+#     serial máy ảo: chạy hai lượt cùng lúc thì lượt sau **dừng ngay**, chứ
+#     không âm thầm trộn số của hai lượt vào một file kết quả — đã mất 25 phút
+#     máy ảo một lần vì đúng cái này. Khoá của lượt đã chết thì nó tự lấy lại;
+#     phá tay bằng `--bo-khoa`.
 # 2c. Bảng chữ tiếng Việt và 104 bảng cấu hình của bản gốc — mã gốc đọc
 #     chúng lúc chạy, thiếu là màn hình trống chữ và trống phần thưởng.
 python ../brave-cross/work/text_table.py
@@ -481,6 +496,18 @@ thái. Số tổng thì giữ nguyên — kể cả khi bỏ phần chạm đi (
 godot --headless --path . --script tools/quet_show.gd
 ```
 
+Màn nào hỏng thì tra tiếp bằng `tools/do_mot_man.gd`: nó mở **đúng một** màn
+(quản lý giữ màn đó được **tự tìm** trong 5 quản lý — gọi thẳng sai quản lý thì
+không báo lỗi mà cũng không mở gì, nên đây là bẫy phải tránh), rồi in `hoi=` /
+`hut=` kèm **nhật ký hụt của riêng màn ấy**. Có nhật ký mới phân biệt được
+"ghép thiếu tag" với "lỗi của chính màn" — đó là chỗ ROADMAP kết luận được
+**không màn nào trong nhóm C thiếu tag thật**:
+
+```bash
+godot --headless --path . --script tools/do_mot_man.gd -- <tên màn> <module>
+godot --headless --path . --script tools/do_mot_man.gd -- BarracksMain user.UI.CUIBarracksMain
+```
+
 **Bấm được.** Tên chạm và đối tượng nhận chạm nằm ngay trong bản ghi node của
 `.xgg` (+0x0C tên chạm, +0x14 tên biến toàn cục của đối tượng): 2.005 node,
 1.204 cặp khác nhau, 1.021 cặp khớp đúng lớp có hàm xử lý. Cộng với
@@ -540,7 +567,78 @@ thành 353, và 105 màn mở được thành 244.
   chứ không đặt `z_index`.
 * **Tag thật không nằm trong `.xgg`** — engine sinh lúc nạp. Đo từ chính bản
   gốc chạy trong máy ảo Android (`work/emu_tags.py`), ghép vào bằng
-  `emu_join.py --ghi`. Phủ 90,7% số cặp (node, tag) mà mã gốc thật sự hỏi.
+  `emu_join.py --ghi`. Hai đường ghép **chạy nối tiếp, đường sau đè đường trước**:
+  theo **VỊ TRÍ** (dự phòng — dò hình học, nên bó tay khi nhiều node trùng khít
+  nhau) rồi theo **CHỈ SỐ CON** (đường chính — khớp đúng chỉ số con mà bản gốc
+  hỏi). **Đường chỉ số con từng có dữ liệu mà chưa được áp**, và đó là lý do lớn
+  nhất của "tag thiếu": áp vào thì node có tag đi từ 19.456/33.472 (58,1%) lên
+  **26.315/33.472 (78,6%)**. Đó chưa phải số cuối — hai lượt nữa đều nhắm vào
+  **trần đo** (mục dưới), không phải vào khâu áp: sửa `xoay` rồi hợp ba nhánh đo
+  lại 6 màn → **27.876 (83,3%)**; rồi đo **trực tiếp** những neo bị chặn bằng
+  `--neo` → **27.887/33.472 (83,3%)**. Trạng thái cuối, đo hai lần liền:
+  **353 màn đăng ký, 264–265 mở được / 23 im / 65–66 hỏng**, và
+  **9.786/11.448 lượt** `getChildByTag` trả về node (85,5%). Hai lượt đầu
+  **không** làm số màn hỏng giảm: tag ghép thêm rơi vào những màn vốn đã mở được,
+  còn nhóm hỏng thì chặn vì lý do khác (thiếu dữ liệu người chơi). Lượt `--neo`
+  thì **có** — nó nhắm thẳng vào một màn đang hỏng, và đo theo **từng màn** mới
+  thấy: `g_CUIBarracksMain` từ `Show` lỗi (`attempt to index a nil value`) thành
+  **`Show: ok`**.
+  `work/kiem_tag.py` đếm độ phủ **từ chính bố cục** (không tin lời công cụ đo):
+  nó tách "phep đo không với tới" (`khong-neo` 3.335 node, `qua-sau` **9** node)
+  khỏi "đo được mà chưa ghép".
+* **Máy đo chỉ với tới một TIỀN TỐ của danh sách neo, và đó là trần thật của
+  phép đo.** `PROBE_CAY` đi lần lượt từng neo; bản dịch ARM chết giữa đường nên
+  các neo sau chỗ chết không được đi trong lượt đó — chết là chết cả tiến trình,
+  nên vòng lặp neo bị cắt ngang chứ không nhảy qua. Lượt sau bỏ qua đúng nhánh
+  vừa chết (`bo`), nhưng mỗi lượt chỉ bỏ được **một** nhánh, nên tiến rất chậm.
+  Đếm trên `tags_cay.json` (`work/emu_tags.py`, 287 màn / **2.778 neo**): **81
+  neo chưa từng được mở tới (2,9%)** — sau khi `xoay` được sửa và ba nhánh đo
+  được hợp lại; trước lượt đó là **243 (8,7%)**. Chỗ thiếu ấy gồm **hai loại
+  khác hẳn nhau**, phải tách mới đọc đúng: **4 màn không ra dữ liệu nào** (46
+  neo, và 550/33.472 node của bố cục) — cả 4 **không được `sc/` nhắc tới ở đâu**,
+  hai trong đó (`Test_Arm`, `BattleField`) trông là bố cục thử, và **lý do chúng
+  chết sớm chưa được truy**; còn **6 màn đo được nhưng còn neo chưa tới** — nay
+  chỉ còn **35 neo** (trước là 197).
+  Vì sao trần ấy tồn tại, đo được: các nhánh chết **tụm lại trong một ít neo**, và
+  `bo` chỉ bỏ được **một** đường mỗi lượt. Cụ thể: của `UI_Main_ControlPanel`,
+  **16/16** đường `bo` nằm trong neo #2 `lMainBtnLayer` (màn chỉ với tới 2/75 neo
+  khi không quay); của `UI_Mail` **14/14** nằm trong neo #1; của
+  `UI_ArmyGroup_Campsite_Info`, 10/16 nằm trong neo #6. Một neo chứa ≥16 đường
+  chết là đủ tiêu hết `LUOT_MAX` **trước khi đi hết các neo đầu** — nên không quay
+  thì mắc ở đầu danh sách.
+  Trần ấy **đã bị phá, bằng hai đường khác hẳn nhau**. Đường thứ nhất là `xoay`
+  trải đều (hai nhánh đối chứng ở mục "Quay neo" bên dưới): 16 lượt mở đầu ở 16
+  vị trí khác nhau, mỗi lượt phủ một đoạn **sau** chỗ tắc, nên phần đuôi vẫn tới
+  được dù phần đầu còn tắc. Đo lại sáu màn:
+  `UI_Hero` **84 → 163/168**, `UI_Main_ControlPanel` **21 → 68/75**, `UI_Destiny`
+  **7 → 34/42**, `UI_Friends` **28 → 32/33**; `UI_ArmyGroup_Campsite_Info` 9/22 và
+  `UI_Mail` 1/7 **không nhích**. Dấu hiệu nhận ra ngay là **hình dạng tập neo**:
+  trước lượt sửa, cả 6 màn đều cho một **TIỀN TỐ liền mạch từ vị trí 1** (không
+  màn nào có lỗ) — kể cả khi đã dùng hết cả 16 lượt; nay **4 trong 6 màn có LỖ**
+  (`UI_Main_ControlPanel` 68/75 trải trên `1..75`, `UI_Hero` 163/168,
+  `UI_Destiny` 34/42, `UI_Friends` 32/33). Tiền tố cũ chính là triệu chứng của
+  lỗi `xoay`, không phải một tính chất của bộ đo.
+  **Neo bị chặn thì đo thẳng, bằng `--neo`.** Vì neo là thứ **đã biết tên**, phần
+  đầu danh sách chặn phần đuôi thì bỏ hẳn phần đầu đi mà đo: `--neo` nhận đúng
+  danh sách neo cần đo, **theo thứ tự người gọi đưa vào** (neo quan trọng nhất
+  trước, phòng khi tiến trình chết giữa đường), và tên gõ sai thì **cảnh báo**
+  chứ không im lặng bỏ qua. Đo được: `UI_Main_ControlPanel` còn 2 neo chưa tới
+  (`spMainUITheme_newYear_0`, `spMainUITheme_christmas_0` — cả hai là hoạ tiết
+  theo mùa), và màn đi từ **68 → 73/75** neo; neo `snsMainToolArmySoul` (41/75)
+  ra **tag 2**, bốn con của nó ra tag **2, 1, 0, 0** — tức `getChildByTag(1)` mà
+  `CUIBarracksMain` hỏi **có thật trong bản gốc**, chỉ là đầu dò chưa từng tới.
+  Đây là cách phá trần cho **từng** neo, không cần thêm lượt: bỏ phần đầu thì
+  những đường làm chết tiến trình ở phần đầu cũng không còn được chạy.
+  Cả 6 màn đều **không có `DOTREO`** (tên có trong bố cục mà `_G` không có) và
+  **không có `DOCUT`** (`getChildren()` trả `nil`) — nên phần còn thiếu không
+  phải do tên hay cây hỏng, mà đúng là "hết lượt mà chưa tới". Nghĩa là
+  **27.887/33.472 (83,3%) vẫn là CẬN DƯỚI**.
+  `xoay` (quay vòng danh sách neo theo lượt) sinh ra để phá trần đó, nhưng bản
+  đầu làm `k = xoay % len(names)` mà `xoay` chỉ chạy 0..15, nên **với màn nhiều
+  neo thì vị trí mở đầu chỉ nhích trong 16 chỗ đầu** — mọi neo sau vị trí 16
+  vẫn không bao giờ được mở đầu, và đó chính là lý do số đo vẫn ra tiền tố.
+  Nay bước nhảy là `len(names)/16` để 16 lượt trải khắp danh sách. Số đo đối
+  chứng (quay / không quay / trải đều) ở mục "Quay neo" bên dưới.
 * **`CCLayer` bỏ qua điểm neo khi đặt chỗ** (`ignoreAnchorPointForPosition` của
   cocos2d-x 2.x — chuỗi này có trong `libgame.so`, còn `RelativeAnchorPoint`
   của 1.x thì không) — chính chú thích của bản gốc nói thế
@@ -601,6 +699,104 @@ thành 353, và 105 màn mở được thành 244.
   2b ở đầu README). Dữ liệu cũ không báo lỗi mà hỏng lặng lẽ: trên một máy
   mới, `layout_ref` dựng trước khi `layout.py` ghi `zOrder` làm 4 bộ kiểm đỏ,
   và `emu_join` chỉ ghép được tag cho 9.901 node thay vì 17.830.
+
+### Quay neo — và trần thật của phép đo tag
+
+Bộ đo tag đi lần lượt từng **neo** (node có tên, engine đưa ra biến toàn cục), và
+bản dịch ARM chết giữa đường nên neo sau chỗ chết không được đi trong lượt đó.
+Lượt sau bỏ qua đúng nhánh vừa làm chết (`bo`), nên đi xa hơn — nhưng **mỗi lượt
+chỉ bỏ được một nhánh**, nên tiến rất chậm.
+
+Giá trị của việc đi nhiều lượt, đo trên **24 màn đã đo lại** (cột "1 lượt" là bản
+cũ, khi token `DOXONG` còn dùng lại nên **282/286 màn** dừng sau đúng một lượt —
+con số ấy **không phải** kết quả của một lượt chạy đúng, mà của một lỗi):
+
+| | 1 lượt (bản lỗi) | tới 16 lượt |
+|---|---|---|
+| tổng node trên 24 màn | 1.589 | **5.888** |
+| `UI_Hero` | 468 | **2.106** |
+| `UI_RotatingActivity_UI` | 45 | **772** |
+| `UI_Contest` | 192 | **403** |
+| `UI_WCS` | 17 | **372** |
+| `UI_Friends` | 80 | **297** |
+
+Nghĩa là **con số phủ tag là cận dưới**, không phải số cuối: phần thiếu không chỉ
+gồm "chỗ chưa ghép" mà còn "neo chưa từng được mở tới". `xoay` ra đời để phá trần
+ấy, và mục "Tag thật không nằm trong `.xgg`" ở trên ghi lại **vì sao bản đầu của
+`xoay` không phá được gì** (bước nhảy chỉ nhích trong 16 chỗ đầu của danh sách
+neo).
+
+**Đối chứng sạch cho `xoay` — và đây là chỗ một dự đoán của tôi đã SAI.** Chỉ
+**6 trong 287 màn** có neo chưa tới được (xem mục trên), nên đối chứng chỉ chạy
+trên đúng 6 màn ấy: cùng mã, cùng trần 16 lượt, cùng trạng thái đầu vào — cả hai
+nhánh đều **khởi đầu với `bo` RỖNG** (6 màn bị xoá khỏi bản sao trước khi đo), nên
+biến duy nhất khác nhau là `xoay`. Phép so sánh **không** dùng tổng số node (nó
+lẫn với số lượt đã chạy), mà dùng **tập neo tới được** — thứ đã được tuyên bố
+trước khi đo:
+
+| màn (số neo) | cũ `k = xoay % len` | **`--khong-xoay`** | **trải đều `xoay*len/16`** |
+|---|---|---|---|
+| `UI_Main_ControlPanel` (75) | 21 | 2 | **66** |
+| `UI_Hero` (168) | 84 | 73 | **147** |
+| `UI_Destiny` (42) | 7 | 7 | **34** |
+| `UI_Friends` (33) | 28 | 28 | **30** |
+| `UI_ArmyGroup_Campsite_Info` (22) | 9 | 9 | 9 |
+| `UI_Mail` (7) | 1 | 1 | 1 |
+
+Ba điều đọc ra từ bảng này:
+
+* **Sửa `xoay` là đúng, và nhánh cũ không hề có lợi thế nào từ `xoay`.** Lợi thế
+  của nhánh cũ so với `--khong-xoay` (`UI_Main_ControlPanel` 21 so với 2) đến từ
+  **`bo` thừa hưởng**: bản `tags_cay.json` cũ đã tích 16–21 đường `bo` cho màn đó
+  qua nhiều lượt chạy trước, còn nhánh `--khong-xoay` khởi đầu trắng. Bước nhảy
+  cũ chỉ nhích trong 16 chỗ đầu nên tự nó không mở thêm được neo nào.
+* **Trải đều phá được trần, nhưng không phá hết.** 4/6 màn nhích mạnh
+  (`UI_Hero` 73 → 147), 2 màn không nhích (`UI_ArmyGroup_Campsite_Info` — đo được
+  là các đường `bo` của nó rải khắp neo #1..#9 nên mọi cửa sổ đều chết; `UI_Mail`
+  — neo #1 một mình giữ 14/14 đường chết, mà nó là neo đầu của danh sách 7 neo).
+* **Tập neo đổi hình dạng: hết tiền tố, có lỗ.** Trước lượt sửa, cả 6 màn cho một
+  **tiền tố liền mạch từ 1**; nay 4 màn có lỗ, trải tới cuối danh sách
+  (`1..75`, `1..168`, `1..42`, `1..33`). Đây đúng là dấu hiệu đã tuyên bố trước
+  khi đo (`gop_nhanh.py` in `TIEN TO` / `CO LO`) — và nó là **phép kiểm độc lập**
+  cho thấy `xoay` thật sự có tác dụng, chứ không phải nhờ may.
+
+**Một dự đoán của tôi ở đây đã SAI, ghi lại để đừng lặp.** Nhìn số đo của nhánh
+`--khong-xoay` (16/16 đường `bo` của `UI_Main_ControlPanel` tụm trong neo #2, chỉ
+với tới 2/75 neo) tôi kết luận trần là do "cụm đường chết trong một neo", và suy
+tiếp rằng **quay cũng không thể phá** — vì quay đổi chỗ *mở đầu* chứ không đổi số
+đường chết phải dọn. Kết luận ấy **sai**, và sai vì suy từ một màn: đúng là một
+cụm như thế chặn phần đầu, nhưng 16 lượt mở đầu ở 16 vị trí khác nhau thì mỗi lượt
+phủ một đoạn **sau** cụm, nên phần đuôi vẫn tới được. Chỉ tới khi đo nhánh trải
+đều mới thấy (`UI_Main_ControlPanel` 2 → 66). Bài học đúng như nguyên tắc "Đo,
+đừng đoán": mô hình rút ra từ **một** màn không được dùng để kết luận cho **sáu**
+màn.
+
+Chạy lại được cả phép đối chứng này: `work/doi_chung.sh` (hai nhánh, ~40 phút,
+tự chặn nếu chạy chồng) rồi `work/gop_nhanh.py` — script sau in thẳng `TIEN TO` /
+`CO LO` cho từng màn, và **kiểm luôn tính toàn vẹn**: 281 màn không đo lại phải
+giống hệt bản gốc (đo ra **0** khác biệt). Số của ba nhánh nằm cạnh, không phải
+đo lại: `tags_cay.xoaytungnac.json`, `tags_cay.khongxoay.json`,
+`tags_cay.traideu.json`. Log thô của hai nhánh đo lại (`khongxoay.log`,
+`traideu.log`) **không vào kho** — `brave-cross/.gitignore` chặn `*.log` — nên
+muốn xem thì chạy lại `doi_chung.sh`, nó ghi log mới ngay cạnh file JSON.
+
+**Đọc kết quả `emu_tags.py --cay` cho đúng.** Mỗi màn in ra một trong **ba** nhãn:
+
+| nhãn | nghĩa |
+|---|---|
+| `tron` | đi hết danh sách neo **và** không bỏ nhánh nào — không thiếu vì lý do bỏ nhánh |
+| `tron-boN` | đi hết danh sách neo **nhưng bỏ N nhánh** (chúng làm bản dịch ARM chết) — **vẫn thiếu dữ liệu** |
+| `THIEU` | chưa đi hết danh sách neo — vòng lặp neo bị cắt ngang |
+
+Trước đây chỉ có cờ `xong` nên một màn **vừa "tron" vừa thiếu dữ liệu** vẫn đọc ra
+như màn lành — đo được: `UI_COG_CityInfo` "tron" mà chỉ **34/159** node. Hai dấu
+`DOTREO` (tên có trong bố cục mà `_G` không có) và `DOCUT` (`getChildren()` trả
+`nil` giữa cây) **cũng là thiếu dữ liệu**, không phải lành. Trần số lượt cho một
+màn là `LUOT_MAX = 16`; `--khong-xoay` là nhánh đối chứng tắt hẳn quay neo (cùng
+mã, cùng trần, chỉ khác `xoay`); `--neo` đo thẳng đúng những neo được kể tên,
+theo thứ tự đưa vào — dùng để lấy phần đuôi khi phần đầu làm chết tiến trình
+(xem "Máy đo chỉ với tới một TIỀN TỐ" ở trên). Độ sâu bị chặn ở `DEPTH_MAX = 8`,
+và đo ra thì cả kho chỉ có **9 node** vượt quá ngưỡng ấy nên không đáng nâng.
 
 ### Việc tiếp theo, theo thứ tự
 
@@ -671,9 +867,12 @@ thành 353, và 105 màn mở được thành 244.
      ba thanh tài nguyên — suy cấu trúc từ `setNum` / `rollNum`, không có số
      đo đối chiếu. Giờ hiện đúng 50.000 vàng, 0 kim cương, 120/120 thể lực
      của `GameUserBaseInfoReset`.
-7. **Còn thiếu ở `Main`:** hiệu ứng sáng `UITongYong_ItemLight` vẽ thành đốm
-   xanh (có lẽ thiếu hoà màu cộng); `sngFixInfoReflash` (sắp lại con khi đổi
-   cỡ) chưa làm; nhà ở nửa phải lớp cuộn chưa xem được vì chưa có kéo cuộn.
+7. **Còn thiếu ở `Main`:** `sngFixInfoReflash` (sắp lại con khi đổi cỡ) chưa
+   làm; nhà ở nửa phải lớp cuộn chưa xem được vì chưa có kéo cuộn.
+   (Hiệu ứng sáng `UITongYong` từng vẽ thành **đốm xanh** — nay **xong**, xem
+   mục "Đốm xanh ở Main". Phỏng đoán cũ "có lẽ thiếu hoà màu cộng" **đúng**,
+   nhưng nói thế thì chưa dùng được: cách trộn nằm trong **từng khung** của
+   armature, đọc từ tên cách trộn ở `+0x38` của bản ghi khung.)
 8. ~~**Chiến dịch: từ Main vào trận rồi về màn kết thúc**~~ — chạy trọn bằng
    đúng đường của bản gốc. Xem mục "Chiến dịch và sân trận" ngay dưới.
 

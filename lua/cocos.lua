@@ -177,7 +177,22 @@ function Node:getChildByTag(tag)
 	M.tag_misses = M.tag_misses + 1
 	-- Ghi lai cho truot, kem ten node cha va cac tag no THAT SU co. Khong co
 	-- cai nay thi chi biet "co cho hut" chu khong biet hut o dau.
-	local ten = gd:has_meta('xgg_name') and gd:get_meta('xgg_name') or '?'
+	--
+	-- Nhieu node cha KHONG co ten (`?`), va do la lo hong cua chinh nhat ky:
+	-- do duoc 204 luot `? hoi tag 4, chi co: 1,2,3` — cho hut lon nhat trong ca
+	-- bang — ma khong cach nao biet no o man nao. Nen khi cha khong ten thi di
+	-- NGUOC len tim to tien co ten gan nhat va ghi ca duong di.
+	local ten = gd:has_meta('xgg_name') and gd:get_meta('xgg_name') or nil
+	if not ten then
+		local duong, p, sau = {}, gd:get_parent(), 0
+		while p ~= nil and sau < 24 do
+			local t = p:has_meta('xgg_name') and p:get_meta('xgg_name') or nil
+			duong[#duong + 1] = t or '?'
+			if t then break end
+			p, sau = p:get_parent(), sau + 1
+		end
+		ten = '?<' .. table.concat(duong, '<') .. '>'
+	end
 	local codo = {}
 	for i = 0, gd:get_child_count() - 1 do
 		local c = gd:get_child(i)
@@ -204,9 +219,28 @@ function Node:getChildByTagInAllChildren(tag)
 	return nil
 end
 
+-- Ban goc hoi bang TEN TAI NGUYEN cua node (truong 'res' trong .xgg), KHONG
+-- phai 'cls'. Do tren 267 chuoi ma sc/ hoi bang ham nay (296 bo cuc):
+--   * 15 chuoi CHI co o 'res' va khong he co o 'cls' — 'vsInfo', 'rankN',
+--     'cellBg', 'exchangeLabel', 'logoSp', 'lookBtn', 'prize01', 'root',
+--     'scoreLayer', 'ttfNumIos', 'materialNode'... Vay phep
+--     khop theo 'cls' lam 15 cho goi khong bao gio tim thay, tren BAN GOC DA
+--     SHIP. Do la loi cua lop gia lap, khong phai lo hong cua game.
+--   * 0 chuoi chi co o 'cls' — nen them 'res' khong pha gi.
+-- Vi du do duoc: node 'petslist' co res='list', cls='petslist'; node
+-- 'selectTab' co res='selectTab', cls='切换标签' (chu thich cua hoa si). Ca hai
+-- man deu hong y het nhau vi ta khop 'cls'.
+-- Giu 'cls' lam duong du phong: do la cho setStringTag ghi luc chay.
 function Node:getChildByStringTag(s)
 	local gd = raw(self)
-	for i = 0, gd:get_child_count() - 1 do
+	local n = gd:get_child_count()
+	for i = 0, n - 1 do
+		local c = gd:get_child(i)
+		if c:has_meta('res') and c:get_meta('res') == s then
+			return wrap(c)
+		end
+	end
+	for i = 0, n - 1 do
 		local c = gd:get_child(i)
 		if c:has_meta('cls') and c:get_meta('cls') == s then
 			return wrap(c)
@@ -815,6 +849,7 @@ function TableView:reloadData()
 	end
 	self.cells = {}
 	self.theo_so = {}
+	self.goc_y = {}
 	if self.delegate == nil then
 		return
 	end
@@ -853,11 +888,67 @@ function TableView:reloadData()
 				v.position = Vector2(self.le_trai, y)
 				v.visible = true
 				self.cells[#self.cells + 1] = cell
+				self.goc_y[#self.cells] = y
 				self.theo_so[i] = cell
 			end
 			y = y + h
 		end
 	end
+	self.cao_tong = y
+	self:dat_lai_cho()
+end
+
+--[[ Dat lai cho tung o theo do lech dang cuon.
+
+	`ty_le` la ti le NGUOI GOI xin (0..1); `dich` la so pixel suy ra tu no, va
+	duoc tinh lai moi lan vi quang cuon duoc phu thuoc ca noi dung lan khung.
+	Goi sau MOI lan xep lai: cuon roi ma xep lai thi cac o quay ve y goc, mat
+	cho dang xem. Goi ca sau `scrollTo`. ]]
+function TableView:dat_lai_cho()
+	local view_h = 0.0
+	if self.container ~= nil and self.container.getContentSize ~= nil then
+		local _, h = self.container:getContentSize()
+		view_h = h or 0.0
+	end
+	local max_off = self.cao_tong - view_h
+	if max_off < 0 then max_off = 0 end
+	local ty = self.ty_le
+	if ty < 0 then ty = 0 end
+	if ty > 1 then ty = 1 end
+	self.dich = ty * max_off
+	for i, c in ipairs(self.cells) do
+		local v = raw(c.view or c)
+		if v ~= nil then
+			v.position = Vector2(self.le_trai, (self.goc_y[i] or 0.0) - self.dich)
+		end
+	end
+end
+
+--[[ Cuon danh sach toi mot ty le.
+
+	`percent` tinh theo QUANG CUON DUOC, khong phai ca be cao noi dung: 0 la
+	meo tren, 1 la meo duoi. Do la loi cua chinh ban goc, ghi ro o
+	CUISign.lua:905 ("由于tableView的scrollTo是根据 总容器高度-列表可视区域高度
+	做偏移比") va khop voi so hoc cua CUIAssist.scrollToItem
+	(CUIAssist.lua:1455: nRate = nIndex / (nTotal - nLayerLen/nItemLen)).
+
+	Vi vay KHONG duoc lay `percent` lam so pixel: no la ti le, phai nhan voi
+	quang cuon duoc — quang do tinh trong `dat_lai_cho`. Da tung viet sai cho
+	nay va phep do bat duoc: `dich` ra 0.08 thay vi 1864.8.
+
+	Tham so thu hai la CO CHAY HIEU UNG hay khong, khong phai "co cuon hay
+	khong": CUIGuildTableView:ScrollTo (CUIGuildTableViewList.lua:439) truyen
+	false, va CUISBHeroList.lua:119 goi chinh ham do de nhay toi mot muc — neu
+	false la "dung cuon" thi ham mang ten ScrollTo da chang lam gi. Lop gia lap
+	khong co he chay hieu ung nen dat thang: trang thai cuoi y het nhau.
+
+	Nguoi goi co the truyen nil (CUIInfiniteLevelFirstPassRewards.lua:75: nguoi
+	choi moi co BestProsees = 0 nen vong lap khong chay, `fSkipPercent` o lai
+	nil). Ban goc truyen thang vao C++ nen nil thanh 0 — o day lam y vay.
+]]
+function TableView:scrollTo(percent, _)
+	self.ty_le = tonumber(percent) or 0
+	self:dat_lai_cho()
 end
 
 function TableView:dequeueCell(_)
@@ -883,6 +974,9 @@ M.tableViewMgr = {
 		return setmetatable({
 			container = container, delegate = delegate,
 			count = 0, cells = {}, theo_so = {}, le_trai = 0.0,
+			-- Chieu cao noi dung, y goc tung o, ti le nguoi goi xin va do lech
+			-- pixel suy ra tu no. Xem TableView:dat_lai_cho / :scrollTo.
+			cao_tong = 0.0, goc_y = {}, ty_le = 0.0, dich = 0.0,
 		}, TableView)
 	end,
 	CreateTableViewCell = function(_, _, mau)

@@ -152,7 +152,7 @@ func _init() -> void:
 			if (anim.loop_mode != Animation.LOOP_NONE) != want_loop:
 				bad_loop.append(a["name"])
 			# moi xuong tham gia: 3 duong (vi tri, xoay, ti le) x so keyframe,
-			# cong mot khoa doi anh moi keyframe (duong _doi_anh); cong moi
+			# cong mot khoa doi anh moi keyframe (duong _dat_khung); cong moi
 			# xuong cua rig mot khoa an/hien
 			var want_keys := rig.bones.size()
 			for b in a["bones"]:
@@ -191,7 +191,8 @@ func _init() -> void:
 
 		rig.free()
 
-	_doi_anh_theo_khung()
+	_dat_khung_theo_dong_tac()
+	await _tron_theo_khung()
 
 	if n_static > 0:
 		print("%d atlas tinh (khong co dong tac) da bo qua" % n_static)
@@ -202,7 +203,7 @@ func _init() -> void:
 ## Doi anh theo khung, so voi so DO trong file (anim.py): Player000M03W/Fight,
 ## xuong eff010 = (-1,8) (0,3) (0,1) (-1,2) — an 8 khung, hien anh 0 bon khung,
 ## an 2. Keyframe bat dau o tong dur truoc no: khung 0, 8, 11, 12.
-func _doi_anh_theo_khung() -> void:
+func _dat_khung_theo_dong_tac() -> void:
 	print("\n=== doi anh theo khung (Player000M03W) ===")
 	var rig := SngRig.build(ROOT + "Player000", "Player000M03W")
 	if rig == null:
@@ -216,14 +217,124 @@ func _doi_anh_theo_khung() -> void:
 				continue
 			for k in anim.track_get_key_count(t):
 				var args: Array = anim.method_track_get_params(t, k)
-				if args.size() == 2 and args[0] == "eff010":
+				if args.size() >= 2 and args[0] == "eff010":
 					got.append([roundi(anim.track_get_key_time(t, k) * SngRig.FPS), int(args[1])])
 	_check(got == [[0, -1], [8, 0], [11, 0], [12, -1]],
 			"eff010/Fight doi anh dung khung (-1 @0, 0 @8, 0 @11, -1 @12)", str(got))
-	rig._doi_anh("eff010", -1)
+	rig._dat_khung("eff010", -1)
 	var hien := 0
 	for d in rig.displays.get("eff010", []):
 		if d != null and d.visible:
 			hien += 1
-	_check(hien == 0, "_doi_anh(-1) an het cac anh cua xuong", "%d con hien" % hien)
+	_check(hien == 0, "_dat_khung(-1) an het cac anh cua xuong", "%d con hien" % hien)
 	rig.free()
+
+
+## Cach tron theo khung. So voi SO DO tu ban goc, khong phai tu ten:
+##
+##   `UITongYong_ItemLight` — dom xanh o Main. Ca 32 khung deu mang 'screen',
+##   va do tren may ao thi no SANG len o moi kenh => phep tron CONG.
+##   `DaQuZhanShi` — hinh tuong, khong khung nao mang 'screen', do ra TOI di
+##   o kenh g va b => phep tron THUONG.
+##
+## Phep thu nay khoa ca hai dau: du lieu (chuoi trong JSON) va cach dung
+## (vat lieu thuc su gan vao node xuong, co dung BLEND_MODE_ADD khong).
+##
+## Phai de cho THAT vai khung chay qua: duong phuong thuc cua Godot KHONG chay
+## khi goi advance()/seek() — do duoc, `play()` roi `advance(0.5)` thi vat lieu
+## van nguyen, ma de `process_frame` vai lan thi doi. Nen rig phai nam trong cay
+## va phep thu phai la ham cho (await).
+func _tron_theo_khung() -> void:
+	print("\n=== cach tron theo khung ===")
+	var cong := SngRig.build(ROOT + "UITongYong", "UITongYong_ItemLight")
+	if cong == null:
+		_check(false, "dung duoc UITongYong_ItemLight")
+		return
+	# 1. Du lieu: moi khung cua ItemLight phai mang 'screen'. Doc thang tham so
+	# cua duong phuong thuc, khong doc vat lieu — luc nay dong tac chua chay.
+	var ds_ten := cong.animations()
+	var so_screen := 0
+	var so_khac := 0
+	var vi_du := ""
+	for ten_a in ds_ten:
+		var an := cong.player.get_animation(ten_a)
+		for t in an.get_track_count():
+			if an.track_get_type(t) != Animation.TYPE_METHOD:
+				continue
+			for k in an.track_get_key_count(t):
+				var args: Array = an.method_track_get_params(t, k)
+				var b := String(args[2]) if args.size() >= 3 else ""
+				if b == SngRig.BLEND_CONG:
+					so_screen += 1
+				else:
+					so_khac += 1
+					if vi_du == "":
+						vi_du = "%s/%s" % [ten_a, args]
+	_check(not ds_ten.is_empty() and so_screen > 0 and so_khac == 0,
+			"moi khung cua ItemLight mang 'screen'",
+			"screen %d, khac %d (%s)" % [so_screen, so_khac, vi_du])
+
+	# 2. Chay that: cho vai khung roi moi doc vat lieu.
+	#
+	# Kiem tren TUNG Sprite2D chu khong phai node xuong: vat lieu cua node CHA
+	# khong truyen xuong Sprite2D con trong Godot 4 (do bang render that, xem
+	# chu thich o SngRig._dat_khung). Ban dau phep thu nay kiem node xuong nen
+	# van xanh trong khi anh Main khong doi mot diem anh nao.
+	root.add_child(cong)
+	cong.play(ds_ten[0])
+	for _i in 4:
+		await process_frame
+	var dem_add := 0
+	var dem_khac := 0
+	var vi_du_sp := ""
+	for ten in cong.bones:
+		for d in cong.displays.get(ten, []):
+			if not (d is Sprite2D):
+				continue
+			var m: Material = (d as Sprite2D).material
+			if m != null and (m as CanvasItemMaterial).blend_mode == CanvasItemMaterial.BLEND_MODE_ADD:
+				dem_add += 1
+			else:
+				dem_khac += 1
+				if vi_du_sp == "":
+					vi_du_sp = "%s/%s -> %s" % [ten, d.name, m]
+	_check(dem_khac == 0 and dem_add > 0,
+			"chay xong thi moi Sprite2D cua ItemLight mang vat lieu CONG",
+			"add %d, khac %d (%s)" % [dem_add, dem_khac, vi_du])
+
+	# Phep tron phai DOI THEO KHUNG, khong phai gan cung cho ca rig: dung mot
+	# khung 'normal' roi doi sang khung 'screen' thi vat lieu phai doi theo.
+	var xuong := ""
+	for ten in cong.bones:
+		xuong = ten
+		break
+	cong._dat_khung(xuong, 0, "normal")
+	var truoc := _vat_lieu_cua(cong, xuong)
+	cong._dat_khung(xuong, 0, "screen")
+	var sau := _vat_lieu_cua(cong, xuong)
+	_check(truoc == null and sau != null,
+			"cach tron doi theo khung, khong gan cung cho ca rig",
+			"%s: normal -> %s, screen -> %s" % [xuong, truoc, sau])
+	cong.free()
+
+	var thuong := SngRig.build(ROOT + "DaQuZhanShi", "DaQuZhanShi")
+	if thuong == null:
+		_check(false, "dung duoc DaQuZhanShi")
+		return
+	var co_vat_lieu := 0
+	for ten in thuong.bones:
+		if _vat_lieu_cua(thuong, ten) != null:
+			co_vat_lieu += 1
+	_check(co_vat_lieu == 0,
+			"hinh tuong (DaQuZhanShi) khong Sprite2D nao bi dat tron CONG",
+			"%d xuong co vat lieu" % co_vat_lieu)
+	thuong.free()
+
+
+## Vat lieu dang nam tren Sprite2D cua mot xuong; null neu xuong khong co
+## Sprite2D nao (diem gan, rig long nhau) hoac dang ve thuong.
+func _vat_lieu_cua(rig: SngRig, bone: String) -> Material:
+	for d in rig.displays.get(bone, []):
+		if d is Sprite2D:
+			return (d as Sprite2D).material
+	return null

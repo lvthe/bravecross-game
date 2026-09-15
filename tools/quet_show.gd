@@ -56,9 +56,31 @@ const _BOOT_THO := """
 """
 
 
+## Nhat ky "hut tag" moi sinh ra tu luot truoc, roi XOA di — de nho khong phinh
+## theo so man. `cocos.lua` ghi lai moi lan getChildByTag tra ve nil, kem ten
+## node cha va cac tag no THUC SU co.
+##
+## Tra ve MOT CHUOI chu khong phai bang: bang Lua (khoa 1..n) khong doi sang
+## kieu Godot nao ma phep kiem `is Array` / `is Dictionary` bat duoc — da thu ca
+## hai va muc "cho hut nhieu nhat" van in ra trong. Chuoi thi chac chan doc duoc
+## (moi gia tri khac cua `_MOT` deu la chuoi va deu doc duoc).
+const _LAY_HUT := """
+	local c = require('cocos')
+	local out = table.concat(c.tag_miss_log, '\\n')
+	c.tag_miss_log = {}
+	return out
+"""
+
 ## Nap mot module man hinh roi mo moi man MOI ma no vua dang ky.
+##
+## Hut tag duoc dem theo TUNG KHOA man (`~hut`), khong theo TUNG FILE nhu truoc:
+## `moi` cua luot dau tien chua MOI man da dang ky tu `boot_goc()` (876 module),
+## nen neu dem theo file thi ca 1.500 luot hut don het vao bucket cua file dau
+## tien (`CUIAchieve`) va bang "hut theo man" thanh vo dung. Do la loi phep do
+## da mac: `RedPacketMainDlg` bi bao hut 0 trong khi do rieng no ra `hoi=1 hut=1`.
 const _MOT := """
 	local out = Dictionary()
+	local c = require('cocos')
 	local ok, err = pcall(function() require('user.UI.%s') end)
 	if not ok then
 		out['nap'] = tostring(err)
@@ -78,8 +100,12 @@ const _MOT := """
 			end
 		end
 	end
+	local hut = {}
 	for i, m in ipairs(moi) do
+		local h0 = c.tag_misses
 		local ok2, err2 = pcall(function() m.ql:Show(m.ten) end)
+		local dm = c.tag_misses - h0
+		if dm > 0 then hut[#hut + 1] = m.khoa .. '=' .. dm end
 		local obj = m.ql.UI[m.ten]
 		if not ok2 then
 			out[m.khoa] = 'HONG ' .. tostring(err2)
@@ -119,6 +145,7 @@ const _MOT := """
 		-- trong hang, va MOI man sau do chi duoc xep hang chu khong chay.
 		m.ql.AnimationList = {}
 	end
+	out['~hut'] = table.concat(hut, ';')
 	return out
 """
 
@@ -197,8 +224,22 @@ func _init() -> void:
 	var im_ly := []
 	var im_loai := {}
 	var tong := 0
+	var hoi_tong := 0
+	var hut_tong := 0
+	var hut_man := []
+	var hut_loi := {}
 	for m in ds:
+		var hoi0 := int(lua.run("return require('cocos').tag_lookups", "hoi0"))
+		var hut0 := int(lua.run("return require('cocos').tag_misses", "hut0"))
 		var r = lua.run(_MOT % m, "thu " + m)
+		var hoi1 := int(lua.run("return require('cocos').tag_lookups", "hoi1"))
+		var hut1 := int(lua.run("return require('cocos').tag_misses", "hut1"))
+		hoi_tong += hoi1 - hoi0
+		hut_tong += hut1 - hut0
+		var nk = lua.run(_LAY_HUT, "nhat ky hut")
+		if nk is String and not (nk as String).is_empty():
+			for dong in (nk as String).split("\n", false):
+				hut_loi[dong] = int(hut_loi.get(dong, 0)) + 1
 		# Day het hoat canh mo (0,19 giay) sau MOI lan thu: cai nao con do dang
 		# thi chan hang doi cua ca quan ly do.
 		for i in range(8):
@@ -211,6 +252,16 @@ func _init() -> void:
 			if str(k) == "nap":
 				if v != "ok":
 					nap_hong.append("%s: %s" % [m, v])
+				continue
+			if str(k) == "~hut":
+				# "<khoa man>=<so luot hut>;..." — hut theo TUNG MAN.
+				for phan in v.split(";", false):
+					var eq := phan.rfind("=")
+					if eq <= 0:
+						continue
+					var khoa := phan.substr(0, eq)
+					var n := int(phan.substr(eq + 1))
+					hut_man.append([n, khoa])
 				continue
 			tong += 1
 			if v == "ok":
@@ -247,4 +298,22 @@ TUNG MAN HONG:")
 	print("\nCac loi hay gap nhat:")
 	for e in xep.slice(0, 15):
 		print("   x%-4d %s" % [e[0], e[1].substr(0, 110)])
+
+	# Tag: do PHU cua tag do duoc tu may ao tren dung nhung luot hoi ma ma goc
+	# that su goi. Con so nay la thu muc tieu cua item 2(b) trong ROADMAP, va
+	# truoc day khong co cach do nao chay lai duoc.
+	if hoi_tong > 0:
+		print("\nTAG: %d/%d luot getChildByTag co ket qua (%.1f%%), hut %d"
+				% [hoi_tong - hut_tong, hoi_tong,
+					100.0 * (hoi_tong - hut_tong) / hoi_tong, hut_tong])
+	hut_man.sort_custom(func(a, b): return a[0] > b[0])
+	for e in hut_man.slice(0, 12):
+		print("   hut %-4d  %s" % [e[0], e[1]])
+	var hut_xep := []
+	for k in hut_loi:
+		hut_xep.append([int(hut_loi[k]), String(k)])
+	hut_xep.sort_custom(func(a, b): return a[0] > b[0])
+	print("\nCho hut nhieu nhat (ten node cha hoi tag, va cac tag no co):")
+	for e in hut_xep.slice(0, 15):
+		print("   x%-4d %s" % [e[0], e[1].substr(0, 118)])
 	quit()

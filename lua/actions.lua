@@ -23,6 +23,26 @@ return function(C)
 	local dang_chay = {}
 	M.dang_chay = dang_chay
 
+	-- Bo phan tu thu i khoi hang doi: doi cho voi phan tu CUOI roi cat duoi,
+	-- KHONG don het ve truoc.
+	--
+	-- Day dung la ccArrayRemoveObjectAtIndex cua Cocos2d-x, va la thu lam cho
+	-- vong lap cua M.tick dung duoc khi hang doi bi doi ngay giua chung: mot
+	-- ham tien goi stopAllActions/runAction se lam hang doi doi ngay trong luc
+	-- dang duyet. Truoc day cho nay dung table.remove (don het ve truoc) va do
+	-- la loi THAT, do duoc bang tools/verify_cuon.gd:
+	--
+	--   CPublic:SetMaskIsEnable('lNormalDlgMask', false) dat len lop phu mot
+	--   chuoi CCFadeTo(0.2,0) + CCHide; chuoi do bi cat ngay trong chinh khung
+	--   no duoc dat (khong chay lan nao, khong ghi loi nao), nen lop phu dong
+	--   hop thoai ket thuc o vis=true op=0 va NUOT moi cu cham sau do.
+	--   Do la 3 phep kiem hong cua bo do cuon lop thanh pho.
+	local function bo_tai_cho(i)
+		local cuoi = #dang_chay
+		dang_chay[i] = dang_chay[cuoi]
+		dang_chay[cuoi] = nil
+	end
+
 	-- Action co ban ---------------------------------------------------------
 
 	local function co_ban(d)
@@ -296,7 +316,7 @@ return function(C)
 		local gd = raw(node)
 		for i = #dang_chay, 1, -1 do
 			if raw(dang_chay[i].node) == gd then
-				table.remove(dang_chay, i)
+				bo_tai_cho(i)
 			end
 		end
 	end
@@ -309,7 +329,7 @@ return function(C)
 		for i = #dang_chay, 1, -1 do
 			local m = dang_chay[i]
 			if raw(m.node) == gd and m.a.tag == tag then
-				table.remove(dang_chay, i)
+				bo_tai_cho(i)
 			end
 		end
 	end
@@ -341,7 +361,9 @@ return function(C)
 				end
 			end
 			if bo then
-				table.remove(dang_chay, i)
+				bo_tai_cho(i)
+				-- KHONG tang i: phan tu cuoi vua bi doi xuong cho i, no chua
+				-- duoc xet trong khung nay.
 			else
 				i = i + 1
 			end

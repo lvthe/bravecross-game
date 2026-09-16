@@ -24,7 +24,7 @@ Số trong ngoặc là **đo được**, không phải ước lượng. Cách đ
 | Màn hình mở được | **291–292 / 353** | `tools/quet_show.gd` |
 | Hàm máy chủ `Client*` đã có bản offline | **13 / 411** | đếm `sc/` vs `offline/handlers` |
 | Lệnh kịch bản `g_DramaSystem` đã có | **60 / 60** | đối chiếu `sc/plot/drama_*.lua` |
-| Bộ kiểm | **27**, xanh hết | `tools/check.py` |
+| Bộ kiểm | **28**, xanh hết | `tools/check.py` |
 
 > Con số màn hình **dao động ±3 giữa các lần chạy** (đo 3 lần trong ngày:
 > 258, 259, 260; hôm sau: 258, 257; hôm nay, **sáu lần chạy cùng một mã**:
@@ -629,6 +629,7 @@ thứ hai.
 | `getFontSize` | 7 | cỡ chữ đang dùng | `CUINewHandPrivilege.lua:184` lấy cỡ chữ nhãn cha truyền xuống `RichLabel` |
 | `removeAllChildrenAndArray` | 37 | bỏ hết con + huỷ | cùng nghĩa `removeAllChildrenWithCleanup`; khác `removeChildByTag`, ở đây **không** có kho nào nhận lại node |
 | `_lua_getAnimationTime` / `_lua_setAnimationRate` / `_lua_stop` / `_lua_setOpacity` | 97 / 26 / 24 / 2 | 4 lệnh armature | thêm 3 method vào `rig/sng_rig.gd`: `thoi_luong` (giây — **thiếu thì trả 0**, mà 0 giây = đi tiếp ngay), `dat_toc_do`, `dung` (giữ nguyên tư thế: Cocos `stopAnimation` **không** đưa về khung 0) |
+| `_lua_addChildToPlugIn` / `_lua_clearPlugIn` / `_lua_getPlugInPositionInNode` | 33 / 10 / 5 | treo một node Lua lên **điểm gắn** trong bộ xương | số trong tên plug là **số chứ**, đo trên 418 file `.xml` / 587 biến thể, và khoá bằng một ca không thể trùng (`Gashapon` có đúng `PlugIn_4_Hero`/`_5_Word`/`_6_Light`/`_7_HeroName`, còn `CUIUnlockHeroAnimation.lua:166-169` gọi `_lua_clearPlugIn` đúng bốn số 4, 5, 6, 7); `tools/verify_plug.gd` — 12 đạt / 0 hỏng |
 
 Ba thứ **cố ý KHÔNG làm**, ghi rõ để lần sau không đoán:
 
@@ -1084,10 +1085,34 @@ Ba thứ **cố ý KHÔNG làm**, ghi rõ để lần sau không đoán:
    kỳ offset 4 byte nào (quét cả 325 bản ghi), và bản gốc **không hề gọi**
    `setType`/`setMidpoint`/`setBarChangeRate` (**0 chỗ** trong 973 file) — nên
    kiểu thanh hay vòng, và chiều chạy, là mặc định C++ chưa giải. **Không đoán.**
-9. **Nhóm armature còn thiếu** — `sngFixInfoReflash` (27), `_lua_addChildToPlugIn`
+9. ~~**Nhóm armature: ba hàm điểm gắn**~~ — **xong.** `_lua_addChildToPlugIn`
    (2 lúc quét, **33 chỗ gọi** trong mã), `_lua_clearPlugIn` (6 lúc quét / 10),
-   `_lua_getPlugInPositionInNode` (5). `sngFixInfoReflash` nằm trong danh sách
-   thiếu của **cảnh `Main`** từ lâu (CLAUDE.md, mục "(7) còn thiếu ở Main").
+   `_lua_getPlugInPositionInNode` (5) **chưa từng tồn tại** ở lớp giả lập: tên
+   không có trong bảng `Node` nên rơi vào `__index`, trả **bóng**, bóng gọi được
+   → không lỗi nào được ném ra. **Cùng kiểu lỗi im lặng với `_godot_zsort` và
+   `setGray`**, và đây là ca thứ ba.
+   Đoạn khó không phải "gọi được" mà là **số trong tên plug là số thứ tự hay số
+   chứ** — đoán sai thì mọi thứ vẫn chạy, chỉ là nhãn chữ treo vào sai xương, và
+   **không có lỗi nào để đọc ra**. Đo trên 418 file `.xml` / 587 biến thể có
+   plug (`PlugIn_1` 558, `_2` 513, `_3` 512, rồi `_30` 130, `_31` 50, `_11` 48,
+   `_40` 21, `_5` 16, `_60` 16, `_6` 8, `_32` 7, `_4` 5, `_20` 3, `_50` 2,
+   `_102` 1, `_7` 1), và khoá bằng ca không thể trùng ghi ở bảng trên.
+   `tools/verify_plug.gd`
+   (đã vào `check.py`) so **vị trí đọc lúc chạy** với **vị trí ghi trong chính
+   file armature** `Gashapon` — dòng `Star1` có đúng bốn điểm gắn, mỗi điểm **một
+   khoá duy nhất** nên vị trí là hằng số suốt động tác: lệch **0,000 px** cả bốn,
+   hiệu ba cặp khớp `(-1,51 −114,11) / (49,97 −251,80) / (3,50 172,82)`, node
+   treo lên đọc lại **đúng số người gọi đã viết**, và vị trí **toàn cục** của nó
+   bằng gốc điểm gắn cộng đúng độ lệch **0,000 px**.
+   Hai lỗi tự bắt được khi chạy phép đo lần đầu, đáng nhớ: (a) `pp.get_global_transform()`
+   viết bằng `.` — binding của Godot báo lỗi ngay, và **cả `affine_inverse()` trên
+   `Transform2D` cũng vậy**: mọi phương thức, kể cả của kiểu giá trị, phải gọi
+   bằng `:`; (b) node treo lên điểm gắn **giữ nguyên `parent_h` của cha cũ**, nên
+   `getPosition()` đọc lại lệch đúng bằng chiều cao ấy (640) dù node nằm đúng
+   chỗ — đường `addChild` thường cũng đặt lại `parent_h`, nhưng nó chỉ làm khi
+   cha **mới** là `Control`, còn ở đây cha là `Marker2D`.
+   Còn lại của nhóm: `sngFixInfoReflash` (27, nằm trong danh sách thiếu của **cảnh
+   `Main`** từ lâu — CLAUDE.md, mục "(7) còn thiếu ở Main").
 10. **`RichLabel` tách từng chữ** — `getLimitShowCount` (48) và `getLetterEx`.
     Nằm trong lớp C++ `Label` của engine (`RichLabel.lua:550-554` tạo bằng
     `Label:new()` rồi `createWithTTF`). Trả một con số đoán ra ở đây là đổi cách

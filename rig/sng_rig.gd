@@ -191,6 +191,26 @@ func dat_toc_do(he_so: float) -> void:
 		player.speed_scale = he_so
 
 
+## Diem gan (plug) cua ban goc. Bo phan trong .xml dat ten "PlugIn_<n>" hoac
+## "PlugIn_<n>_<gi>" — hau to chi la chu thich cua nguoi thiet ke, khong nam
+## trong so. Do tren 418 file .xml / 587 bien the co plug: PlugIn_1 (558),
+## _2 (513), _3 (512), roi _30 (130), _31 (50), _11 (48), _40 (21), _5 (16),
+## _60 (16), _6 (8), _32 (7), _4 (5), _20 (3), _50 (2), _102 (1), _7 (1).
+##
+## Khop theo SO chu khong theo thu tu xuat hien, va dieu do da kiem bang mot
+## ca khong the trung: Gashapon co dung PlugIn_4_Hero, PlugIn_5_Word,
+## PlugIn_6_Light, PlugIn_7_HeroName — va CUIUnlockHeroAnimation.lua:166-169
+## goi _lua_clearPlugIn dung bon so 4, 5, 6, 7. UIZhanYiFuBen thi moi bien the
+## chi co PlugIn_6_Text, dung cho FBDingJunShanJiaoFei.lua:85 (so 6).
+func plug(idx: int) -> Node2D:
+	var dau := "PlugIn_%d" % idx
+	for ten in bones:
+		var t := String(ten)
+		if t == dau or t.begins_with(dau + "_"):
+			return bones[ten]
+	return null
+
+
 # ------------------------------------------------------------------ noi bo
 
 func _richest_variant() -> String:

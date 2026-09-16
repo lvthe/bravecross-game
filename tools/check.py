@@ -62,6 +62,14 @@ SUITES = [
     # duong Lua (khung suon -> G_SoundManager -> kenh phat) — truoc day cac
     # ten do la BONG nen moi tieng bam nut deu cam.
     ('am thanh',             'script', 'tools/verify_am.gd',     False, []),
+    # Ba ham DIEM GAN cua armature (_lua_addChildToPlugIn / _lua_clearPlugIn /
+    # _lua_getPlugInPositionInNode, 48 cho goi trong ma goc). Truoc day chung
+    # KHONG TON TAI: ten khong co trong bang Node nen roi vao __index, tra ve
+    # mot ham dem lai roi tra nil — khong bao loi, chi la khong co gi duoc treo.
+    # Do bang cach so vi tri do duoc LUC CHAY voi vi tri ghi trong chinh file
+    # armature Gashapon (PlugIn_4..7, dong tac Star1 — ca bon chi co mot khoa,
+    # nen vi tri la hang so).
+    ('diem gan armature',    'script', 'tools/verify_plug.gd',   False, []),
 ]
 
 SCORE = re.compile(r'dat (\d+), hong (\d+)')

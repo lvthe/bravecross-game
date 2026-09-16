@@ -1093,6 +1093,98 @@ function Node:_lua_setOpacity(o)
 	end
 end
 
+-- Diem gan cua armature (plug) --------------------------------------------
+-- Ba ham, 48 cho goi: _lua_addChildToPlugIn 33, _lua_clearPlugIn 10,
+-- _lua_getPlugInPositionInNode 5. Day la cach ban goc treo mot node Lua (nhan
+-- chu, bieu tuong) len mot DIEM CO DINH trong xuong — no di theo dong tac.
+-- Vi du: ten anh hung bay ra roi dinh vao tay (CUIUnlockHeroAnimation) hay
+-- dong "Thoi gian ket thuc" hien dung cho (FBDingJunShanJiaoFei.lua:85).
+--
+-- So trong ten plug la SO CHU, da kiem bang mot ca khong the trung: armature
+-- Gashapon co dung PlugIn_4_Hero / _5_Word / _6_Light / _7_HeroName, va
+-- CUIUnlockHeroAnimation.lua:166-169 goi _lua_clearPlugIn dung 4, 5, 6, 7.
+-- Bang do day du o rig/sng_rig.gd, ham plug().
+--
+-- KHONG co plug thi im lang bo qua: ban goc cung khong bao loi (plug la mot
+-- xuong; khong tim thay thi khong co gi de gan).
+
+-- Tra ve diem gan (node Godot), hoac nil.
+local function _plug_cua(gd, idx)
+	local r = _rig_cua(gd)
+	if r == nil or not r:has_method('plug') or type(idx) ~= 'number' then
+		return nil
+	end
+	return r:plug(math.floor(idx))
+end
+
+-- Tra ve toa do trong he COCOS cua pParent (y huong LEN tu day pParent), chu
+-- khong phai he Godot. Bat buoc phai vay, vi nguoi goi luon lam:
+--
+--     x, y = pNode:_lua_getPlugInPositionInNode(n, pParent)
+--     con:setPosition(x + ..., y + ...)      -- so cong thuc cua ban goc
+--     pParent:addChild(con)
+--
+-- (CUIGainHeroAnimation.lua:502-508, CUIMainBuildingManager.lua:466-470,
+-- CUILottery.lua:2562.) Cong thuc ay viet theo truc y huong len, nen tra ve he
+-- Godot la dao dau moi so cong thuc cua ban goc.
+function Node:_lua_getPlugInPositionInNode(idx, pParent)
+	local plug = _plug_cua(raw(self), idx)
+	local pp = unwrap(pParent)
+	if plug == nil or pp == nil then return 0, 0 end
+	if not pp:has_method('get_global_transform') then return 0, 0 end
+	-- Toa do toan cuc cua diem gan -> ve he cua pParent (Godot, y huong xuong).
+	-- `pp` la node Godot TRAN (unwrap da boc vo), nen goi phuong thuc phai dung
+	-- ':'. Dieu nay dung cho CA kieu gia tri cua Godot: 'affine_inverse()' viet
+	-- bang '.' cung bao loi y nhu tren Transform2D.
+	local p = pp:get_global_transform():affine_inverse() * plug.global_position
+	return p.x, parent_h(pp) - p.y
+end
+
+-- Treo mot node Lua len diem gan. Node duoc go khoi cha cu truoc (ban goc cung
+-- vay: mot node chi co mot cha), roi DAT LAI CHO theo he cua PLUG chu khong
+-- theo he cha cu.
+--
+-- Cho dat lai nay la can thiet chu khong phai cho dep: nguoi goi lam
+-- 'pText:setPosition(0, 0)' TRUOC khi gan, va luc ay node con nam trong bo cuc
+-- nen so 0 duoc doi qua 'to_godot' bang CHIEU CAO CUA CHA CU (thuong 768).
+-- Giu nguyen so Godot ay thi node roi xuong duoi diem gan ~768 px. Nay doc lai
+-- dung so nguoi goi da viet (to_cocos) roi doi lai theo he cua plug, tuc chieu
+-- cao = 0 vi plug la mot DIEM: y_godot = -y_cocos - (1 - ay) * cao.
+function Node:_lua_addChildToPlugIn(idx, pNode)
+	local plug = _plug_cua(raw(self), idx)
+	local con = unwrap(pNode)
+	if plug == nil or con == nil then return end
+	if type(con) ~= 'userdata' and type(con) ~= 'Object' then return end
+	if not con:has_method('get_parent') then return end
+	local x, y = to_cocos(con)
+	local cu = con:get_parent()
+	if cu ~= nil then
+		cu:remove_child(con)
+	end
+	plug:add_child(con)
+	local ax, ay = neo_so(con)
+	local sz = con.size
+	-- Chieu cao de doi truc y: diem gan la mot DIEM, khong co kich thuoc, nen
+	-- lay 0 — dung bang gia tri ma parent_h roi ve khi node khong co cha. Phai
+	-- dat lai: khong thi con giu nguyen chieu cao cua cha CU (640 voi node tao
+	-- luc chay), va getPosition() doc lai se lech dung bang chieu cao do du node
+	-- nam dung cho. Duong addChild thuong cung lam viec nay, nhung no chi lam khi
+	-- cha MOI la Control — o day cha la mot Marker2D.
+	con:set_meta('parent_h', 0.0)
+	con.position = Vector2(x - ax * sz.x, -y - (1.0 - ay) * sz.y)
+end
+
+-- Go node dang treo o diem gan. Ban goc go node da treo RA khoi cay, khong huy
+-- no — nguoi goi giu tham chieu rieng (CUIUnlockHeroAnimation go ra roi moi
+-- removeFromParentAndCleanup chinh cai sprite). Nen o day cung chi go ra.
+function Node:_lua_clearPlugIn(idx)
+	local plug = _plug_cua(raw(self), idx)
+	if plug == nil then return end
+	for i = plug:get_child_count() - 1, 0, -1 do
+		plug:remove_child(plug:get_child(i))
+	end
+end
+
 -- Gan anh theo TEN KHUNG (giong setDisplayFrame(spriteFrameByName(ten))). Ma
 -- goc goi 69 lan luc vao canh Main: khung chon, chan dung, tab, bieu tuong.
 function Node:initWithSpriteFrameName(ten)

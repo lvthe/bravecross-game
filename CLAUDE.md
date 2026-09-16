@@ -437,10 +437,17 @@ họ (chỗ gọi duy nhất của cả kho: `CUIDownload.lua:62-70`). Bản d�
 thanh cho hai luật khác nhau (`L = 1,508p − 23,7`, bằng 0 ở 15,7% trên HUD;
 `H = 2,617p − 8,35` trên thanh thống soái). Bản dựng vẽ tỉ lệ thuận và **ghi
 lại khoảng lệch** (tối đa ~11 px ở khoảng giữa thanh HUD) thay vì chỉnh số cho
-vừa mắt. Cùng loại: `setOrange` (12 chỗ gọi) **cố ý không đặt tên** trong lớp
-giả lập để nó còn rơi vào bộ đếm `M.missing` — chưa đo được nó làm gì thì đừng
-làm cho nó im. Số đo đầy đủ: `ROADMAP.md` §8 việc 8; khoá bằng
-`tools/verify_tien_do.gd` (113 đạt / 0 hỏng).
+vừa mắt. Số đo đầy đủ: `ROADMAP.md` §8 việc 8; khoá bằng
+`tools/verify_tien_do.gd` (120 đạt / 0 hỏng).
+
+`setOrange` thì **đã đo xong** và **không phải chỗ còn thiếu**: nó đổi chương
+trình shader của sprite trong sang `..._Orange` (`r×0,9; g×2,9; b×0`, nguồn ở
+`.rodata 0x7cd0c1`) hoặc trả về bản thường, **chỉ đổi màu chứ không đổi hình**.
+Cả 6 chỗ gọi đều hỏi `GetLanguageName()=="en"`, mà bản dựng không bao giờ ra
+`"en"` (`IS_OPEN_LANGUAGE = false`), nên nhánh chạy được là `false` — và ba lượt
+trên máy ảo cho thấy `setOrange(false)` khác *không gọi gì* **0 / 921.600 điểm
+ảnh**. Đã đặt tên phương thức (`lua/tien_do.lua`, hệ số `HE_ORANGE` ở
+`ui/tien_do.gd`); đường Login → Main vì thế còn **đúng một** API chưa làm.
 
 Bấm được: `lua/cocos.lua` (`M.cham`) + `LuaRuntime.touch_at`, kiểm bằng
 `tools/verify_cham.gd`. Số màn mở được: xem bảng đầu `ROADMAP.md` (đo bằng

@@ -47,6 +47,17 @@ const CCW := 1
 ## Sau ten cua `setType` -> ma trong ban ghi (+0xF4). Thu tu o ROADMAP muc 4.
 const MA_KIEU := {"cw": CW, "ccw": CCW, "lr": LR, "rl": RL, "bt": BT, "tb": TB}
 
+## He so cua chuong trinh Orange — do tu chinh ban goc, khong suy. Nguon shader
+## o `.rodata 0x7cd0c1` (283 byte):
+##
+##     gl_FragColor = texture2D(u_texture, v_texCoord) * v_fragmentColor;
+##     gl_FragColor.r *= 0.9;  gl_FragColor.g *= 2.9;  gl_FragColor.b *= 0.0;
+##
+## No nhan vao rgb SAU khi da nhan `v_fragmentColor`, tuc tuong duong nhan mau ve
+## them mot lan nua — nen o day dat thang vao modulate cua phep ve. Kenh g > 1
+## duoc: Godot khong kep mau dinh truoc khi ghi khung, dung nhu GL.
+const HE_ORANGE := Color(0.9, 2.9, 0.0, 1.0)
+
 ## Bon huong cheo cua o — goc cua chung luon phai nam trong danh sach mau, neu
 ## khong thi quat bi vat goc (xem quat_vong).
 const GOC_GOC := [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]
@@ -54,6 +65,12 @@ const GOC_GOC := [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)
 var pct := 100.0
 var kieu := LR
 var anh: Texture2D = null
+var orange := false
+
+
+## Mau nhan vao phep ve: he so Orange khi dang bat, trang (khong doi gi) khi tat.
+func mau_ve() -> Color:
+	return HE_ORANGE if orange else Color(1, 1, 1, 1)
 
 
 ## Vung ANH (nguon) va vung VE (dich) cua thanh. Tra [] khi khong ve gi.
@@ -145,6 +162,13 @@ func dat_pct(p: float) -> void:
 	queue_redraw()
 
 
+## Bat/tat chuong trinh Orange cua ban goc. Xem `HE_ORANGE` va `S:setOrange`
+## trong `lua/tien_do.lua` de biet vi sao nhanh `false` khong doi mot diem anh.
+func dat_orange(b: bool) -> void:
+	orange = b
+	queue_redraw()
+
+
 ## Doi kieu bang TEN nhu ban goc (`setType("cw")`). Tra false neu ten la.
 func dat_kieu_theo_ten(ten: String) -> bool:
 	var k = MA_KIEU.get(ten)
@@ -164,10 +188,10 @@ func _draw() -> void:
 			return
 		var mau := PackedColorArray()
 		mau.resize((q["diem"] as PackedVector2Array).size())
-		mau.fill(Color(1, 1, 1, 1))
+		mau.fill(mau_ve())
 		draw_polygon(q["diem"], mau, q["uv"], anh)
 		return
 	var o := o_thanh(kieu, pct, size, anh.get_size())
 	if o.is_empty():
 		return
-	draw_texture_rect_region(anh, o[1], o[0])
+	draw_texture_rect_region(anh, o[1], o[0], mau_ve())

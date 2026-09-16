@@ -1714,18 +1714,54 @@ bình thường — nên phép đo theo kiểu **không** hỏi lại kiểu mà
    thanh theo ảnh, `lua/tien_do.lua` mở `setPercentage`/`getPercentage`/`setType`/
    `getType` qua **`C.raw(self)`** (lớp bọc chốt `__index` về bảng `Node`, nên gọi
    `node:dat_pct(...)` trên lớp bọc **im lặng không làm gì** — đã đo), và
-   `tools/verify_tien_do.gd` khoá lại: **113 đạt / 0 hỏng**, đã vào `check.py`.
+   `tools/verify_tien_do.gd` khoá lại: **120 đạt / 0 hỏng**, đã vào `check.py`.
 
    **Còn lại, KHÔNG đoán:** (a) công thức chiều dài đầy ở trên; (b) **góc bắt đầu
    và chiều của vòng** — bản ghi có **12 node kiểu vòng** (`ptType = 0` = `cw`),
    nhưng chỉ **một** trong đó được mã gốc quay thật
    (`ptLoadingGamePercent`, tự nó đảo `cw` ↔ `ccw` trong `CUIDownload.lua:57-69`),
-   nên chiều sai thì không lộ ra; ta đặt 0° = 12 giờ, chiều dương = kim đồng hồ;
-   (c) `setOrange` (12 chỗ gọi, luôn `true` rồi `false` quanh một đoạn) — đo trên
-   bảng phương thức thì nó **chỉ có ở đúng lớp này**, nhưng **làm gì thì chưa
-   đo được**, nên cố ý **không** đặt tên nó trong lớp giả lập: nó vẫn rơi vào bộ
-   đếm `M.missing` để còn thấy là chưa làm, và bộ kiểm có một phép kiểm riêng đòi
-   đúng như vậy.
+   nên chiều sai thì không lộ ra; ta đặt 0° = 12 giờ, chiều dương = kim đồng hồ.
+
+   **(c) `setOrange` — XONG lượt này, và kết quả là nhánh bản dựng đi qua KHÔNG
+   ĐỔI GÌ.** Đo từ file game: `CCProgressTimer::setOrange` ở `0x2bd1d0` (slot
+   vtable `+0x298`; `setGray` `0x2bd218` slot `+0x290`, hai thân hàm giống hệt).
+   Thân hàm thoát sớm nếu `*(uint8*)(self+0x1cc) == 0`, không thì lấy
+   `inner = *(CCSprite**)(*(self+0x1c8)+0x1d8)` rồi gọi `inner->vfunc_0x158(b ?
+   "ShaderPositionTextureColor_Orange" : "ShaderPositionTextureColor")` — **cả
+   hai setter của lớp này đều KHÔNG ghi `b` vào một byte cờ nào**, khác
+   `CCSprite::setGray` (`0x49d6d4`, có `strb.w r1,[r0,#0x23b]`). Nguồn mảnh
+   Orange ở `.rodata 0x7cd0c1` (283 byte):
+   `gl_FragColor = texture2D(u_texture, v_texCoord) * v_fragmentColor;` rồi
+   `r *= 0.9; g *= 2.9; b *= 0.0`. Bảng chỉ số chương trình
+   (`work/shaderghep.py --bang`, đối chiếu mã đăng ký ở `0x4d97ec`): 0 Orange,
+   1 Gray, 9 = bản thường. Cả **6 chỗ gọi** (12 dòng, mỗi chỗ một cặp
+   `true`/`false`) đều có dạng `if X.setOrange then if GetLanguageName()=="en"
+   then true else false end end`, mà bản dựng **không bao giờ ra "en"**
+   (`IS_OPEN_LANGUAGE = false` ở `sc/share/Setting.lua:13` khoá danh sách ngôn
+   ngữ còn **một** mục, cộng `DEFAULT_LANGUAGE = 'vi'`) — nên chỉ nhánh `false`
+   chạy được.
+
+   **Ba lượt trên máy ảo** (`work/emu_pt.py --cam`, node `pMainUIHeroExp` của
+   `UI_Main_ControlPanel_960_640`): *không gọi gì* / `setOrange(true)` /
+   `setOrange(false)` cho ra — *không gọi* vs *`false`*: **0 / 921.600 điểm ảnh
+   khác** (lệch tới 0); *`false`* vs *`true`*: **2.486 điểm khác, TẤT CẢ trong
+   (270,139)-(395,159)** = đúng ô thanh đang vẽ, **0 điểm khác ở ngoài**. Tức
+   chương trình mặc định **đã là** `ShaderPositionTextureColor`, đúng cái mà
+   nhánh `false` đặt vào — bỏ qua nó không sai hình, và đặt tên nó cũng không
+   làm hình đổi. Phép kiểm chương trình Orange trên 2.486 điểm ấy (hệ số lấy từ
+   nguồn shader, ảnh chỉ được phép **bác bỏ**): phép trộn mặc định
+   `GL_ONE`/`GL_ONE_MINUS_SRC_ALPHA` cho điểm màn hình `= S + D*(1-a)`, nên
+   shader đổi `Δ = S*(T-1)`; suy ngược `S` từ `Δ` rồi kiểm ba tầng — **0 điểm
+   sai dấu**, **0 điểm cho `S` ra ngoài `[0,255]`**, và `S` ra **một** màu đỏ
+   nhất quán `(170, 29, 29)` với tỉ số đo được `Δg/Δb = −1,903` so với `−1,9`
+   mà nguồn nói. Công thức cũ "điểm mới = điểm cũ × T" chỉ khớp 1.100/2.486 **vì
+   nó bỏ qua số hạng nền `D*(1-a)`** — con số đó là sai, không phải shader sai.
+   Bản dựng đặt tên phương thức ở `lua/tien_do.lua` (nhánh `false` = không đổi
+   gì, nhánh `true` viết theo đúng nguồn nhưng **không thể chạy ở bản này** nên
+   chưa kiểm được bằng ảnh trong Godot), hệ số ở `ui/tien_do.gd`
+   (`HE_ORANGE`), và `tools/verify_tien_do.gd` khoá lại — **120 đạt / 0 hỏng**,
+   đã vào `check.py`. Bộ đếm `M.missing` trên đường Login → Main từ **2 loại**
+   xuống **1 loại** (`setIsSwallowInBegan ×6`).
 
    **Lượt này có đo lại (b) bằng máy ảo và VẪN không lấy được góc — lý do là đo
    được, không phải vì không thử** (`work/emu_pt.py --kieu`, 11 lượt):

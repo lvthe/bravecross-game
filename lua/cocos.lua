@@ -1087,7 +1087,9 @@ end
 --     (CCLabelTTF) loi goi `setGray` o ban goc KHONG THE chay: no nem loi Lua
 --     that ("attempt to call method 'setGray'"). Cung phep do:
 --     CCLayerColorRoundRect cung khong co, con `setOrange` chi co tren MOT lop
---     duy nhat la CCProgressTimer — khop dung 6 cho goi trong ma goc.
+--     duy nhat la CCProgressTimer — khop dung 6 cho goi trong ma goc, va da lam
+--     o `lua/tien_do.lua` (kem phep do cho thay nhanh `false` — nhanh duy nhat
+--     ban nay di qua — khong doi mot diem anh nao).
 --     Mot chi tiet do duoc nua: `setGray` KHONG phai mot ham duy nhat —
 --     CCSprite va CCButton dung CHUNG mot dia chi ma (0x49d70d), CCScale9Sprite
 --     rieng (0x2d2839), `Label` rieng (0x2cb1c9), CCProgressTimer thi qua slot

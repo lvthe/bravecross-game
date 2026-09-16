@@ -12,7 +12,7 @@
 #   3. Noi day tu bo cuc THAT: node thanh phai la TienDo, o lay theo BAN GHI
 #      (khong theo anh), kieu va phan tram phai dung so trong JSON.
 #   4. Noi day tu phia Lua: `setPercentage` / `setType` cua lop gia lap phai
-#      doi dung node Godot, va `setOrange` (chua lam) phai CON dem duoc la thieu.
+#      doi dung node Godot, va `setOrange` phai doi MAU chu khong doi HINH.
 #
 # Phan HINH (diem anh that) khong do o day: `--headless` dung trinh ve gia nen
 # khong doc duoc diem anh nao (xem ghi chu dau `tools/do_tron.gd`), va o day
@@ -368,15 +368,53 @@ func _kiem_lua() -> void:
 			str(td.kieu))
 	t("getType() doc lai dung 4", lua.run("return PT:getType()", "hoi") == 4)
 
-	# setOrange CHUA LAM (12 cho goi trong ma goc) va phai CON dem duoc la thieu:
-	# neu dat ten no trong lop thi no bien mat khoi bang thieu, tuc khong con ai
-	# nhin thay la chua lam.
+	# setOrange DA LAM (6 cho goi trong ma goc — 12 dong, moi cho mot cap
+	# true/false). Bon dieu phai dung:
+	#
+	#   (a) no KHONG con nam trong bang THIEU: dat ten that roi thi khong duoc
+	#       dem la thieu nua;
+	#   (b) he so phai DUNG bang so doc tu nguon shader Orange
+	#       (`.rodata 0x7cd0c1`), khong duoc "don dep" cho dep;
+	#   (c) doi no chi doi MAU, khong doi HINH — ban goc chi doi chuong trinh
+	#       shader, con da giac tien do khong ai cham vao. Chinh (c) la ly do
+	#       nhanh `false` — nhanh DUY NHAT ban nay di qua (`IS_OPEN_LANGUAGE =
+	#       false` nen khong bao gio ra "en") — khong lam hinh doi mot diem anh
+	#       nao: do duoc 0/921.600 diem bang work/emu_pt.py --cam.
 	var truoc: int = lua.run(
 			"return require('cocos').missing.setOrange or 0", "dem truoc")
-	lua.run("PT:setOrange(true)", "goi setOrange")
+	lua.run("return PT:setOrange(true)", "goi setOrange true")
 	var sau: int = lua.run("return require('cocos').missing.setOrange or 0", "dem sau")
-	t("setOrange van nam trong bang THIEU (chua lam, khong im lang bo qua)",
-			sau == truoc + 1, "truoc %d, sau %d" % [truoc, sau])
+	t("setOrange KHONG con nam trong bang THIEU (da lam that)", sau == truoc,
+			"truoc %d, sau %d" % [truoc, sau])
+
+	t("setOrange(true) -> orange = true", td.orange == true)
+	t("he so Orange = dung so nguon (0,9 / 2,9 / 0,0)",
+			absf(TienDo.HE_ORANGE.r - 0.9) < 1e-6
+			and absf(TienDo.HE_ORANGE.g - 2.9) < 1e-6
+			and absf(TienDo.HE_ORANGE.b - 0.0) < 1e-6, str(TienDo.HE_ORANGE))
+	t("mau ve khi bat = he so Orange; khi tat = trang (khong doi gi)",
+			td.mau_ve().is_equal_approx(TienDo.HE_ORANGE), str(td.mau_ve()))
+	t("setOrange(false) -> tra false, orange = false, mau ve = trang",
+			lua.run("return PT:setOrange(false)", "goi setOrange false") == false
+			and td.orange == false and td.mau_ve().is_equal_approx(Color(1, 1, 1, 1)),
+			str(td.mau_ve()))
+	t("setOrange(nil) -> false (khong duoc bat bua)", lua.run(
+			"return PT:setOrange()", "goi setOrange khong doi so") == false
+			and td.orange == false)
+
+	# (c): vung VE phai giong het khi bat va khi tat — chi mau doi.
+	var o_tat: Array = TienDo.o_thanh(TienDo.LR, 50.0, Vector2(200, 20), Vector2(200, 20))
+	var o_tat_vong: Dictionary = TienDo.quat_vong(TienDo.CW, 50.0,
+			Vector2(40, 40), Vector2(40, 40))
+	lua.run("return PT:setOrange(true)", "bat lai")
+	var o_bat: Array = TienDo.o_thanh(TienDo.LR, 50.0, Vector2(200, 20), Vector2(200, 20))
+	var o_bat_vong: Dictionary = TienDo.quat_vong(TienDo.CW, 50.0,
+			Vector2(40, 40), Vector2(40, 40))
+	t("setOrange chi doi mau: vung ve THANH giong het khi bat va khi tat",
+			o_tat == o_bat, "%s vs %s" % [str(o_tat), str(o_bat)])
+	t("setOrange chi doi mau: quat VONG giong het khi bat va khi tat",
+			o_tat_vong == o_bat_vong, str(o_tat_vong))
+	lua.run("return PT:setOrange(false)", "tra ve tat")
 
 	for e in lua.errors:
 		print("  loi Lua: %s" % e)

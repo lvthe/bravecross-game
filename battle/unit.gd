@@ -164,6 +164,13 @@ func _play_lai(anim_name: String) -> void:
 	_anim = ten
 
 
+## Dong tac dang chay. De tra bang tieng trung don: `hit_config.xml` cua ban goc
+## khoa theo (armature, dong tac, so thu tu cu danh), nen ben ngoai phai biet
+## don vua ra thuoc dong tac nao.
+func dong_tac_dang() -> String:
+	return _anim
+
+
 func alive() -> bool:
 	return fighter != null and fighter.alive()
 

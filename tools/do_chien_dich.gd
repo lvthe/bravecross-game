@@ -645,6 +645,17 @@ func _kiem(lua: LuaRuntime, may_chu: String, offline: String, canh: String,
 		print("  minimap ve: %s" % mm)
 		ds.append(["minimap: ve cham vao dung nut cua bo cuc goc (510x40)",
 				mm.begins_with("nut 510x40") and not mm.contains("cham 0/"), mm])
+		# Tieng trung don: ban goc phat o tang C++ (`hit_config.xml`, khong file
+		# Lua nao doc), ta lam lai trong `_phat_trung_don`. Phep kiem khong hoi
+		# "co tieng khong" — phan lon don danh IM vi 27/37 ten linh khong co du
+		# lieu — ma hoi duong do CO CHAY: phai co CA don co tieng lan don im.
+		var tj: Dictionary = JSON.parse_string(str(
+				lua.run("return require('cocos').tran_nut:dem_tieng()", "tieng")))
+		print("  tieng trung don: %s" % str(tj))
+		ds.append(["tieng trung don chay qua duong cua ban goc",
+				tj != null and int(tj.get("don", 0)) > 0
+				and int(tj.get("phat", 0)) > 0 and int(tj.get("im", 0)) > 0,
+				str(tj)])
 		# "quan 19->23 thong soai 3->0": 5 phan (chu "thong soai" co dau cach).
 		var bn := _bam_nut.split(" ")
 		var bam_ok := bn.size() == 5 and bn[0] == "quan" and bn[2] == "thong"

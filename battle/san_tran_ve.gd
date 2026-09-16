@@ -85,6 +85,12 @@ var _dau: Array = []           ## [ten, x, y] luc ra tran — cho khung()
 var _sprite: Dictionary = {}   ## Sprite cua du lieu quan ta: Troop_<n> la linh dua ra duoc
 var _so_linh := 0              ## so linh da dua ra (danh so thu tu)
 var _so_thuc_tinh := 0         ## so don thuc tinh tuong ta da tung
+## Tieng trung don: tong so don, so don co tieng, so don im. Xem `dem_tieng`.
+var _so_don := 0
+var _so_tieng := 0
+var _so_im := 0
+## {ly do: so don} — chia so im theo nguyen nhan. Xem `_phat_trung_don`.
+var _ly_do_im: Dictionary = {}
 var _goc_x := 0.0              ## o 0 cua san (g_MapZero), toa do cua nut nay
 var _cam := 0.0                ## camera da troi bao nhieu px sang phai
 var _cam_max := 0.0
@@ -224,10 +230,17 @@ func _them(e: Dictionary, doi: int) -> void:
 	u.position = Vector2(u.sx, u.sy)
 	add_child(u)
 	var r := _thu_muc_rig(String(e["ten"]))
+	var ten_hinh := String(e["ten"])
 	if r[0] == "" and String(e["sprite"]) != "":
 		r = _thu_muc_rig(String(e["sprite"]))
+		ten_hinh = String(e["sprite"])
 	if r[0] == "":
 		_thieu_rig[String(e["ten"])] = true
+	# Ten armature de tra HAI bang tieng cua ban goc (sound_config.xml theo hoat
+	# dong, hit_config.xml theo don danh): lay dung ten vua phan giai duoc thanh
+	# thu muc rig. Voi tuong thi `ten` la ten armature that ("ZhaoYun"); voi quan
+	# thi co khi phai lay `sprite` moi ra.
+	e["hinh"] = ten_hinh
 	# Tuong ta giu no cho nut thuc tinh (Combat.Fighter.giu_no).
 	if doi == 0 and e["tuong"]:
 		(e["f"] as Combat.Fighter).giu_no = true
@@ -371,6 +384,7 @@ func tuyet_chieu(ten_hinh: String, doi: int, action: String, so_don: int) -> int
 				u.fighter.anger = full
 				u.fighter.ep_no = true
 				var r: Dictionary = u.fighter.strike(v.fighter, _rng, _rules)
+				_phat_trung_don(u, v, 2)
 				# strike() da tru mau theo don thuong; buoc them / bot cho dung
 				# he so thuc tinh cua ban goc.
 				var bu := float(r.get("damage", 0.0)) * (he_so - 1.0)
@@ -474,6 +488,11 @@ func _mot_buoc(delta: float) -> int:
 		var truoc: float = p[1].fighter.hp
 		var r: Dictionary = p[0].resolve(p[1])
 		var e: Dictionary = _muc[p[0]]
+		# Tieng TRUNG DON: ban goc phat o tang C++ khi don trung, ghep tu loai vu
+		# khi cua ben danh + loai giap cua ben chiu + do manh. Don ky nang dem
+		# "nang" (2), don thuong "nhe" (1) — do manh la DAT, xem `_phat_trung_don`.
+		if not r.is_empty():
+			_phat_trung_don(p[0], p[1], 2 if r.get("skill", false) else 1)
 		# Don thuc tinh cua tuong ta: dem, va phat dong tac Wake cua armature.
 		if r.get("skill", false) and e["tuong"] and p[0].team == 0:
 			_so_thuc_tinh += 1
@@ -1140,6 +1159,72 @@ func so_quan() -> int:
 ## Ten armature khong tim thay du lieu, ngan cach bang dau phay.
 func thieu_rig() -> String:
 	return ",".join(PackedStringArray(_thieu_rig.keys()))
+
+
+## Tieng TRUNG DON cua ban goc, hoac im neu khong tra duoc.
+##
+## Ba manh ghep lai: loai VU KHI cua ben danh (`kitMaterial` theo armature +
+## dong tac + so thu tu cu danh), loai GIAP cua ben chiu (`armorMaterial` theo
+## armature), roi tra bang `events` theo khoa "<kit>_<giap>_<do manh>". Bang goc
+## va luat ghep: xem game/tieng_dong.gd.
+##
+## `do_manh` la DAT, va day la cho phai noi ro: bang goc KHONG ghi no o dau ca —
+## do tren 226 cu danh, the `<strike>` chi mang `index` va `kitMaterial`, con
+## 1 (nhe) hay 2 (nang) la engine C++ quyet dinh luc chay. Ta lay don KY NANG
+## lam "nang": do la phep chia DUY NHAT ma mo hinh tran cua ta co.
+##
+## Nhieu don vi IM, va do la su that cua du lieu chu khong phai loi noi: ten linh
+## trong du lieu tran la armature THAN (Archer, SpearmenN), con vu khi la
+## armature RIENG (ArcherN_Weapon_Normal) chi `dung_lai` moi noi toi. Do tren
+## `data_ref/battle_data.json`: 10/37 ten linh va 31/71 ten tuong tra duoc; rieng
+## cung ten thi khoa `3_3_*` (giap THIT) tro toi `Impact_Archery_Flesh_*` ma hai
+## tieng do khong co subsound trong bank nao — xem BANK.md.
+##
+## Bon nguyen nhan im, do bang `dem_tieng` chu khong doan: `khong-co-danh` (bang
+## goc khong co armature do), `tay-khong` (co danh nhung `kitMaterial = 0`, 10 cu
+## danh), `khong-co-giap` (ben chiu khong co trong bang giap), `khong-co-su-kien`
+## (cap vu khi/giap do khong co khoa — 56/80 khoa thieu), va `thieu-trong-bank`
+## (tra duoc `event:/...` ma bank khong co tieng, ca dang do la `3_3_*`).
+##
+## Ai im thi ghi kem TEN armature, vi do moi la thu can sua. Do tren mot tran
+## chien dich tron (`do_chien_dich --kiem`): 145 don, 51 co tieng, 94 im — TAT CA
+## deu la `khong-co-danh`, chia ra `Archer_VampirE` 89 va `Player000W03W` 5.
+## Kiem lai thi thay khong phai loi cua lop nay: `hit_config.xml` co 40 ten bien
+## the (`*_VampirE`, `*_Dong`, `*_Boss`, `*_Skeleton`), va **0/40** ten do co mat
+## trong `sound_config.xml` lan `danh` — hai bang phia VU KHI cua chinh ban goc
+## deu khong biet chung. Ten GOC (bo hau to) thi co: 36/40 trong `sound_config`,
+## 20/40 trong `danh`. Nen muon co tieng cho chung thi phai BIA mot luat doi ten
+## ma engine C++ chua lo ra — khong lam, theo nguyen tac 1. `Player000W03W` cung
+## vay: co trong `sound_config` (nen NO CO tieng hoat dong) nhung khong co trong
+## `danh` (nen don danh khong co tieng vu khi).
+func _phat_trung_don(u_danh: BattleUnit, u_chiu: BattleUnit, do_manh: int) -> void:
+	if TiengDong.am == null:
+		return
+	_so_don += 1
+	var ev := TiengDong.moi().trung_don(
+			String(_muc[u_danh].get("hinh", "")), u_danh.dong_tac_dang(), 0,
+			String(_muc[u_chiu].get("hinh", "")), do_manh)
+	if ev != "" and TiengDong.am.phat(ev) > 0:
+		_so_tieng += 1
+	else:
+		_so_im += 1
+		var ld := TiengDong.moi().ly_do
+		if ld == "":
+			# Tra duoc su kien ma bank khong co tieng: loi o tang bank, khong
+			# phai tang bang. Ca dang do la `3_3_*` (xem `dem_tieng`).
+			ld = "thieu-trong-bank"
+		if ld == "khong-co-danh":
+			ld += ":" + String(_muc[u_danh].get("hinh", ""))
+		_ly_do_im[ld] = int(_ly_do_im.get(ld, 0)) + 1
+
+
+## Dem tieng trung don, de `tools/do_chien_dich.gd` bao lai. Khong phai de khoe:
+## phan lon don danh IM (xem `_phat_trung_don`), nen con so nay la phep do muc
+## phu that cua duong nay. `im_vi_sao` chia so im theo NGUYEN NHAN, de biet cho
+## nao la loi cua ta con cho nao la du lieu ban goc thieu.
+func dem_tieng() -> String:
+	return JSON.stringify({"don": _so_don, "phat": _so_tieng, "im": _so_im,
+			"im_vi_sao": _ly_do_im})
 
 
 ## Thu muc armature cho mot ten — cung luat voi LuaRuntime._tao_rig: trung ten

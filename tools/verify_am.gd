@@ -160,7 +160,12 @@ func _init() -> void:
 			% [int(tk.get("so_giai_duoc", 0)), int(tk.get("so_event", 0)),
 			   int(tk.get("so_mau", 0)), int(tk.get("so_khong_giai_duoc", 0))])
 
-	# --- 4. Duong Lua THAT: khung suon -> G_SoundManager -> kenh --------------
+	# --- 4. Tieng dong cua ban goc: theo hoat dong va theo don danh ------------
+	# Hai bang nay chi engine C++ doc (khong file Lua nao trong 973 file doc
+	# chung), nen tra bang tay het: game/tieng_dong.gd.
+	_tieng_dong(co, bang_tra)
+
+	# --- 5. Duong Lua THAT: khung suon -> G_SoundManager -> kenh --------------
 	# Ba phan tren moi kiem DU LIEU (file nap duoc, do dai dung, bang tra tra ra
 	# file that). Phan nay kiem cho NOI. Ban goc khong bao gio goi thang file
 	# .ogg: no goi `G_SoundManager:PlaySoundEffect(TEN)` (76 cho) roi xuong
@@ -170,6 +175,212 @@ func _init() -> void:
 	await _duong_lua()
 
 	_ket()
+
+
+## Hai bang tieng cua ban goc — `sound_config.xml` (theo hoat dong) va
+## `hit_config.xml` (theo don danh). Ca hai do `../brave-cross/work/trigger_ref.py`
+## doc ra; o day khong chep lai con so nao, chi doi chieu voi so do.
+##
+## `co` la tap file co that trong kiem ke, `bang_tra` la `event_ref`.
+func _tieng_dong(co: Dictionary, bang_tra: Dictionary) -> void:
+	var txt := FileAccess.get_file_as_string("res://data_ref/trigger_ref.json")
+	if txt.is_empty():
+		print("  (khong co trigger_ref.json — bo qua phan tieng dong)")
+		t("co bang tieng dong cua ban goc", false)
+		return
+	var d: Dictionary = JSON.parse_string(txt)
+	t("bang tieng dong doc duoc", not d.is_empty())
+	if d.is_empty():
+		return
+	var tk: Dictionary = d.get("thong_ke", {})
+	var td := TiengDong.moi()
+
+	# --- Hinh dang: doi chieu voi so do cua trigger_ref.py ---------------------
+	t("sound_config: %d armature" % int(tk.get("so_armature_sound_config", 0)),
+			td.tieng_hoat_dong.size() == int(tk.get("so_armature_sound_config", -1)))
+	t("hit_config: %d armature danh" % int(tk.get("so_armature_hit_config", 0)),
+			td.danh.size() == int(tk.get("so_armature_hit_config", -1)))
+	var n_tieng := 0
+	var n_lap := 0
+	for a in td.tieng_hoat_dong.values():
+		for ds in (a as Dictionary).values():
+			for m in ds:
+				n_tieng += 1
+				if m["lap"]:
+					n_lap += 1
+	t("sound_config: %d tieng" % int(tk.get("so_tieng_hoat_dong", 0)),
+			n_tieng == int(tk.get("so_tieng_hoat_dong", -1)), "%d" % n_tieng)
+	t("sound_config: %d tieng loop" % int(tk.get("so_tieng_lap", 0)),
+			n_lap == int(tk.get("so_tieng_lap", -1)), "%d" % n_lap)
+	var n_cu := 0
+	for a in td.danh.values():
+		for ds in (a as Dictionary).values():
+			n_cu += ds.size()
+	t("hit_config: %d cu danh" % int(tk.get("so_cu_danh", 0)),
+			n_cu == int(tk.get("so_cu_danh", -1)), "%d" % n_cu)
+	t("hit_config: %d cu danh dung lai armature khac" % int(tk.get("so_dung_lai", 0)),
+			td.dung_lai.size() == int(tk.get("so_dung_lai", -1)))
+	t("hit_config: %d bang su kien" % int(tk.get("so_su_kien_trung_don", 0)),
+			td.su_kien.size() == int(tk.get("so_su_kien_trung_don", -1)))
+	# `reuseArmatures` nghia la "dung du lieu cua xuong nao": gia tri treo thi
+	# duong tra cuu im lang mat, khong bao gi.
+	var treo := 0
+	for v in td.dung_lai.values():
+		if not td.danh.has(String(v)):
+			treo += 1
+	t("moi gia tri reuseArmatures deu co du lieu danh", treo == 0, "%d treo" % treo)
+
+	# --- Chieu doc: tra dung tieng cua tung armature ---------------------------
+	# Ba vi du lay thang tu `sound_config.xml`, khong phai tu suy dien:
+	# `Archer/Fight` co dung MOT tieng o khung 10.
+	var n := td.nhip("Archer", "Fight")
+	t("Archer/Fight co dung mot tieng o khung 10",
+			n.size() == 1 and int(n[0]["khung"]) == 10
+			and String(n[0]["su_kien"]) == "event:/Character/Archer/Act_Archer_Fight_Cast"
+			and not bool(n[0]["lap"]), JSON.stringify(n))
+	t("Archer/Wake co tieng", not td.nhip("Archer", "Wake").is_empty())
+	t("armature khong co trong bang thi tra rong",
+			td.nhip("khong_co_armature_nay", "Fight").is_empty())
+	t("dong tac khong co tieng thi tra rong", td.nhip("Archer", "Boom").is_empty())
+	# `loop="1"` co that (7 tieng tren toan bang, vd `WakeLoop` cua Gia Xu).
+	var nl := td.nhip("JiaXu", "WakeLoop")
+	t("tieng `loop=\"1\"` giu co lap",
+			nl.size() == 1 and bool(nl[0]["lap"]), JSON.stringify(nl))
+
+	# --- Chieu tra tieng trung don ---------------------------------------------
+	# Loai vu khi cua Lu Bu khi `Fight` la 1 (sac), giap cua ArcherN la 3 (thit)
+	# -> khoa `1_3_1`. Do thang tu `hit_config.xml`.
+	t("LvBu danh ArcherN (sac/thit/nhe) ra Impact_Sharp_Flesh_Light",
+			td.trung_don("LvBu", "Fight", 0, "ArcherN", 1)
+			== "event:/Impact/Impact_Sharp_Flesh_Light")
+	t("cung do manh nang ra dung ban _Heavy",
+			td.trung_don("LvBu", "Fight", 0, "ArcherN", 2)
+			== "event:/Impact/Impact_Sharp_Flesh_Heavy")
+	# Ten linh trong du lieu tran la armature THAN, con vu khi la armature RIENG:
+	# chi `reuseArmatures` moi noi toi (`ArcherN_Weapon_Normal` -> `DEF_Weapon_3`,
+	# loai 3 = cung).
+	t("ten vu khi tra qua reuseArmatures ra dung loai cung",
+			td.trung_don("ArcherN_Weapon_Normal", "Fight", 0, "Defender", 1)
+			== "event:/Impact/Impact_Archery_Flesh_Light")
+	# Du lieu tran dat ten co duoi trong ngoac ("ZhaoYun(new)",
+	# "Defender(董军入侵)") — VAN la cung armature.
+	t("bo duoi trong ngoac roi van tra ra cung tieng",
+			td.trung_don("ZhaoYun(new)", "Fight", 0, "Defender(董军入侵)", 1)
+			== td.trung_don("ZhaoYun", "Fight", 0, "Defender", 1)
+			and td.trung_don("ZhaoYun", "Fight", 0, "Defender", 1)
+			== "event:/Impact/Impact_Sharp_Flesh_Light")
+	# `kitMaterial = 0` = khong co vu khi (10 cu danh), va `events` khong co
+	# khoa nao bat dau bang "0_" -> tra tiep la vo nghia.
+	t("cu danh co vu khi loai 0 thi khong co tieng",
+			td.trung_don("DEF_Weapon_0", "Fight", 0, "Defender", 1) == "")
+	t("armature khong co du lieu danh thi khong co tieng",
+			td.trung_don("Archer", "Fight", 0, "Defender", 1) == "")
+	t("ben chiu khong co trong bang giap thi khong co tieng",
+			td.trung_don("LvBu", "Fight", 0, "khong_co_giap_nay", 1) == "")
+
+	# --- Vi sao im: bon ma, va phai dung ma -------------------------------------
+	# `dem_tieng` cua `san_tran_ve.gd` chia so don im theo `ly_do`, nen ma sai thi
+	# bang muc phu sai theo. Do tren `trigger_ref.json`: 10 cu danh tay khong,
+	# `danh` khong co armature nao ten `Player*` (do la ly do 94/145 don im).
+	td.trung_don("Archer", "Fight", 0, "Defender", 1)
+	t("im vi armature khong co du lieu danh", td.ly_do == "khong-co-danh",
+			td.ly_do)
+	td.trung_don("DEF_Weapon_0", "Fight", 0, "Defender", 1)
+	t("im vi cu danh tay khong", td.ly_do == "tay-khong", td.ly_do)
+	td.trung_don("LvBu", "Fight", 0, "khong_co_giap_nay", 1)
+	t("im vi ben chiu khong co giap", td.ly_do == "khong-co-giap", td.ly_do)
+	# Khong phai moi cap (loai vu khi, loai giap) deu co khoa: do tren bang goc,
+	# 56/80 khoa thieu. Vi du that: `DEF_Weapon_4` (nhac khi) danh `Hoplite`
+	# (giap sat) -> `4_1_1` khong co.
+	td.trung_don("DEF_Weapon_4", "Fight", 0, "Hoplite", 1)
+	t("im vi cap vu khi/giap khong co khoa", td.ly_do == "khong-co-su-kien",
+			td.ly_do)
+	td.trung_don("LvBu", "Fight", 0, "ArcherN", 1)
+	t("tra duoc thi ly_do rong", td.ly_do == "", td.ly_do)
+
+	# --- Ten bien the: do cho chac, roi de im -----------------------------------
+	# `giap` co nhieu ten bien the ma HAI BANG PHIA VU KHI khong biet. Phep kiem
+	# nay khoa con so, de sau nay khong ai "sua" bang mot luat doi ten bia dat.
+	var loc := RegEx.new()
+	loc.compile("_(VampirE|Dong|Boss|Skeleton|DongBoss)$")
+	var n_bt := 0
+	var n_bt_thd := 0
+	var n_bt_danh := 0
+	var n_goc_thd := 0
+	for k in td.giap:
+		if loc.search(String(k)) == null:
+			continue
+		n_bt += 1
+		if td.tieng_hoat_dong.has(String(k)):
+			n_bt_thd += 1
+		if td.danh.has(String(k)):
+			n_bt_danh += 1
+		if td.tieng_hoat_dong.has(loc.sub(String(k), "", true)):
+			n_goc_thd += 1
+	t("40 ten bien the trong bang giap", n_bt == 40, "%d" % n_bt)
+	t("khong ten bien the nao co trong hai bang phia vu khi",
+			n_bt_thd == 0 and n_bt_danh == 0,
+			"sound_config %d, danh %d" % [n_bt_thd, n_bt_danh])
+	t("ten goc cua chung thi co: 36/40 trong sound_config", n_goc_thd == 36,
+			"%d/%d" % [n_goc_thd, n_bt])
+
+	# --- Moi tieng cua hai bang phai NAP DUOC ---------------------------------
+	# Phep kiem co gia tri nhat: bang tieng tra ra duoc mot chuoi `event:/...`
+	# van chua du nghia — phai co file .ogg that. Do tren ban goc: 375 chuoi
+	# tieng hoat dong thi 360 giai duoc, 38 chuoi trung don thi 36.
+	var thd := {}
+	for a in td.tieng_hoat_dong.values():
+		for ds in (a as Dictionary).values():
+			for m in ds:
+				thd[String(m["su_kien"])] = true
+	var n_hd := 0
+	for e in thd:
+		if bang_tra.has(e):
+			n_hd += 1
+	t("tieng hoat dong: 360/%d chuoi co trong bang tra event" % thd.size(),
+			n_hd == 360 and thd.size() == 375, "%d/%d" % [n_hd, thd.size()])
+	var n_td := 0
+	var thieu_td := []
+	for e in td.su_kien.values():
+		if bang_tra.has(String(e)):
+			n_td += 1
+		else:
+			thieu_td.append(String(e))
+	t("tieng trung don: 36/38 chuoi co trong bang tra event",
+			n_td == 36 and td.su_kien.size() == 38, "%d/%d" % [n_td, td.su_kien.size()])
+	# Va day la CHO HO CUA DU LIEU GOC, phai noi ra chu khong im: dung hai
+	# tieng thieu la `Impact_Archery_Flesh_Light/Heavy` — tuc moi don CUNG
+	# (kitMaterial 3) vao giap THIT (armorMaterial 3) deu cam, ma giap thit moi
+	# la loai pho bien nhat (`DefenderN`, `ArcherN`, `SpearmenN`, `ShieldMaster`
+	# deu la 3). Chung khong co subsound trong bank nao; cung nhom voi 15 chuoi
+	# tieng hoat dong thieu. Xem BANK.md.
+	var dung_2 := true
+	for e in thieu_td:
+		if not e.begins_with("event:/Impact/Impact_Archery_Flesh_"):
+			dung_2 = false
+	t("dung hai tieng thieu la Impact_Archery_Flesh_Light/Heavy",
+			thieu_td.size() == 2 and dung_2, ", ".join(thieu_td))
+	# Moi file ma bang tra tro toi deu phai co trong kiem ke (khong kiem
+	# `FileAccess.file_exists` khong thoi: file mo coi trong thu muc ma khong co
+	# trong kiem ke thi do dai khong ai doi chieu).
+	var n_la := 0
+	for e in thd:
+		if not bang_tra.has(e):
+			continue
+		for f in bang_tra[e]["file"]:
+			if not co.has(String(f)):
+				n_la += 1
+	for e in td.su_kien.values():
+		var k := String(e)
+		if not bang_tra.has(k):
+			continue
+		for f in bang_tra[k]["file"]:
+			if not co.has(String(f)):
+				n_la += 1
+	t("moi file cua bang tieng dong deu co trong kiem ke", n_la == 0,
+			"%d file la" % n_la)
+	print("  tieng dong: %d armature/%d tieng hoat dong, %d armature/%d cu danh"
+			% [td.tieng_hoat_dong.size(), n_tieng, td.danh.size(), n_cu])
 
 
 ## Chay khung suon Lua roi bam thu nhu ban goc bam.
@@ -204,6 +415,7 @@ func _duong_lua() -> void:
 			", ".join(am.bank_da_nap.keys()))
 
 	var m_phat := am.so_phat
+	var m_cho := am.so_cho
 	var m_khong_tra := am.so_khong_tra_duoc
 	var m_thieu := am.so_thieu_file
 	var m_kenh := am.so_het_kenh
@@ -238,10 +450,19 @@ func _duong_lua() -> void:
 
 	var xin := int(r["xin"])
 	var mong := xin + int(r["nhac_goi"])
+	# Phep do dung `so_cho` chu khong `so_phat`: `so_cho` dem DUNG so tieng xin
+	# luc chua vao cay, nen no bang `xin + nhac_goi` chinh xac ke ca khi co
+	# tieng khac chen vao giua hai moc. Tieng do lop tieng-dong cua ban goc phat
+	# (`SngRig._process`, xem game/tieng_dong.gd) roi vao thoi diem nay khi rig
+	# da o trong cay, nen `so_phat` se lon hon — do la ly do phai tach hai phep
+	# do ra, khong phai de noi long phep kiem.
 	t("tieng hen luc _init phat het o khung dau",
-			am.so_phat - m_phat == mong and am.dang_hen() == 0,
-			"phat %d, mong %d, con hen %d"
-			% [am.so_phat - m_phat, mong, am.dang_hen()])
+			am.so_cho - m_cho == mong and am.dang_hen() == 0,
+			"hen %d, mong %d, con hen %d"
+			% [am.so_cho - m_cho, mong, am.dang_hen()])
+	t("khong tieng nao xin luc _init bi mat",
+			am.so_phat - m_phat >= mong,
+			"phat %d, mong it nhat %d" % [am.so_phat - m_phat, mong])
 	t("khong tieng nao thieu file", am.so_thieu_file == m_thieu,
 			"%d" % (am.so_thieu_file - m_thieu))
 	t("khong tieng nao het kenh (12 kenh, xin %d)" % xin,
@@ -281,6 +502,39 @@ func _duong_lua() -> void:
 		return
 	t("unloadBankByName bo duoc ten bank", not am.bank_da_nap.has("EXTRA"))
 	t("khong hong them gi trong luc tat", am.so_het_kenh == m_kenh)
+
+	# --- 6. Tieng theo khung hoat dong, chay THAT tren mot rig ---------------
+	# Phan 4 moi kiem bang tra; phan nay kiem cho NOI: `SngRig` phai tu phat khi
+	# dong tac chay toi khung. Duong do khong ai chay ho duoc — ban goc phat o
+	# tang C++ — nen phep kiem phai la: dung rig that, choi dong tac that, roi
+	# `seek` toi moc cua khung va dem tieng.
+	#
+	# `seek` duoc la vi `SngRig._process` doc `current_animation_position`, chu
+	# khong dua vao track phuong thuc (track phuong thuc KHONG chay khi
+	# `seek`/`advance`, xem chu thich o `_dat_tron`).
+	var rig := SngRig.build("res://assets_ref/Archer")
+	t("dung duoc rig Archer de do", rig != null)
+	if rig != null:
+		root.add_child(rig)
+		rig.position = Vector2(100, 100)
+		# `Archer/Fight` co dung mot tieng, o khung 10 = 10/24 giay (phuong kiem
+		# ngay tren). Khung dau chua toi moc do.
+		rig.play("Fight")
+		await process_frame
+		await process_frame
+		var truoc := am.so_phat
+		rig.player.seek(10.0 / SngRig.FPS + 0.01, true)
+		await process_frame
+		var sau := am.so_phat
+		t("rig tu phat tieng khi dong tac toi khung",
+				sau - truoc == 1, "phat them %d" % (sau - truoc))
+		# Qua moc ma khong choi lai thi khong phat lai lan nua (chi tieng
+		# `loop="1"` moi phat lai khi dong tac quay vong).
+		rig.player.seek(20.0 / SngRig.FPS, true)
+		await process_frame
+		t("qua moc ma khong quay vong thi khong phat lai",
+				am.so_phat - sau == 0, "phat them %d" % (am.so_phat - sau))
+		rig.queue_free()
 
 
 ## Bam thu dung nhu man hinh ban goc bam: qua `G_SoundManager`, khong goi thang

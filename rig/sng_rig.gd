@@ -132,6 +132,7 @@ static func _make(src: Dictionary, dir_path: String, node_name: String,
 	rig._chain[rig.variant] = true
 	rig._build_bones()
 	rig._build_animations()
+	rig._san_sang_tieng()
 	return rig
 
 
@@ -507,3 +508,92 @@ func _add_track(anim: Animation, bone: String, prop: String) -> int:
 	anim.value_track_set_update_mode(idx, Animation.UPDATE_CONTINUOUS)
 	anim.track_set_interpolation_type(idx, Animation.INTERPOLATION_LINEAR)
 	return idx
+
+
+# --------------------------------------------------------------- tieng dong
+
+## Tieng theo KHUNG HOAT DONG cua `sound_config.xml` (xem game/tieng_dong.gd).
+##
+## Ban goc phat chung o tang C++ khi armature chay toi khung, khong qua Lua —
+## nen khong co duong nao "chay ma goc" cho phan nay.
+##
+## Gan vao `AnimationPlayer.animation_started` chu KHONG gan trong `play()`:
+## dong tac con duoc choi bang duong khac — `BattleUnit._play_lai` goi thang
+## `player.play()` + `seek` (battle/unit.gd:156-162) de danh lai tu dau moi don.
+##
+## Do tren bang goc: 276 armature co tieng, 685 tieng, nhung 149/165 dong tac
+## `Fight` chi co DUNG MOT tieng va khong dong tac `Walk`/`Standby` nao co
+## tieng (tru 7 tieng `loop="1"`), nen khong co chuyen tieng buoc chan lam ngap
+## 12 kenh khi ca tran cung di.
+var _tiet_tau: Array = []       ## [{giay, su_kien, lap}] da sap theo giay
+var _tiet_i := 0                ## tieng ke tiep chua phat
+var _tiet_lap := 0              ## chi so tieng `lap` dau tien, = size neu khong co
+var _vi_tri_truoc := 0.0
+
+
+func _san_sang_tieng() -> void:
+	if player == null:
+		return
+	player.animation_started.connect(_dong_moi)
+
+
+func _dong_moi(_ten: StringName) -> void:
+	_tiet_tau = []
+	_tiet_i = 0
+	_tiet_lap = 0
+	_vi_tri_truoc = 0.0
+	# Khong co ai doi tieng (chua mo khung suon Lua, hoac dang o trong trinh
+	# xem rig cua Godot): khong doc bang, khong bat `_process`.
+	if TiengDong.am == null or player == null:
+		set_process(false)
+		return
+	var ten := player.current_animation
+	# Tra theo ten BIEN THE truoc (do la ten armature that trong
+	# `sound_config.xml`), roi moi den ten thu muc — co file ma hai ten do khac
+	# nhau, va bo qua buoc thu hai thi nhung rig do cam.
+	var td := TiengDong.moi()
+	var ten_arm := _ten_armature()
+	var ds := td.nhip(ten_arm, String(ten))
+	if ds.is_empty() and ten_arm != String(name):
+		ds = td.nhip(String(name), String(ten))
+	if ds.is_empty():
+		set_process(false)
+		return
+	for m in ds:
+		# `khung` la chi so khung cua dong tac, va truc thoi gian cua dong tac
+		# duoc dung bang chinh FPS nay (`anim.length = dur / FPS`).
+		_tiet_tau.append({"giay": float(m["khung"]) / FPS,
+				"su_kien": String(m["su_kien"]), "lap": bool(m["lap"])})
+	_tiet_tau.sort_custom(func(a, b): return float(a["giay"]) < float(b["giay"]))
+	_tiet_lap = _tiet_tau.size()
+	for i in _tiet_tau.size():
+		if _tiet_tau[i]["lap"]:
+			_tiet_lap = i
+			break
+	set_process(true)
+
+
+## Ten armature de tra bang tieng: `variant` khi rig nay la mot BIEN THE trong
+## file khac (`ArcherN_Weapon_Normal` nam trong `ArcherN`), khong thi ten thu
+## muc. Bang `sound_config.xml` khoa theo ten armature that.
+func _ten_armature() -> String:
+	return variant if variant != "" else String(name)
+
+
+func _process(_delta: float) -> void:
+	if _tiet_i >= _tiet_tau.size() and _tiet_lap >= _tiet_tau.size():
+		set_process(false)
+		return
+	if player == null or TiengDong.am == null:
+		return
+	var vt := player.current_animation_position
+	if vt < _vi_tri_truoc:
+		# Dong tac quay vong: chi nhung tieng `loop="1"` moi phat lai (7 tieng
+		# tren toan bo bang, vd `WakeLoop` cua Gia Xu).
+		_tiet_i = _tiet_lap
+	_vi_tri_truoc = vt
+	while _tiet_i < _tiet_tau.size() \
+			and float(_tiet_tau[_tiet_i]["giay"]) <= vt:
+		var m: Dictionary = _tiet_tau[_tiet_i]
+		_tiet_i += 1
+		TiengDong.am.phat(String(m["su_kien"]))

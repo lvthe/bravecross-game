@@ -281,6 +281,10 @@ func set_stage(n: Node) -> void:
 	# Kenh am thanh nam trong cay thi moi phat duoc, va nen nam cung cho voi
 	# canh (khong phai goc cua so) de doi canh khong dung toi chung.
 	am.dat_cha(n)
+	# Noi phat cho lop tieng-dong cua ban goc (game/tieng_dong.gd). Day la cho
+	# DUY NHAT dat: tu day tro di, moi `SngRig` dung len deu tu phat tieng theo
+	# khung hoat dong, va tran danh tu phat tieng trung don.
+	TiengDong.am = am
 
 
 func _replace_scene(canh: Node) -> void:

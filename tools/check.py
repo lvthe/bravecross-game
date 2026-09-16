@@ -70,6 +70,13 @@ SUITES = [
     # armature Gashapon (PlugIn_4..7, dong tac Star1 — ca bon chi co mot khoa,
     # nen vi tri la hang so).
     ('diem gan armature',    'script', 'tools/verify_plug.gd',   False, []),
+    # To xam (shader so 1 cua ban goc, `.rodata 0x7ccf00`). Kiem PHAN NOI DAY:
+    # node VE nao doi sang vat lieu xam, node nao khong (nhan di duong Lua,
+    # lop mau chua lam), vat lieu dung chung, va cong thuc trong file
+    # .gdshader — he so sai o do la loi IM LANG nen phai doc file ra kiem.
+    # Phan HINH do bang `tools/do_xam.gd`, chay CO trinh ve that nen khong nam
+    # trong bang nay.
+    ('to xam (Lua)',         'script', 'tools/verify_xam.gd',    False, []),
 ]
 
 SCORE = re.compile(r'dat (\d+), hong (\d+)')

@@ -812,14 +812,70 @@ end
 -- To XAM nut (nut bi khoa / khong du dieu kien). Ban goc goi 683 cho, va DOC
 -- lai trang thai ay 214 cho bang isGray().
 --
--- Nay moi lam phan TRANG THAI, chua lam phan HINH: setGray ghi co, isGray doc
--- co. Truoc day ca hai deu khong lam gi, nen 'isGray()' ra nil — ma nil trong
--- Lua khong bang false lan bang true, nen moi nhanh re theo no deu di sai
--- huong trong im lang ('if btn:isGray() == false then' va 'if not btn:isGray()'
--- nguoc nhau). Phan hinh — lam mo thanh xam the nao — CHUA DO DUOC, xem ROADMAP
--- muc "setGray": do bang cach doc ham binding trong libgame.so.
+-- Hai nua. Phan TRANG THAI (co `gray`) da co tu truoc: thieu no thi 'isGray()'
+-- ra nil, ma nil trong Lua khong bang false lan bang true, nen moi nhanh re
+-- theo no deu di sai huong TRONG IM LANG ('if btn:isGray() == false then' va
+-- 'if not btn:isGray()' nguoc nhau).
+--
+-- Phan HINH: nay da lam cho node VE. Ban goc doi chuong trinh shader cua node
+-- sang chuong trinh so 1 — nguon manh `.rodata 0x7ccf00`:
+--
+--     float alpha = texture2D(CC_Texture0, v_texCoord).a;
+--     float grey  = dot(texture2D(CC_Texture0, v_texCoord).rgb,
+--                       vec3(0.299, 0.587, 0.114));
+--     gl_FragColor = vec4(grey, grey, grey, alpha);
+--
+-- Doc ra bang `brave-cross/work/shaderghep.py --bang`, va tai hien lai roi do
+-- bang `tools/do_xam.gd` (11/11 dat, ke ca bon tinh chat quirks o dau
+-- `ui/xam.gdshader`). Vat lieu o `ui/xam.gd`, bac qua `_godot_dat_xam`.
+--
+-- CHI node VE co ANH moi di duong shader. Ly do tung loai, do chu khong doan:
+--
+--   * `TextureRect` / `NinePatchRect` (CCSprite / CCScale9Sprite) — CO anh,
+--     dung dung chuong trinh tren. Day la loai ma 674 cho goi `setGray` nham
+--     toi: quet 120 node bo cuc trong `_G` thi ca 30 node co `setGray` deu la
+--     sprite (phep do `--co-gi` cua `brave-cross/work/emu_xam.py`).
+--   * `Label` — KHONG. Ban goc to chu bang duong LUA chu khong bang shader:
+--     `CUIPublic:SetLableGray` (`sc/user/Public/CUIPublic.lua:390`) luu
+--     getColor/getEffectColor goc roi dat setColor(50,50,50) +
+--     setEffectColor(190,190,190). Dem duoc: 132 dong goi SetLableGray, trong
+--     khi duong `setGray` tu di xuong con (`CPublic:SetObjGray`) chi co 3 cho.
+--     Them nua, shader xam doc ANH chu ma atlas chu thi mau TRANG — chu se ra
+--     TRANG chu khong ra xam, lai con mat duong vien. Chinh vi vay ma ma goc
+--     co nhieu dong `setGray` tren bien nhan da bi COMMENT san
+--     (`--pBtnText:setGray(true)`), va `SetLableGray` moi la duong that.
+--   * `ColorRect` (CCLayerColorRoundRect) — **CHUA LAM**, va khong doan bua.
+--     Trong ma goc co **12 cho** goi `setGray` nhan vao bien ten kieu lop/nen:
+--     `lItemBackground` (CUIActivityLoginTurnplate.lua:204/211), `bgview`
+--     (CUISign.lua:1006/1020), `upgradeLayer`/`completeLayer`
+--     (CUIResearch.lua:419/430/443/461/489), `pOrdinaryBg` va hai con cua no
+--     (CUIActivityLoginRewards.lua:328/329/330) — dem bang
+--     grep -rn "\(bgview\|upgradeLayer\|completeLayer\|pOrdinaryBg\|lItemBackground\):setGray(".
+--     Da xac dinh duoc DUNG MOT cho trong so do: `lItemBackground` la
+--     **CCSprite** (CUIActivityLoginTurnplate.lua:186 goi `setDisplayFrame` tren
+--     no), nen no di duong TextureRect binh thuong chu khong roi vao day. Sau
+--     cho do thi lop that su KHONG co anh: chuong trinh do doc `CC_Texture0`
+--     khong duoc gan, nen ket qua la rac cua GL chu khong phai mot mau nao ta
+--     suy ra duoc. Gan shader doc anh o day thi Godot se lay anh TRANG mac dinh
+--     va lop mau bien thanh TRANG — sai ro rang; con tu tinh luma cua mau nen
+--     thi la SUY DOAN y do tac gia, khong phai phep do. Muon biet that thi phai
+--     mo ban goc, goi setGray len DUNG node dang duoc VE, roi doi diem anh —
+--     xem ROADMAP muc "setGray".
+--   * Cac node khac (Control rong, node mang armature) — KHONG. Ban goc chi
+--     doi chuong trinh cua CHINH node, ma node do khong tu ve gi: armature ve
+--     o cac node CON cua no nen van giu mau. Dat vat lieu len node cha cung
+--     khong co tac dung gi (do duoc, xem `ui/xam.gd`), tuc khop voi ban goc.
+local function la_node_ve(gd)
+	return gd:is_class('TextureRect') or gd:is_class('NinePatchRect')
+end
+
 function Node:setGray(b)
-	raw(self):set_meta('gray', b and true or false)
+	b = b and true or false
+	local gd = raw(self)
+	gd:set_meta('gray', b)
+	if la_node_ve(gd) then
+		_godot_dat_xam(gd, b)
+	end
 end
 
 function Node:isGray()

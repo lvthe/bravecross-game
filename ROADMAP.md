@@ -24,7 +24,7 @@ Số trong ngoặc là **đo được**, không phải ước lượng. Cách đ
 | Màn hình mở được | **291–292 / 353** | `tools/quet_show.gd` |
 | Hàm máy chủ `Client*` đã có bản offline | **13 / 411** | đếm `sc/` vs `offline/handlers` |
 | Lệnh kịch bản `g_DramaSystem` đã có | **60 / 60** | đối chiếu `sc/plot/drama_*.lua` |
-| Bộ kiểm | **28**, xanh hết | `tools/check.py` |
+| Bộ kiểm | **29**, xanh hết | `tools/check.py` |
 
 > Con số màn hình **dao động ±3 giữa các lần chạy** (đo 3 lần trong ngày:
 > 258, 259, 260; hôm sau: 258, 257; hôm nay, **sáu lần chạy cùng một mã**:
@@ -625,7 +625,7 @@ thứ hai.
 | API | chỗ gọi | làm gì | cơ sở |
 |---|---|---|---|
 | `getColor` / `setEffectColor` / `getEffectColor` | 1.281 mỗi cái | màu chữ + màu viền, lưu/trả được | `CUIPublic:SetLableGray` (`:390-431`) lưu `getColor()` **(3 số)** và `getEffectColor()` **(4 số)** rồi trả lại — trước đây `getColor()` ra `nil` nên `c.r or 255` ghi ra màu gần như trong suốt |
-| `setGray` / `isGray` | 683 / 214 | **trạng thái** xám (chưa làm phần HÌNH) | trước đây `isGray()` ra `nil`, mà `nil` không bằng `false` lẫn `true`, nên cả hai lối viết (`if btn:isGray() == false` và `if not btn:isGray()`) đi sai hướng trong im lặng |
+| `setGray` / `isGray` | 683 / 214 | **trạng thái** xám + **hình** xám cho node VẼ (shader số 1 của bản gốc) | trước đây `isGray()` ra `nil`, mà `nil` không bằng `false` lẫn `true`, nên cả hai lối viết (`if btn:isGray() == false` và `if not btn:isGray()`) đi sai hướng trong im lặng. Phần hình: xem mục "setGray" bên dưới |
 | `setCascadeOpacityEnabled` | 56 | no-op **đúng nghĩa** | 56 chỗ đều truyền `true`; Godot cho `modulate` lan xuống cây **luôn**, tức đã làm sẵn đúng điều được xin |
 | `refreshChildArray` | 45 | no-op **đúng nghĩa** | ở đây không có mảng con nào để dựng lại: `getChildByTag` quét thẳng con của Godot |
 | `setHorizontalAlignment` | 8 | căn chữ | thứ tự enum y `alignH` của `.xgg`, và Godot dùng **đúng ba số 0/1/2** ấy (`ui/xgg_layout.gd:229-233`) |
@@ -652,6 +652,102 @@ Ba thứ **cố ý KHÔNG làm**, ghi rõ để lần sau không đoán:
   `GradualColor` xuất hiện **0 lần** trong toàn bộ `layout_ref/`, tức mọi nhãn
   đều không phải nhãn chuyển màu, và `nil` của ta cho ra **đúng nhánh** mà bản gốc
   đi.
+
+### `setGray`: đã giải xong, bằng hai đường độc lập
+
+`setGray(b)` đổi **chương trình shader** của node sang chương trình số 1 của bản
+gốc. Ba tầng đã nối được với nhau, không còn chỗ nào là suy đoán:
+
+1. **Tên → chỉ số.** `setGray` gọi `vfunc_0x158("ShaderPositionTextureColor_Gray")`.
+   Hàm đăng ký ở `.text 0x4d97ec` dựng **một khối 0x34 byte cho mỗi tên** (nạp
+   chuỗi bằng `ldr r1,[pc,#imm]` + `add r1, pc`, dựng `std::string`, rồi
+   `movs r2, #<chỉ số>` + `bl 0x4d8e1c`). Gray = **chỉ số 1**.
+2. **Chỉ số → nguồn.** Hàm dựng chương trình ở `0x4d8e1c` là một `switch` 18
+   nhánh (`cmp r2, #0x11` rồi `tbh`, bảng nhảy ở `0x4d8e2e`). Mỗi nhánh nạp hai
+   con trỏ **qua GOT** (gốc `0x92ba60`, tính từ `ldr r5,[pc,#0x388]` + `add r5, pc`
+   dùng PC **chưa cắt** — instr+4 — mới ra các ô GOT chia hết cho 4), và ô GOT
+   trỏ tới một **phần tử của bảng nguồn** `.data 0x93caec`; phải `ldr` thêm một
+   lần nữa mới ra chuỗi nguồn. Chỉ số 1 dùng nguồn đỉnh `N[8] = 0x7ca769` và
+   nguồn mạnh `N[18] = 0x7ccf00`.
+3. **Nội dung nguồn mạnh** (nguyên văn): `float alpha = texture2D(CC_Texture0,
+   v_texCoord).a;`, `float grey = dot(texture2D(CC_Texture0, v_texCoord).rgb,
+   vec3(0.299, 0.587, 0.114));`, `gl_FragColor = vec4(grey, grey, grey, alpha);`
+
+Vì sao mọi phép **quét con trỏ** đều cho kết quả âm — và vì sao kết luận cũ
+"địa chỉ dựng bằng `movw`/`movt`" là **sai**: địa chỉ chuỗi được dựng bằng
+**PC-tương-đối**, ô hằng số giữ `đích − pc`, nên trong file **không hề có** 4 byte
+nào bằng địa chỉ chuỗi. `work/shaderghep.py --bang` in ra cả bảng 18 dòng; mỗi
+dòng **đều khớp nghĩa với tên của nó** (đối chiếu độc lập: `PositionColor` ra
+`gl_FragColor = v_fragmentColor;`, `PositionTextureA8Color` ra
+`vec4(v_fragmentColor.rgb, …)`, cả nhóm `Label_*` dùng chung nguồn đỉnh `N[10]`…).
+
+**Bốn tính chất của shader, đo bằng điểm ảnh thật** (`tools/do_xam.gd`, **11/11
+đạt** — ảnh thử `(100,200,50)`, nền đen, đọc điểm giữa ảnh):
+
+| | điều đo được | số |
+|---|---|---|
+| (1) | hệ số Rec.601 ra `153/255 = 0,6000`; Rec.709 cho `0,6585` | cách nhau `0,0585`, gấp 4 lần dung sai `0,01` |
+| (2) | `setColor(255,0,0)` rồi xám → **vẫn xám** | `0,6000` — `v_fragmentColor` khai báo mà không dùng |
+| (3) | `setOpacity(128)` rồi xám → **vẫn đặc** | `0,6000` — alpha lấy từ **ảnh**, không từ node |
+| (4) | node **cha** `modulate 0,5` rồi xám con → **mất luôn phần thừa kế** | `0,6000` chứ không `0,3000` |
+
+(2), (3), (4) là quirks thật của bản gốc, không phải lỗi của ta — và chúng **khớp
+sẵn** với Godot, đo chứ không suy: `COLOR` đầu vào của fragment là `ảnh ×
+modulate`, và kết quả ghi ra **không** bị nhân thêm lần nào nữa (A1..A3), nên
+**ghi đè `COLOR` là bỏ luôn cả `modulate` của chính node lẫn của cha** — đúng bằng
+hành vi trên. Shader bỏ thẳng vào được, không phải bù trừ gì. (4) có cơ sở đọc mã:
+nguồn đỉnh `N[8]` chỉ có `v_fragmentColor = a_color`, mà `a_color` của cocos2d-x
+là màu **hiển thị** — đã gồm màu/độ mờ của cha (`_displayedColor`).
+
+**Đã dựng**: `ui/xam.gdshader` (shader **đầu tiên** của dự án) + `ui/xam.gd`
+(`UiXam.dat` — một `ShaderMaterial` **dùng chung**, gắn lên **chính node vẽ**, vì
+vật liệu của node cha **không** truyền xuống `Sprite2D` con trong Godot 4 — đo ở
+`tools/do_tron.gd`), bắc qua `_godot_dat_xam` trong `game/lua_runtime.gd`, gọi từ
+`lua/cocos.lua:setGray`. Khoá bằng `tools/verify_xam.gd` (**28 đạt / 0 hỏng**).
+
+**Chỉ node VẼ có ảnh** mới đi đường shader — từng loại một, đo chứ không đoán:
+
+* `TextureRect` / `NinePatchRect` (`CCSprite` / `CCScale9Sprite`): **có**. Đây là
+  loại mà 674 chỗ gọi `setGray` nhắm tới — quét 120 node bố cục trong `_G` thì
+  **cả 30 node có `setGray` đều là sprite**.
+* `Label`: **không**. Bản gốc tô chữ bằng đường **Lua** (`CUIPublic:SetLableGray`
+  — lưu `getColor()`/`getEffectColor()` gốc rồi đặt `setColor(50,50,50)` +
+  `setEffectColor(190,190,190)`): đếm được **132 dòng gọi**, trong khi đường
+  `setGray` tự đi xuống con (`CPublic:SetObjGray`) chỉ có **3 chỗ**. Thêm nữa,
+  shader xám đọc **ảnh chữ** mà atlas chữ thì màu **trắng** — chữ sẽ ra **trắng**
+  chứ không ra xám, lại còn mất đường viền. Chính vì vậy trong mã gốc có nhiều
+  dòng `setGray` trên biến nhãn **đã bị comment sẵn** (`--pBtnText:setGray(true)`).
+* `ColorRect` (`CCLayerColorRoundRect`): **CHƯA LÀM, và không đoán bừa.** Đếm
+  chính xác: `setGray` được gọi **12 chỗ** trên các biến tên kiểu lớp/nền —
+  `lItemBackground` (CUIActivityLoginTurnplate 2), `bgview` (CUISign 2),
+  `upgradeLayer`/`completeLayer` (CUIResearch 5), `pOrdinaryBg` **và hai con của
+  nó** qua `getChildByTag(4)`/`(5)` (CUIActivityLoginRewards 3); lệnh đếm:
+  `grep -rn "\(bgview\|upgradeLayer\|completeLayer\|pOrdinaryBg\|lItemBackground\):setGray("`.
+  Song **đã xác định được một trong số đó không thuộc trường hợp này**:
+  `lItemBackground` là **`CCSprite`** — `CUIActivityLoginTurnplate.lua:186` gọi
+  `setDisplayFrame` trên chính nó — nên nó đi đường `TextureRect` bình thường.
+  Số còn lại thì **chưa biết** node đó có ảnh hay không (`bgview`,
+  `pOrdinaryBg` + hai con, `upgradeLayer`, `completeLayer`).
+  Lý do không làm: lớp màu **không có ảnh**, mà chương trình xám của bản gốc thì
+  đọc `CC_Texture0` — với lớp màu thì texture đó **không được gắn**, nên kết quả
+  là rác của GL chứ không phải một màu nào suy ra được. Gắn shader đọc ảnh ở đây
+  thì Godot lấy ảnh **trắng** mặc định và lớp màu biến thành **trắng** — sai rõ
+  ràng; còn tự tính luma của màu nền thì là **suy đoán ý tác giả**, không phải
+  phép đo. Muốn biết thật phải mở bản gốc, gọi `setGray` lên **đúng node đang
+  được vẽ**, rồi đổi điểm ảnh.
+* Node khác (Control rỗng, node mang armature): **không**. Bản gốc chỉ đổi chương
+  trình của **chính** node, mà node đó không tự vẽ gì; armature vẽ ở các node
+  **con** của nó nên vẫn giữ màu — và gắn vật liệu lên node cha trong Godot cũng
+  không có tác dụng gì, tức hai bên khớp nhau.
+
+**Còn lại của phép đo trên máy ảo** (`work/emu_xam.py`): bộ đó **không** dùng để
+đo nữa, nhưng giữ lại vì nó là **bản ghi giới hạn của máy ảo**, còn dùng cho mọi
+phép đo sau: `getChildren()` và `isVisible()` làm **SIGSEGV** translator (nên
+không chạy được `CPublic:SetObjGray` ở đó), `scheduleOnce` báo thành công mà
+**không bao giờ chạy**, **một lỗi Lua giết cả tiến trình kể cả trong `pcall`**,
+đọc trường metatable **không** dùng được làm phép thử có-mặt với `CDFSpriteRole`
+(khác hẳn với việc *gọi* method), và `_G.btnMainStore` **không phải** node đang
+được vẽ (đổi chỗ `-3000,-3000` → **0 điểm ảnh**).
 
 
 - [~] Ải vô tận / Epic / SB / COG (11 màn) — **con số 11 sai, và sai kiểu đã
@@ -1017,7 +1113,8 @@ Ba thứ **cố ý KHÔNG làm**, ghi rõ để lần sau không đoán:
    > 264–265 tới 292 gồm **hai đoạn khác hẳn nhau, đừng gộp**: 264–265 → 268–270
    > là **việc thật** làm sau mục này (vẫn trên thước cũ, xem khối ngay trên), còn
    > 268–270 → 291–292 và `im 23 → 0` là **thước đo đổi**, **không màn nào mới mở
-   > ra**. Cùng lý do, `check.py` ở đây ghi **24/24** — nay là **27/27**. Giữ
+   > ra**. Cùng lý do, `check.py` ở đây ghi **24/24** — nay là **27/27**, và
+   > **29/29** ở lượt sau (con số hiện hành: bảng ở mục 0). Giữ
    > nguyên các số cũ vì chúng là bản ghi của từng lượt; muốn đối chiếu ngang thì
    > chạy lại `emu_tags.py` / `emu_join.py` rồi đo bằng thước mới.
 
@@ -1058,7 +1155,8 @@ Ba thứ **cố ý KHÔNG làm**, ghi rõ để lần sau không đoán:
    Chống hồi quy: `quet_show.gd` — so **danh sách TÊN màn hỏng** giữa hai lượt
    cùng mức (65 hỏng): **giống hệt nhau**; các lượt còn lại nằm trong dải đã ghi
    (`264–265 / 23 / 65–66`, dao động ±3). `check.py` **25/25** lúc đó, nay
-   **27/27**. Dải `264–265` ấy cũng là **thước đo cũ** (chưa nhả khung): cùng
+   **27/27** — và **29/29** ở lượt sau (con số hiện hành: bảng ở mục 0). Dải
+   `264–265` ấy cũng là **thước đo cũ** (chưa nhả khung): cùng
    phép đo này chạy trên thước mới ra **291–292 / 0 / 61–62** — xem khối
    "thước đo đổi" ở đầu ROADMAP.
    Ba chỗ **ĐẶT**, ghi rõ trong `cuon.lua`: ngưỡng phân biệt bấm-với-kéo **12 px**

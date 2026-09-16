@@ -125,6 +125,7 @@ func open() -> bool:
 	state.globals["_godot_log"] = func(s): print("[lua] ", s)
 	state.globals["_godot_copy"] = _copy
 	state.globals["_godot_frame"] = _frame
+	state.globals["_godot_dat_xam"] = _dat_xam
 	state.globals["_godot_zsort"] = _zsort
 	state.globals["_godot_load_xgg"] = _load_xgg
 	state.globals["_godot_new_node"] = _new_node
@@ -487,6 +488,13 @@ func _frame(node: Control, name: String) -> bool:
 	if node == null or name.is_empty():
 		return false
 	return UiFrames.set_frame(node, name)
+
+
+## To xam mot node ve (CCSprite / CCScale9Sprite). Xem ui/xam.gdshader de biet
+## vi sao cong thuc dung nhu vay, va lua/cocos.lua:setGray de biet vi sao chi
+## node CO ANH moi di duong nay.
+func _dat_xam(node: Control, bat: bool) -> void:
+	UiXam.dat(node, bat)
 
 
 ## Bang chu tieng Viet cua ban goc (data_ref/text_vi.json, 16.894 khoa).

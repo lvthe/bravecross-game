@@ -343,6 +343,51 @@ return function(C)
 		return nil
 	end
 
+	-- Tam dung / chay lai ----------------------------------------------------
+	-- Ten `pauseActions`/`resumeActions` trong ban goc KHONG chi dung action:
+	-- `CCNode::pauseActions` goi `pauseSchedulerAndActions` cua Cocos, tuc la
+	-- dung CA bo quan ly action LAN bo hen gio cua node. Do duoc trong
+	-- `libgame.so` (in lai bang `brave-cross/work/binder.py --nut`):
+	--   +0xdc = bo quan ly action   (runAction/stopAllActions/stopActionByTag/
+	--                                getActionByTag/numberOfRunningActions deu
+	--                                doc dung o nay)
+	--   +0xd8 = bo hen gio          (khong mot ham action nao doc no)
+	--   +0xe0 = m_bRunning, va ca runAction lan schedule truyen `!m_bRunning`
+	--           xuong (`ldrb r3,[r0,#0xe0]` roi `eor r3,r3,#1`) — nhan ra duoc
+	--           nho chinh phep phu dinh do, dung chu ky cua Cocos.
+	-- `pauseActions` (0x4aeb88) va `resumeActions` (0x4aeacc) goi CA HAI o.
+	-- Phan hen gio nam o `lich` trong cocos.lua; o day lam phan action.
+	--
+	-- Danh dau TUNG MUC dang chay chu khong bo khoi danh sach, va khung hinh
+	-- tam dung KHONG cong don thoi gian — nho vay luc chay lai khong nhay mot
+	-- buoc. Chi danh dau muc DANG CO: action chay sau khi da tam dung thi chay
+	-- binh thuong, dung nhu Cocos (`pauseTarget` khong doi `m_bRunning`).
+	function M.pauseActions(node)
+		local gd = raw(node)
+		local n = 0
+		for i = 1, #dang_chay do
+			local m = dang_chay[i]
+			if raw(m.node) == gd then
+				m.tam_dung = true
+				n = n + 1
+			end
+		end
+		return n
+	end
+
+	function M.resumeActions(node)
+		local gd = raw(node)
+		local n = 0
+		for i = 1, #dang_chay do
+			local m = dang_chay[i]
+			if raw(m.node) == gd and m.tam_dung then
+				m.tam_dung = nil
+				n = n + 1
+			end
+		end
+		return n
+	end
+
 	-- Goi moi khung hinh tu GDScript. Tra ve so action con dang chay.
 	function M.tick(dt)
 		local i = 1
@@ -352,8 +397,10 @@ return function(C)
 			-- is_instance_valid la ham TOAN CUC cua Godot, khong phai phuong
 			-- thuc cua node. Goi kieu gd:is_instance_valid(gd) thi Lua bao
 			-- 'attempt to call a nil value' va ca he action dung im.
+			-- Van kiem tra ca khi dang tam dung: muc cua node da bi xoa van
+			-- phai duoc don, khong thi o lai trong danh sach mai.
 			local bo = gd == nil or not is_instance_valid(gd)
-			if not bo then
+			if (not bo) and not m.tam_dung then
 				local ok, xong = pcall(m.a.tien, m.a, m.node, dt)
 				bo = (not ok) or xong
 				if not ok and C.loi_hen then

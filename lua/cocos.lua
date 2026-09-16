@@ -844,6 +844,29 @@ end
 --     TRANG chu khong ra xam, lai con mat duong vien. Chinh vi vay ma ma goc
 --     co nhieu dong `setGray` tren bien nhan da bi COMMENT san
 --     (`--pBtnText:setGray(true)`), va `SetLableGray` moi la duong that.
+--   * Day la ket qua DO, khong phai suy luan. Doc bang bind cua `libgame.so`
+--     (`brave-cross/work/binder.py --xam`; 132 lop, 3.523 ban ghi method, moi
+--     bang ket thuc bang mot ban ghi 12 byte toan so 0 nen moc chan la that) thi
+--     `setGray` co DUNG 5 lop — CCSprite, CCScale9Sprite, CCButton, Label,
+--     CCProgressTimer — va **CCLabelTTF thi KHONG co**. Nen voi nhan chu thuong
+--     (CCLabelTTF) loi goi `setGray` o ban goc KHONG THE chay: no nem loi Lua
+--     that ("attempt to call method 'setGray'"). Cung phep do:
+--     CCLayerColorRoundRect cung khong co, con `setOrange` chi co tren MOT lop
+--     duy nhat la CCProgressTimer — khop dung 6 cho goi trong ma goc.
+--     Mot chi tiet do duoc nua: `setGray` KHONG phai mot ham duy nhat —
+--     CCSprite va CCButton dung CHUNG mot dia chi ma (0x49d70d), CCScale9Sprite
+--     rieng (0x2d2839), `Label` rieng (0x2cb1c9), CCProgressTimer thi qua slot
+--     +0x290. Bon duong, khong phai mot.
+--   * NHUNG dung vi the ma bao moi dong `setGray` bi comment la vi thieu method
+--     — da kiem va KHONG dung. Cac dong bi comment nam LAN voi mot loi goi
+--     `SetLableGray` ngay tren no (`CUIHeroInfoMainUI.lua:190-191` va :200-201:
+--     `g_CUIPublic:SetLableGray(pBtnText, false)` roi `--pBtnText:setGray(false)`),
+--     tuc do la mot lan DOI DUONG chu khong phai mot loi goi sai. Va nguoi nhan
+--     khong chi toan nhan chu: co ca NUT (`buyButton` CUIActivityFund.lua:246,
+--     `replayButton` CUIArenaRecord.lua:186, `btn` CUIHeroInfoFightSoulUI.lua:697)
+--     ma CCButton thi **co** setGray — o nhung cho do, comment la LUA CHON,
+--     khong phai bat buoc. Chua do duoc tung dong mot (ten bien khac nhau theo
+--     tung man hinh, khong suy tu ten) nen o day khong ket luan thay.
 --   * `ColorRect` (CCLayerColorRoundRect) — **CHUA LAM**, va khong doan bua.
 --     Trong ma goc co dung **12 cho** goi `setGray` nhan vao nam bien ten kieu
 --     lop/nen. Da tra tan noi tung cho mot bang bo cuc goc
@@ -1600,6 +1623,50 @@ function lich:scheduleOnce(obj, ham, tre)
 end
 
 function lich:release() end
+
+-- Dung / chay lai MOI hen gio da dang ky cho mot doi tuong — dung y
+-- `CCScheduler::pauseTarget`/`resumeTarget` cua Cocos. `pauseActions` cua ban
+-- goc goi ca hai bo (xem chua thich o `actions.lua` va `binder.py --nut`),
+-- nen phan hen gio phai nam o day chu khong the bo qua.
+-- `S_CCSchedule` la mot the hien `CCSchedule` dung chung (engine.lua:22), tuc
+-- chinh la bo hen gio cua moi node: nen hen gio cua node dang bi tam dung thi
+-- `pauseActions` dung luon chung — do la hanh vi cua ban goc, khong phai y ta.
+-- So khop theo dung doi tuong da dang ky (`self` man hinh hoac node), giong
+-- Cocos so theo con tro.
+function lich.tam_dung(obj)
+	local n = 0
+	for _, h in ipairs(lich.ds) do
+		if h.obj == obj and not h.dung then
+			h.dung = true
+			n = n + 1
+		end
+	end
+	return n
+end
+
+function lich.chay_lai(obj)
+	local n = 0
+	for _, h in ipairs(lich.ds) do
+		if h.obj == obj and h.dung then
+			h.dung = false
+			n = n + 1
+		end
+	end
+	return n
+end
+
+-- Hai ham nay o DAY chu khong nam cung cum action o tren: chung phai cham ca
+-- `lich`, ma `lich` la mot local khai bao ngay tren — dat chung len tren thi
+-- ten `lich` roi vao global (nil) va loi chi lo ra luc chay.
+function Node:pauseActions()
+	M.actions.pauseActions(self)
+	lich.tam_dung(self)
+end
+
+function Node:resumeActions()
+	M.actions.resumeActions(self)
+	lich.chay_lai(self)
+end
 
 -- So hen MOT LAN con cho: canh dang doi, man hinh dang doi goi lai.
 function lich.cho()

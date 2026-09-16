@@ -42,6 +42,7 @@ func _init() -> void:
 	lua.run("thu = require('cocos').wrap(_n)", "boc node")
 
 	_kiem_action(lua, n)
+	_kiem_tam_dung(lua, n)
 	_kiem_anh(lua, n)
 
 	for e in lua.errors:
@@ -147,6 +148,127 @@ func _kiem_action(lua: LuaRuntime, n: Control) -> void:
 	lua.run("thu:runAction(S_CCShow:create())", "show")
 	lua.tick(0.1)
 	t("Show hien lai", n.visible)
+
+
+func _kiem_tam_dung(lua: LuaRuntime, n: Control) -> void:
+	print("=== tam dung (pauseActions / resumeActions) ===")
+
+	# Ban goc: CCNode::pauseActions goi pauseSchedulerAndActions cua Cocos — dung
+	# CA bo quan ly action LAN bo hen gio cua node (do trong libgame.so: +0xdc la
+	# bo action, +0xd8 la bo thu hai, va pause/resume cham ca hai; in lai bang
+	# `brave-cross/work/binder.py --nut`).
+	#
+	# Cai DUOC kiem o day, va vi sao no dang kiem: khung hinh tam dung khong
+	# duoc cong don thoi gian. Neu cong don thi buoc dau sau khi chay lai da
+	# nhay thang toi dich — sai han so voi ban goc.
+	#
+	# Cac con so thoi luong o day do MINH dat ra cho phep kiem, khong phai cua
+	# ban goc. Cai duoc kiem la NGU NGHIA: dung han, khong nhay, khong bi cat.
+
+	lua.run("""
+		thu:stopAllActions(); thu:setPosition(0, 0)
+		thu:runAction(S_CCMoveTo:create(1.0, 100, 0))
+	""", "tam dung: dat")
+	for i in range(3):
+		lua.tick(0.1)
+	var x_truoc := n.position.x
+	t("tam dung: chay duoc nua duong", absf(x_truoc - 30.0) < 2.0, "x=%.1f" % x_truoc)
+
+	lua.run("thu:pauseActions()", "tam dung")
+	lua.tick(1.0)
+	lua.tick(1.0)
+	t("tam dung: dung han, khong nhuc nhich",
+			absf(n.position.x - x_truoc) < 0.001, "x=%.1f" % n.position.x)
+	t("tam dung: action con trong danh sach (bi dung, khong bi cat)",
+			int(lua.run("return thu:numberOfRunningActions()", "dem")) == 1,
+			"con %s" % lua.run("return thu:numberOfRunningActions()", "dem 2"))
+
+	lua.run("thu:resumeActions()", "chay lai")
+	lua.tick(0.05)
+	t("chay lai: khung hinh tam dung KHONG cong don thoi gian",
+			absf(n.position.x - (x_truoc + 5.0)) < 1.5, "x=%.1f" % n.position.x)
+	lua.tick(0.7)
+	t("chay lai: di not phan con lai", absf(n.position.x - 100.0) < 0.5,
+			"x=%.1f" % n.position.x)
+
+	# Action chay SAU khi da tam dung thi chay binh thuong: Cocos `pauseTarget`
+	# khong doi `m_bRunning`, nen action them sau khong bi dinh.
+	# Doi bang SCALE chu khong doi cho: hai MoveTo tren cung mot node thi cai
+	# sau de len cai truoc (ca hai deu ghi vi tri) — dung nhu Cocos, nhung no
+	# lam phep kiem "action cu van dung" do nham ngay tu dau.
+	lua.run("""
+		thu:stopAllActions(); thu:setPosition(0, 0); thu:setScale(1)
+		thu:runAction(S_CCMoveTo:create(1.0, 0, 100))
+	""", "them sau: dat")
+	lua.tick(0.2)
+	var y_truoc := n.position.y
+	lua.run("""
+		thu:pauseActions()
+		thu:runAction(S_CCScaleTo:create(1.0, 2.0))
+	""", "them sau: tam dung roi them")
+	lua.tick(0.5)
+	t("action them SAU khi tam dung thi chay binh thuong",
+			absf(n.scale.x - 1.5) < 0.06, "scale=%.3f" % n.scale.x)
+	t("action cu van dung", absf(n.position.y - y_truoc) < 0.001,
+			"y=%.1f -> %.1f" % [y_truoc, n.position.y])
+	lua.run("thu:resumeActions(); thu:stopAllActions(); thu:setScale(1)", "don")
+
+	# Node khac khong bi dinh.
+	var n2 := TextureRect.new()
+	n2.size = Vector2(100, 50)
+	n2.set_meta("xgg_name", "thu2")
+	n2.set_meta("cocos", Vector4(0, 0, 0, 0))
+	n2.set_meta("parent_h", 640.0)
+	lua.state.globals["_n2"] = n2
+	lua.run("thu2 = require('cocos').wrap(_n2)", "boc node 2")
+	lua.run("""
+		thu:setPosition(0, 0); thu2:setPosition(0, 0)
+		thu:runAction(S_CCMoveTo:create(1.0, 100, 0))
+		thu2:runAction(S_CCMoveTo:create(1.0, 100, 0))
+	""", "hai node")
+	lua.tick(0.2)
+	lua.run("thu:pauseActions()", "tam dung node 1")
+	lua.tick(0.5)
+	t("tam dung node nay khong dung node khac",
+			absf(n.position.x - 20.0) < 2.0 and n2.position.x > 60.0,
+			"thu=%.1f thu2=%.1f" % [n.position.x, n2.position.x])
+	lua.run("thu:resumeActions(); thu:stopAllActions(); thu2:stopAllActions()", "don")
+	n2.free()
+
+	# Hen gio cua CHINH node do cung dung theo. Dua ham vao bang lop rieng theo
+	# TEN node — dung co che that cua lop gia lap (cocos.lua `lop_rieng`), chu
+	# khong tu them duong tat nao cho phep kiem.
+	# Node PHAI duoc boc SAU khi dat lop rieng: `wrap` chot `__index` ngay luc
+	# boc (cocos.lua:85), dat sau thi node da tro vao `Node` roi va ten ham roi
+	# vao ham rong cua `Node.__index` — hen gio se "chay" ma khong lam gi.
+	var n3 := TextureRect.new()
+	n3.set_meta("xgg_name", "thu3")
+	n3.set_meta("cocos", Vector4(0, 0, 0, 0))
+	n3.set_meta("parent_h", 640.0)
+	lua.state.globals["_n3"] = n3
+	lua.run("""
+		_dem = { so = 0 }
+		require('cocos').lop_rieng['thu3'] = setmetatable({
+			dem = function(self, dt) _dem.so = _dem.so + 1 end },
+			{ __index = require('cocos').Node })
+	""", "lop rieng truoc khi boc")
+	lua.run("thu3 = require('cocos').wrap(_n3)", "boc node 3")
+	lua.run("S_CCSchedule:scheduleOnce(thu3, 'dem', 0.3)", "hen gio")
+	lua.tick(0.1)
+	lua.run("thu3:pauseActions()", "tam dung hen gio")
+	lua.tick(1.0)
+	t("hen gio cua node bi tam dung thi khong chay",
+			int(lua.run("return _dem.so", "dem hen 1")) == 0,
+			"so=%s" % lua.run("return _dem.so", "dem hen 1b"))
+	lua.run("thu3:resumeActions()", "chay lai hen gio")
+	lua.tick(0.15)
+	t("chay lai: thoi gian tam dung khong tinh vao hen gio",
+			int(lua.run("return _dem.so", "dem hen 2")) == 0,
+			"so=%s" % lua.run("return _dem.so", "dem hen 2b"))
+	lua.tick(0.10)
+	t("chay lai: du gio thi hen chay", int(lua.run("return _dem.so", "dem hen 3")) == 1,
+			"so=%s" % lua.run("return _dem.so", "dem hen 3b"))
+	n3.free()
 
 
 func _kiem_anh(lua: LuaRuntime, n: Control) -> void:

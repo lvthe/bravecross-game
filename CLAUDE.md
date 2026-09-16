@@ -397,6 +397,30 @@ nhất** trong toàn bộ mã gốc gọi `setType`, và nó chạy
 quét** mỗi nửa vòng. Đo trước/sau bằng chính bộ kiểm: **44 đạt / 8 hỏng** →
 **54 đạt / 0 hỏng** (`tools/verify_lua_actions.gd`).
 
+**Bảng mã kiểu đã được dữ liệu xác nhận, không chỉ bảng phương thức.** Quét cả
+325 node và đối chiếu mã kiểu với **tỉ lệ ô**: kiểu `0` (`cw`) — **12 node, 11
+vuông**, tỉ lệ dài/ngắn **1,00..1,05**, cả 12 là vòng đếm ngược / vòng nạp; kiểu
+`2` (`lr`) — 262 node, **1,00..61,43**; kiểu `3` (`rl`) — 49 node, **8,57..24,00**;
+kiểu `4` (`bt`) — 2 node, **1,00..4,18**; `ccw (1)` và `tb (5)` **không node nào**.
+Tức **vòng thì ô vuông, thanh thì ô dài** — khớp bảng `setType` của engine
+(ccw=1, cw=0, lr=2, rl=3, bt=4, tb=5) mà bản dựng đang dùng.
+
+**Và câu hỏi "bán kính lấy theo ô hay theo ảnh" không đặt ra được:** 12 node vòng
+có ảnh **đúng bằng** ô (7 node) hoặc lệch **đúng 1 px** (5 node: 27×27 cho ô 28×28;
+21×22 cho ô 22×23), **0 node lệch hơn**. Hai luật chỉ khác nhau nửa điểm ảnh.
+
+**Góc bắt đầu / chiều quay của vòng: VẪN KHÔNG ĐO ĐƯỢC, và đã ghi lý do đo được**
+(11 lượt `work/emu_pt.py --kieu`): node vòng thật duy nhất nhìn thấy được nằm
+**dưới** lớp UI của cảnh Main (đổi `setPercentage` → **0 điểm ảnh**);
+`ptLeaderShipTimer` — node vòng có tên thứ hai — có `vis = False` **trong bản ghi**;
+10 node còn lại **không có tên** nên không gọi được từ Lua; và đổi `setType`
+**khác họ** (thanh → vòng) cho ra **hình rác**, không phải hình quạt — đo trên
+`g_ptWarSoulTBar` (ô 71×297, `bt`): `cw` ở 25/50/75% ra **cùng 7820 điểm ảnh trên
+cùng khung**, `ccw` ra **0 điểm**; trong khi đổi **cùng họ** thì đúng (`bt`→`tb`
+chuyển dải đáy thành dải đỉnh). Mã gốc cũng **chỉ** gọi `setType` trong cùng một
+họ (chỗ gọi duy nhất của cả kho: `CUIDownload.lua:62-70`). Bản dựng vì thế vẫn
+**đặt** 0° = 12 giờ và chiều dương = kim đồng hồ, ghi rõ là ĐẶT.
+
 **Chiều dài đầy KHÔNG tỉ lệ với phần trăm, và cơ chế thật CHƯA tìm ra** — hai
 thanh cho hai luật khác nhau (`L = 1,508p − 23,7`, bằng 0 ở 15,7% trên HUD;
 `H = 2,617p − 8,35` trên thanh thống soái). Bản dựng vẽ tỉ lệ thuận và **ghi

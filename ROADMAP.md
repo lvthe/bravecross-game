@@ -1188,7 +1188,11 @@ vật liệu của node cha **không** truyền xuống `Sprite2D` con trong God
 **Còn lại của phép đo trên máy ảo** (`work/emu_xam.py`): bộ đó **không** dùng để
 đo nữa, nhưng giữ lại vì nó là **bản ghi giới hạn của máy ảo**, còn dùng cho mọi
 phép đo sau: `getChildren()` và `isVisible()` làm **SIGSEGV** translator (nên
-không chạy được `CPublic:SetObjGray` ở đó), `scheduleOnce` báo thành công mà
+không chạy được `CPublic:SetObjGray` ở đó), `getType()` **cũng chết y như vậy**
+(đo 2026-09-16: in xong `KI|nut|ptLoadingGamePercent|userdata` rồi SIGSEGV ngay,
+fault addr `0x64041ef1`, `GLThread`; còn `setType` và `setPercentage` thì chạy
+bình thường — nên phép đo theo kiểu **không** hỏi lại kiểu mà đo bằng hình vẽ),
+`scheduleOnce` báo thành công mà
 **không bao giờ chạy**, **một lỗi Lua giết cả tiến trình kể cả trong `pcall`**,
 đọc trường metatable **không** dùng được làm phép thử có-mặt với `CDFSpriteRole`
 (khác hẳn với việc *gọi* method), và `_G.btnMainStore` **không phải** node đang
@@ -1657,10 +1661,12 @@ không chạy được `CPublic:SetObjGray` ở đó), `scheduleOnce` báo thàn
      đầy từ **dưới lên** (`+181` đáy → `+0`). Tức 2 phải là `lr` và 4 phải là
      `bt` — đúng như bảng.
    * **Hình dạng node, một chữ ký hoàn toàn khác:** **12 node kiểu 0 đều là hình
-     VUÔNG** (28×28 `ptShapeChangeTimer` ×4, 22×23 `ptLeaderShipTimer`, 95×95 ×3,
-     45×45 ×4, 81×81 `ptLoadingGamePercent`), còn node kiểu 2 **đều dài** (78×13
-     ×114, 120×28 ×17, 350×13 ×16…). Vòng thì vuông, thanh thì dài — nên **0/1 là
-     vòng, 2..5 là thanh**, và không node vòng nào bị vẽ thành thanh.
+     VUÔNG** (28×28 ×4, 22×23 `ptLeaderShipTimer`, 95×95 ×3, 45×45 ×3, 81×81
+     `ptLoadingGamePercent`), còn node kiểu 2 **đều dài** (78×13 ×114, 120×28 ×17,
+     350×13 ×16…). Vòng thì vuông, thanh thì dài — nên **0/1 là vòng, 2..5 là
+     thanh**, và không node vòng nào bị vẽ thành thanh. (Số đo lại lượt này trên
+     cả 325 node, đầy đủ ở mục 8 việc 8: kiểu 0 có tỉ lệ dài/ngắn **1,00..1,05**,
+     kiểu 2 **1,00..61,43**, kiểu 3 **8,57..24,00**, kiểu 4 **1,00..4,18**.)
 
    **Vẽ là CẮT, không phải PHÓNG TO** — đo bằng cách so từng điểm ảnh giữa hai lượt
    chạy chỉ khác nhau ở `setPercentage`: mép neo đứng yên ở mọi mức, mép kia chạy,
@@ -1707,7 +1713,8 @@ không chạy được `CPublic:SetObjGray` ở đó), `scheduleOnce` báo thàn
    `tools/verify_tien_do.gd` khoá lại: **113 đạt / 0 hỏng**, đã vào `check.py`.
 
    **Còn lại, KHÔNG đoán:** (a) công thức chiều dài đầy ở trên; (b) **góc bắt đầu
-   và chiều của vòng** — cả kho chỉ có **đúng một** node vòng chạy thật
+   và chiều của vòng** — bản ghi có **12 node kiểu vòng** (`ptType = 0` = `cw`),
+   nhưng chỉ **một** trong đó được mã gốc quay thật
    (`ptLoadingGamePercent`, tự nó đảo `cw` ↔ `ccw` trong `CUIDownload.lua:57-69`),
    nên chiều sai thì không lộ ra; ta đặt 0° = 12 giờ, chiều dương = kim đồng hồ;
    (c) `setOrange` (12 chỗ gọi, luôn `true` rồi `false` quanh một đoạn) — đo trên
@@ -1715,6 +1722,49 @@ không chạy được `CPublic:SetObjGray` ở đó), `scheduleOnce` báo thàn
    đo được**, nên cố ý **không** đặt tên nó trong lớp giả lập: nó vẫn rơi vào bộ
    đếm `M.missing` để còn thấy là chưa làm, và bộ kiểm có một phép kiểm riêng đòi
    đúng như vậy.
+
+   **Lượt này có đo lại (b) bằng máy ảo và VẪN không lấy được góc — lý do là đo
+   được, không phải vì không thử** (`work/emu_pt.py --kieu`, 11 lượt):
+   (i) node vòng thật duy nhất nhìn thấy được nằm **dưới** lớp UI của cảnh Main
+   (đo ở lượt trước: đổi `setPercentage` cho ra **0 điểm ảnh**);
+   (ii) `ptLeaderShipTimer` — node vòng **có tên** thứ hai — có `vis = False`
+   **ngay trong bản ghi**, cả nó lẫn cha `lBattlefieldArmy`;
+   (iii) 10 node vòng còn lại **không có tên** nên không gọi được từ Lua (máy ảo
+   chết khi duyệt con: `getChildren`/`getChildrenCount` SIGSEGV, và `getType`
+   cũng vậy);
+   (iv) đổi `setType` **khác họ** (thanh → vòng) trên một node thanh cho ra hình
+   **rác**, không phải hình quạt. Số đo trên `g_ptWarSoulTBar` (ô 71×297,
+   `bt`): `cw` ở **25 / 50 / 75%** cho ra **cùng đúng 7820 điểm ảnh trên cùng
+   khung** 303,200..356,450 (quạt thì ba phần trăm phải khác nhau), còn `ccw` cho
+   ra **0 điểm**; trong khi đổi **cùng họ** thì đúng — `bt` → `tb` chuyển dải đáy
+   334,394..356,450 thành dải đỉnh 303,200..356,256, khớp 25% của chiều cao. Nên
+   mã gốc **chỉ** gọi `setType` trong cùng một họ (vòng ↔ vòng), đúng như chỗ gọi
+   **duy nhất** của cả kho (`CUIDownload.lua:62-70`), và lấy node thanh ra đo vòng
+   là đo ngoài vùng dùng được. Thêm một cái bẫy của chính phép đo: mặt nạ hiệu
+   hai ảnh trộn **hình dạng đa giác** với **vùng đục của chính tấm ảnh**, nên
+   "khung bao" không đọc ra bán kính.
+   **Nhưng bảng mã kiểu thì nay đã có bằng chứng từ chính DỮ LIỆU** (không cần
+   máy ảo) — quét cả 325 node, đối chiếu mã kiểu với **tỉ lệ ô** và **kích thước
+   ảnh**:
+   * `cw (0)`: **12** node, **11 vuông** (95², 81², 45², 28²; node thứ 12 là
+     22×23), tỉ lệ dài/ngắn **1,00..1,05**; cả 12 là vòng đếm ngược / vòng nạp
+     (`ui_time01`, `ui_shijiandaojishi`, `ui_background205`, `ui_background084`,
+     `loading_2`)
+   * `lr (2)`: **262** node, chỉ **3 vuông**, tỉ lệ **1,00..61,43**
+   * `rl (3)`: **49** node, **0 vuông**, tỉ lệ **8,57..24,00**
+   * `bt (4)`: **2** node, 1 vuông, tỉ lệ **1,00..4,18**
+   * `ccw (1)` và `tb (5)`: **không node nào** — khớp bảng đếm {12, 262, 49, 2}
+   Tức **vòng thì ô phải vuông, thanh thì ô dài** — khớp bảng mã `setType` của
+   engine (ccw=1, cw=0, lr=2, rl=3, bt=4, tb=5) mà bản dựng đang dùng, và nay
+   khớp với **dữ liệu**, không chỉ khớp với phép đọc bảng phương thức.
+   Và câu hỏi "bán kính lấy theo **ô** hay theo **ảnh**" hoá ra **không đặt ra
+   được** với dữ liệu thật: **7/12** node vòng có ảnh **đúng bằng** ô (95² cho
+   `ui_background084`, 81² cho `loading_2`, 45² cho `ui_background205` bản
+   `sngSplitData/v6/`), **5/12** lệch **đúng 1 px** (27×27 cho ô 28×28 — 4 node;
+   21×22 cho ô 22×23 — `ptLeaderShipTimer`), và **0/12** lệch hơn 1 px. Hai luật
+   chỉ khác nhau nửa điểm ảnh bán kính. (Con số 413×476 lúc đầu là do **tra nhầm
+   bản trùng tên** `ui_background205.png` — đúng cái bẫy đã ghi ở mục "gán ảnh"
+   của `tools/verify_lua_actions.gd`.)
 9. ~~**Nhóm armature: ba hàm điểm gắn**~~ — **xong.** `_lua_addChildToPlugIn`
    (2 lúc quét, **33 chỗ gọi** trong mã), `_lua_clearPlugIn` (6 lúc quét / 10),
    `_lua_getPlugInPositionInNode` (5) **chưa từng tồn tại** ở lớp giả lập: tên
@@ -1887,8 +1937,12 @@ bằng máy ảo hoặc đọc `libgame.so` chỉ còn **việc 8** (`setPercent
 nằm ngay trong bản ghi `.xgg` (`+0xF4` kiểu, `+0xF8` phần trăm, `+0xEC`/`+0xE4`
 tên ảnh). Xem mục 8 việc 8 cho số đo đầy đủ và cho **hai chỗ còn lại đã ghi rõ là
 chưa khôi phục được**: công thức chiều dài đầy (hai thanh cho hai luật khác nhau,
-nên cơ chế thật chưa tìm ra) và góc/chiều của vòng (cả kho chỉ có một node vòng
-chạy thật). Đây là lần thứ hai trong dự án một việc bị xếp vào loại "phải có máy
+nên cơ chế thật chưa tìm ra) và góc/chiều của vòng (bản ghi có **12 node vòng**,
+nhưng chỉ **một** trong đó được mã gốc quay thật — lượt đo bằng máy ảo lần này
+**vẫn không lấy được góc**, và lý do đã ghi rõ là lý do đo được: node vòng thật
+nằm dưới lớp UI, node vòng thứ hai có tên thì `vis = False`, mười node còn lại
+không tên, và đổi `setType` khác họ trên node thanh cho ra hình rác — xem mục 8
+việc 8). Đây là lần thứ hai trong dự án một việc bị xếp vào loại "phải có máy
 ảo" hoá ra **đo được bằng dữ liệu đã có** — lần trước là `setGray`. Nên trước khi
 kết luận "phải chạy bản gốc", hãy đọc lại bản ghi theo **từng byte** và tự hỏi bộ
 trích của mình có đang mang trường ấy ra không.

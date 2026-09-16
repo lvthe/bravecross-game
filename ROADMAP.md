@@ -21,7 +21,7 @@ Số trong ngoặc là **đo được**, không phải ước lượng. Cách đ
 | | số | đo bằng |
 |---|---|---|
 | Module Lua của bản gốc nạp được | **875 / 876** | `boot_goc()` |
-| Màn hình mở được | **268–270 / 353** | `tools/quet_show.gd` |
+| Màn hình mở được | **291–292 / 353** | `tools/quet_show.gd` |
 | Hàm máy chủ `Client*` đã có bản offline | **13 / 411** | đếm `sc/` vs `offline/handlers` |
 | Lệnh kịch bản `g_DramaSystem` đã có | **60 / 60** | đối chiếu `sc/plot/drama_*.lua` |
 | Bộ kiểm | **27**, xanh hết | `tools/check.py` |
@@ -61,6 +61,23 @@ Số trong ngoặc là **đo được**, không phải ước lượng. Cách đ
 >
 > Cùng ngày, `quet_show.gd` đã **chết hẳn bằng signal 11** (segfault) ở một lượt
 > chạy — xem mục 6, chỗ `AmThanh._thu_lai`. Nay cùng lệnh đó chạy trọn, exit 0.
+
+> **Và đây là lần thứ tư con số nhảy vì THƯỚC ĐO đổi, không phải vì tiến bộ —
+> lần này là +23 màn.** Bộ quét cũ không **nhả khung** giữa các màn, nên
+> `onVisible` không bao giờ chạy: `CUIManager` chỉ gọi nó từ
+> `OnShowAnimationFinish`, mà cái đó được xếp qua một
+> `S_CCSequence(S_CCDelayTime, S_CCCallFunc)` chạy trên `rootUI`
+> (`CUIDialogAnimation.lua:86-95`). Đo thẳng trên `CUIQuest`: không nhả khung ra
+> `hoi=71 hut=0, IsUiVisible=false`; nhả **30 × 0,05 giây** ra `hoi=819 hut=35,
+> IsUiVisible=true`. Nghĩa là màn **có mở**, chỉ là phép đếm cũ đọc cờ trước khi
+> cờ được đặt. Nay `_MOT` nhả khung trước khi đọc cờ:
+> **im 23 → 0, mở được 268–270 → 291–292** — chênh đúng bằng số màn bị xếp nhầm
+> vào "im". **Không màn nào mới mở ra; chỉ là chúng thôi bị gọi là im.**
+>
+> Cùng lượt sửa thước đo ấy, `quet_show.gd` in thêm **bảng "API Cocos CHUA LAM"**
+> cho trọn 353 màn, **trừ đi phần dùng lúc đăng nhập** (đọc bộ đếm hai lần rồi
+> trừ nhau) — đây là danh sách việc thật của lớp giả lập, thay cho các con số
+> vụn vặt đo được ở từng màn một trước đó.
 
 Con số 13/411 là thước đo thật của phần còn lại: **giao diện gần xong, máy
 chủ mới làm được phần đi chiến dịch.** Đếm theo "có hành vi thật", nên 10 RPC
@@ -245,16 +262,58 @@ Ghi chú từng nhóm:
   từ dữ liệu ship**: `WeeklyFunDef.KeyTable` có `Plan` / `NewCommonConfig` và
   chính mã gốc ghi "原来从配置文件中读，现在改成从Plan中组装", còn GodHero thì
   hình dạng chỉ nằm trong một chú thích (`ActivityGodHeroLogic.lua:53`) mà **số
-  thì không bảng nào có**. Bịa là sai kiểu `AchieveType` — xem nguyên tắc 1. Còn
-  lại **3 màn** là dữ liệu người chơi một người chơi và làm được:
-  `lEpicBattleChestMain`, `CUIQuestInfo`, `CUITreasureHunt`. Cộng thêm **3 màn
+  thì không bảng nào có**. Bịa là sai kiểu `AchieveType` — xem nguyên tắc 1.
+
+  **Ba màn còn lại ghi ở đây, nay đã tra từng màn — không màn nào là việc làm
+  được, và cả ba đều KHÔNG phải lỗ hổng của lớp giả lập:**
+
+  * `CUIQuestInfo` — **nay mở được**. Nó không còn mặt trong bảng hỏng ở cả ba
+    lượt quét gần nhất (`/tmp/quet_a.txt`, `quet_moi.txt`, `quet_b.txt`), và
+    353 = 292 mở + 0 im + 61 hỏng nên chắc chắn nó nằm trong phần mở được.
+  * `CUITreasureHunt` — chết ở `CUITreasureHunt.lua:245`
+    (`tLeftData.PrizeData.nCurItemCount >= tLeftData.Count`), **và bản gốc cũng
+    chết đúng ở đó khi không có dữ liệu máy chủ**. Danh sách đổi thưởng do
+    `ClientGodSecret:GetExchangeList` (`sc/user/Logical/ClientGodSecret.lua:159`)
+    dựng: ba mục mặc định có `PrizeData = {}`, `Count = 0`, rồi vòng lặp **ghi
+    đè** từ `tData.ExchangeStateList`. Không có `ExchangeStateList` thì
+    `PrizeData` ở lại `{}` — mà `{}` thì `nCurItemCount` là `nil` → `nil >= 0`
+    nổ. Đã tra `KDBGameCommonConfig` (113 mục): **không có `GameGodSecretReset`**
+    (chỉ 10 mục `*Reset`), nên kho offline seed `{}` cho bảng này, và
+    `GodSecret.lua:105` có phép thử `if tUserGodSecret == {} then` — so sánh
+    **tham chiếu**, không bao giờ đúng trong Lua, nên `{}` vẫn đi tiếp như dữ
+    liệu thật. Danh sách đổi thưởng do máy chủ sinh từ `tConfig.ExchangeList`
+    (`sc/share/Activities/GodSecret.lua:24-36`) — phần sinh ấy **không được
+    ship**. Bịa ba mục đổi thưởng là sai kiểu nguyên tắc 1.
+  * `lEpicBattleChestMain` — chết ở `CUIEpicBattleChestMain.lua:292`
+    (`self.PanelPosX[nUIType][1]`), mà nguyên nhân là `getType()` trả `NONE` (0)
+    và `PanelPosX` **không có khoá 0** (`:26-34`, chỉ 1..5). Vào `NONE` vì
+    `getOpenedCount()` (`:78-98`) trả `999, 999` khi thiếu
+    `GameUserEpicChapter.TodayChapterInfo.LevelList` → `nRemainFreeCount` và
+    `nRemainPayCount` cùng **âm**. Đây là số **theo NGÀY của từng tài khoản**,
+    không suy ra được từ bảng cấu hình. Lối vào thật của màn là
+    `ShowBy(level, boxId, countryIdx)` (`CUIEpicChapter.lua:697`), nên nó thuộc
+    nhóm A (thiếu tham số người gọi) **cộng thêm** thiếu dữ liệu ngày.
+  Cộng thêm **3 màn
   quét nhanh** vừa chuyển từ nhóm D sang (xem "Đã sửa") — nhưng chúng chỉ mở khi
   người chơi **đã có** món thừa, nên offline không với tới mà cũng đừng bịa món
-* **C** — ba màn thiếu `.xgg` đối chiếu với **296 bố cục giải được**: mã gốc trỏ
-  `conf/UI_CharacterDressInfo_960_640.xgg`, `conf/UI_VIPRight_960_640.xgg`,
-  `conf/UI_Store_UI_960_640.xgg`, **không file nào có mặt** trong APK lẫn OBB (bản
-  gốc tải lúc chạy từ máy chủ vá) — cùng loại với ~45 mảnh `Scene_*.plist` ở mục 1.
-  **Không sửa được, đừng tính vào việc còn lại.** Ba màn nữa (`CUIXingHun`,
+* **C** — thiếu `.xgg` đối chiếu với **296 bố cục giải được**. Con số **ba màn**
+  ghi ở đây trước là **ĐẾM THIẾU**; đo lại toàn bộ `ResourceXggList` của `sc/`
+  (396 lượt trỏ, so từng tên file với `layout_ref/`) thì ra **6 file**, và **cả 6
+  đều vắng mặt trong `conf/` của APK gốc** — tức không phải lỗi bóc thiếu của ta
+  mà là bản ship không có (bản gốc tải lúc chạy từ máy chủ vá):
+
+  | file `.xgg` thiếu | màn khai nó |
+  |---|---|
+  | `UI_CharacterDressInfo_960_640` | `CUICharacterDress` |
+  | `UI_VIPRight_960_640` | `CUIVIPRight` |
+  | `UI_Store_UI_960_640` | `CUIShop` |
+  | `UI_GainHero_960_640` | `CUIGainHeroAnimation` |
+  | `UI_Research_UI_960_640` | `CUIResearch` |
+  | `UI_Hero_Dialog_960_640` | `CUIHeroGrowthFactor`, `CUIHeroUpgradeLevel`, `CUIHeroUpgradeMaxLevel`, `CUIHeroUpgradeQuality` (cùng khai `RootUIName = lHeroUIDialog`); `CUIDestiny` và `CUIHero` chỉ kể nó như file phụ |
+
+  Cùng loại với ~45 mảnh `Scene_*.plist` ở mục 1. **Không sửa được, đừng tính vào
+  việc còn lại.** Nhưng **cách chúng hỏng thì sửa được, và đã ghi lại** — xem
+  khối "`lVIPRightUI` là BÓNG chứ không phải `nil`" bên dưới. Ba màn nữa (`CUIXingHun`,
   `RedPacketMainDlg`, `XingHunBook`) cùng chết ở một chỗ: `CUIAssist.switchTab`
   (`CUIAssist.lua:817`) gọi `node:getChildByTag(2)` mà nút ấy **thiếu tag con**.
   Đúng loại "tag còn thiếu" ấy còn **ba màn nữa, và node thì có mặt** —
@@ -336,7 +395,9 @@ dưới đây là của RIÊNG lượt sửa này** — lúc đó đường ghé
 được chạy, nên chúng không phải tình trạng hiện tại; tình trạng hiện tại ở bảng
 "trước / sau" của lượt ghép, phía dưới (`260 / 22 / 71` → `263 / 23 / 67`), rồi
 lượt sửa `xoay` đưa tiếp lên **`264 / 22 / 67`**, và lượt `--neo` lên
-**`264–265 / 23 / 65–66`**.
+**`264–265 / 23 / 65–66`**. Cả bốn số ấy đo bằng **thước đo CŨ** (chưa nhả khung
+giữa các màn, nên "im" còn 22–23); thước mới đọc cùng bản mã đó ra `291–292 / 0 /
+61–62` — xem ghi chú ở mục 0.
 
 | | trước | sau |
 |---|---|---|
@@ -368,13 +429,63 @@ Một hệ quả nữa của cơ chế bong, ghi lại để đừng đi nhầm:
 rồi `tonumber(bong)` ra nil ở `:129`. Chỗ hỏng thật là **thiếu file
 `UI_Store_UI_960_640.xgg`**, không phải dòng 129.
 
+### `lVIPRightUI` là BÓNG chứ không phải `nil`
+
+Cơ chế, đo được chứ không suy: `M.install()` (`lua/bootstrap.lua:672-684`) đặt
+metatable cho `_G`; `__index` trả `make_ghost(tostring(k))` cho mọi tên **chưa gán**
+và **không** nằm trong `never`/`da_gan`. `make_ghost` (`:78-110`) dựng một bảng có
+`__bong = true`, `__index`/`__call` trả bóng tiếp, `__tostring` ra `<bong tên>`, và
+có **trần** (`CUT_SO` / `CUT_SAU`) để không nổ số bóng.
+
+Vì sao cần: `boot_goc()` nạp **876 module** và mã gốc gọi chéo rất nhiều thứ chỉ
+tồn tại lúc chạy. Nếu `_G.x` là `nil` thì `_G.x:PhươngThức()` ném lỗi **ngay dòng
+đó**, và cả 353 màn thành "hỏng ở dòng đầu" — mất luôn khả năng phân loại. Bóng cho
+đi tiếp và **đếm được**; nhờ nó mới có bảng 72 màn chia theo nguyên nhân ở trên.
+
+Cái giá, và đây là chỗ dễ đi nhầm: **bóng phá các phép KIỂM TRA TỒN TẠI viết bằng
+`if x == nil`**. `CUIPublic:GetRootUI` (`sc/user/Public/CUIPublic.lua:322-350`) có
+đúng phép kiểm đó — `if rootUI == nil then KDebug.PrintWarning(...) end` — nhưng
+`rootUI = _G[self.RootUIName]` là **bóng**, nên nhánh cảnh báo **không bao giờ
+chạy**, hàm trả về bóng, và bóng chảy tiếp vào
+`CPublic:SaveUIOriginalState` (`:1221-1240`) thành
+`OriginalState.ScaleX = <bong lVIPRightUI.getScaleX()>`. Tới
+`CUIDialogAnimation.lua:242` thì nó *cộng* giá trị ấy:
+`S_CCScaleTo:create(nDelayTime, ox*1.1, oy*1.1)` → `attempt to perform arithmetic
+on local 'ox' (a table value)`.
+
+Đo bằng `tools/chay_lua.gd` — hỏi thẳng `_G[<tên>]` trong phiên đã đăng nhập
+(Login → Main), in ra `type`, `tostring`, và `getmetatable(x).__bong`:
+
+```
+lVIPRightUI              type=table val=<bong lVIPRightUI>              la_bong=true
+lStoreUI                 type=table val=<bong lStoreUI>                 la_bong=true
+lCharacterDressInfoUI    type=table val=<bong lCharacterDressInfoUI>    la_bong=true
+lHeroUIDialog            type=table val=<bong lHeroUIDialog>            la_bong=true
+```
+
+Bốn tên ấy là đúng bốn gốc bố cục của **6 file `.xgg`** trong bảng ở nhóm C phía
+trên, và 6 file ấy **vắng cả trong `conf/` của APK gốc** — nên đây không phải lỗi
+bóc thiếu của ta. Triệu chứng đo được trong `quet_show.gd`: 2 màn chết ở
+`CUIDialogAnimation.lua:242` (`CUIVIPRight`, `CUICharacterDress`) — cùng một dòng
+lỗi, cùng một cơ chế.
+
+**Vì sao KHÔNG lật bóng thành `nil` cho riêng nhóm này** (đã cân nhắc và bác bỏ):
+`nil` thì `GetRootUI` trả `nil`, `CUIPublic:onShow` thoát sớm **sau khi đã đặt
+`IsUiShow = true`** — màn được tính là "mở được" mà **không vẽ gì cả**. Phép đếm
+sẽ tăng thêm mấy màn bằng một lời nói dối, còn người chơi vẫn thấy màn trắng. Màn
+vẫn hỏng thật, chỉ là hỏng **im lặng**. Nên: ghi lại, không sửa. Muốn sửa cho thật
+thì phải có 6 bố cục ấy — chúng nằm ngoài bản ship.
+
 **Hệ quả cho mục 8, và nó đổi việc tiếp theo:** "nhóm đông nhất" **không phải một
 tính năng nào cả**. Nhóm đông nhất là A, và A không cần gì. **32 trong 72 màn
 không thuộc nhóm tính năng nào** (hộp thoại dùng chung), và 21 trong số đó là A.
 Sau khi trừ nhiều người chơi (APR/COG/bang hội/quốc chiến) và ba màn cấu hình hoạt
 động không lấy lại được, **phần B còn làm được chỉ còn 3 màn rời rạc**
 (`lEpicBattleChestMain`, `CUIQuestInfo`, `CUITreasureHunt`) — không còn "nhóm đông"
-nào để việc 1 nhắm vào, nên **việc 1 coi như đã cạn**.
+nào để việc 1 nhắm vào, nên **việc 1 coi như đã cạn**. **Ba màn ấy rồi cũng đã tra
+từng màn: không màn nào làm được** — `CUIQuestInfo` nay mở được, hai màn kia chết
+trong **chính nhánh mặc định của bản gốc khi thiếu dữ liệu máy chủ** (chi tiết và
+chỗ dẫn chứng ở mục 4, nhóm B). Tức việc 1 không chỉ "đã cạn" mà **cạn hẳn**.
 
 **Việc 2 (máy ảo Android) lên làm trước — và lần soát này đo được vì sao.** Tag
 **không nằm trong `.xgg`**: engine sinh ra lúc nạp, ta đo từ máy ảo
@@ -417,11 +528,126 @@ từ chính bố cục, và `tools/quet_show.gd`):
 | node có tag trong `layout_ref` | 19.456 / 33.472 (58,1%) | **26.315 / 33.472 (78,6%)** | **27.876 / 33.472 (83,3%)** | **27.887 / 33.472 (83,3%)** |
 | màn mở được / im / hỏng | 260 / 22 / 71 | **263 / 23 / 67** | **264 / 22 / 67** | **264–265 / 23 / 65–66** |
 
+> Bốn cột này đo bằng **thước đo CŨ** (chưa nhả khung), nên cột "im" còn 22–23.
+> Giữ nguyên vì chúng là bản ghi của bốn lượt đo ngày hôm đó; muốn so với hiện
+> tại thì phải đọc lại bằng thước mới — xem ghi chú ở mục 0.
+
 Sửa được **5 màn, và sửa được ở CẢ HAI lần chạy lại** (đây là phép kiểm, vì
 `quet_show.gd` dao động): `CUIFriendsChatting`, `CUIContest`, `RedPacketMainDlg`,
 `CUICOGCityInfo`, `TimeHeroUI`. Không màn nào đang mở bị hỏng thêm: hai lần chạy
 sau khi ghép lệch nhau đúng **một** màn (`MoreGoldDialog`), và nó nằm trong nhóm
 dao động đã ghi. `check.py` 24/24 xanh (gồm `verify.gd` 3.142 đạt / 0 hỏng).
+
+### Hai nhóm "hụt tag" lớn nhất sau khi ghép: một là CỐ Ý, một là lỗi của TA
+
+Sau khi ghép xong, `quet_show.gd` còn **2.008 lượt hụt / 32.661 lượt hỏi
+(93,9% trúng)** — số của lượt quét mới nhất, sau khi sửa cả hai nhóm dưới đây
+(lượt trước khi sửa: 2.132 / 31.628, 93,3%). Nhóm theo **từng tag**
+(`cocos.lua` đếm ở `M.tag_miss_theo_tag`, `quet_show.gd` in ra) mới tách được
+hai thứ hoàn toàn khác nhau, **và lượt quét mới xác nhận cả hai đã tách sạch**:
+bảng "hụt theo TỪNG TAG" nay là `4 ×519`, `5 ×475`, `2514 ×224`, `3 ×206`,
+`2 ×142`, `1 ×35`, rồi tới các tag `1003..1010` — **không còn một tag lẻ nào**
+(`3.5`, `4.5`, `2.5`, `5.5` đã biến mất hẳn), và `2514` vẫn đứng nguyên ở 224
+đúng như kết luận "cố ý":
+
+* **`tag 2514` × 224 — đây là phép THỬ CÓ MẶT của chính mã gốc, không phải lỗi.**
+  `CUIPublic:AddHeroFaction` (`sc/user/Public/CUIPublic.lua:555-605`) làm
+  `if item:getChildByTag(g_CUIPublic.nFactionTag) then
+  item:removeChildByTag(g_CUIPublic.nFactionTag) end`, với
+  `nFactionTag = 2514` (`:73`) — tức "có thì gỡ, chưa có thì thôi". Chỗ gọi:
+  `CUIHeroListEx.lua:854/858` (`fillHeroBaseCommonData`). Đo bằng cách móc
+  `getChildByTag` rồi `debug.traceback`: 183 lượt hụt đầu tiên đều ra từ đúng
+  cặp hàm ấy. **Không có gì để sửa** — bản gốc cũng hụt y hệt.
+* **Tag LẺ (`3.5` ×72, `4.5` ×72, `2.5` ×42, `5.5` ×42 = 228 lượt, 10,7%) — lỗi
+  của lớp giả lập, và ĐÃ SỬA.** `CUIStar.lua:236-249` tính
+  `local nOffsetStar = delta/2` rồi `idx = i + nOffsetStar`; Lua 5.1 luôn cho
+  `/` ra số thực (không có phép chia nguyên), nên bản gốc gọi
+  `getChildByTag(3.5)`. Khai báo binding của Cocos là `int`, tolua ép bằng
+  `(int)tolua_tonumber(...)` — **cắt về phía 0** — nên bản gốc tìm ra tag **3**.
+  Bằng chứng độc lập: nếu thật sự trượt thì `pOneStar:setIsVisible(true)` không
+  bao giờ chạy, tức **bản gốc không bao giờ hiện một ngôi sao nào** — vô lý với
+  màn hiện sao chất lượng tướng (`CUIHeroQualityPictureFrame.lua:304`
+  `SetHeroStarUI`). Nay `Node:getChildByTag` và `Node:getChildByTagInAllChildren`
+  cắt y hệt tolua (âm thì `ceil`, dương thì `floor`).
+
+Cùng lượt ấy phát hiện `removeChildByTag` **chưa hề được làm** (36 lượt gọi lúc
+chạy, **100 chỗ gọi** trong `sc/`), nên mọi chỗ gốc gỡ node đều im lặng không gỡ
+gì. Đã làm — nhưng **không** gọi `queue_free()`: `removeChildByTag(tag, cleanup)`
+của Cocos với `cleanup = true` chỉ **dừng action và schedule** rồi bỏ node khỏi
+mảng con, **không huỷ đối tượng**; `CElementPond:delParent`
+(`sc/user/Public/CElementPond.lua:282-284`) gỡ rồi **gắn lại chính node ấy** (nó
+là kho gom ô danh sách). `queue_free()` ở đây là giết cả kho.
+
+### Lỗi im lặng thứ hai của lớp giả lập: `_godot_zsort` không hề tồn tại
+
+Bảng "API Cocos CHUA LAM" của lượt quét mới cho `reorderChild` **1.200 lượt** —
+đứng đầu toàn bảng, gấp gần 9 lần cái thứ hai. Truy ra thì đây **không phải một
+API còn thiếu**: nó là dấu hiệu của một hàm đã bị gọi mà **chưa từng được viết**.
+
+`lua/cocos.lua` gọi `_godot_zsort(cha)` ở **hai** chỗ (`addChild` khi có `z`, và
+`setZOrder`) nhưng **không định nghĩa nó ở đâu cả**. Tên ấy rơi vào `_G` giả lập →
+trả về một **bóng** → bóng **gọi được** (trả bóng) → nên `setZOrder` và
+`addChild(c, z)` chỉ **ghi meta `zorder` rồi thôi, không xếp lại gì**. Không có
+lỗi nào được ném ra, không bộ đếm nào bắt được — **đúng cùng kiểu với `setGray`**
+đã ghi ở trên, nhưng lần này nằm **trong chính lớp giả lập**, không phải trong mã
+gốc.
+
+Phạm vi cho đúng, kẻo nói quá: **lúc NẠP bố cục thì thứ tự vẫn đúng** —
+`XggLayout.sap_xep_theo_z` (`ui/xgg_layout.gd:375-392`) đã xếp từ trước và vẫn
+chạy. Cái mất là **thứ tự đặt LÚC CHẠY**, tức đúng những chỗ mã gốc điều khiển
+bằng tay: `addChild(c, z)` và `setZOrder`. Chỗ đáng kể nhất là `SetOpenZorder` của
+hộp thoại — `setZOrder(50)` để hộp thoại nằm **trên lớp che (20) và dưới thanh
+Back (60)**. Hàm mới viết theo **đúng luật của `sap_xep_theo_z`** (cùng cách phá
+thế bằng nhau: giữ thứ tự cũ), nên hai đường không lệch nhau.
+
+Đã viết `_godot_zsort`: xếp lại **mảng con thật** theo `(zorder, thứ tự thêm)`
+tăng dần, bằng một lượt `move_child` tăng dần (khi bước `k` thì `k-1` phần tử đầu
+đã đúng chỗ, nên chỉ các phần tử **chưa xếp** bị dịch — tiền tố giữ nguyên).
+**Không dùng `z_index`**: bản gốc truyền tới 99999
+(`CUISubtitle:AddToParent`) còn Godot chỉ nhận ±4096. Kèm theo,
+`Node:reorderChild(child, z)` (`CCNode::reorderChild` — đổi zOrder của **một con**
+rồi xếp lại; 1 chỗ gọi trong mã, `CUIArmyGroupCampsite.lua:3583`, nhưng nằm trong
+vòng lặp qua toàn bộ con nên đo ra 1.200 lượt).
+
+**Một cái bẫy nữa của chính bộ đếm, ghi lại để đừng đọc sai bảng ấy:**
+`__index` của bảng `Node` trả về **một hàm rỗng** cho mọi tên chưa làm, nên phép
+thử tồn tại của bản gốc — `if pProgressTimer.setOrange then`
+(`sc/user/Public/CUIPublic.lua:523`) — **luôn đúng** ở đây, trong khi ở bản gốc nó
+phụ thuộc lớp C++ có method ấy hay không. Tức bảng "API chưa làm" **trộn hai thứ**:
+lượt gọi thật, và lượt **dò** xem method có tồn tại không. `setOrange ×5` là loại
+thứ hai.
+
+### Lớp giả lập: những gì đã làm thêm trong lượt này
+
+| API | chỗ gọi | làm gì | cơ sở |
+|---|---|---|---|
+| `getColor` / `setEffectColor` / `getEffectColor` | 1.281 mỗi cái | màu chữ + màu viền, lưu/trả được | `CUIPublic:SetLableGray` (`:390-431`) lưu `getColor()` **(3 số)** và `getEffectColor()` **(4 số)** rồi trả lại — trước đây `getColor()` ra `nil` nên `c.r or 255` ghi ra màu gần như trong suốt |
+| `setGray` / `isGray` | 683 / 214 | **trạng thái** xám (chưa làm phần HÌNH) | trước đây `isGray()` ra `nil`, mà `nil` không bằng `false` lẫn `true`, nên cả hai lối viết (`if btn:isGray() == false` và `if not btn:isGray()`) đi sai hướng trong im lặng |
+| `setCascadeOpacityEnabled` | 56 | no-op **đúng nghĩa** | 56 chỗ đều truyền `true`; Godot cho `modulate` lan xuống cây **luôn**, tức đã làm sẵn đúng điều được xin |
+| `refreshChildArray` | 45 | no-op **đúng nghĩa** | ở đây không có mảng con nào để dựng lại: `getChildByTag` quét thẳng con của Godot |
+| `setHorizontalAlignment` | 8 | căn chữ | thứ tự enum y `alignH` của `.xgg`, và Godot dùng **đúng ba số 0/1/2** ấy (`ui/xgg_layout.gd:229-233`) |
+| `getFontSize` | 7 | cỡ chữ đang dùng | `CUINewHandPrivilege.lua:184` lấy cỡ chữ nhãn cha truyền xuống `RichLabel` |
+| `removeAllChildrenAndArray` | 37 | bỏ hết con + huỷ | cùng nghĩa `removeAllChildrenWithCleanup`; khác `removeChildByTag`, ở đây **không** có kho nào nhận lại node |
+| `_lua_getAnimationTime` / `_lua_setAnimationRate` / `_lua_stop` / `_lua_setOpacity` | 97 / 26 / 24 / 2 | 4 lệnh armature | thêm 3 method vào `rig/sng_rig.gd`: `thoi_luong` (giây — **thiếu thì trả 0**, mà 0 giây = đi tiếp ngay), `dat_toc_do`, `dung` (giữ nguyên tư thế: Cocos `stopAnimation` **không** đưa về khung 0) |
+
+Ba thứ **cố ý KHÔNG làm**, ghi rõ để lần sau không đoán:
+
+* **`setPercentage` (139 lượt, 325 node, 83 file)** — đo rồi mới quyết: quét cả
+  325 bản ghi `CCProgressTimer` ở **mọi** offset 4 byte **không** tìm ra cặp float
+  nào khớp midpoint `(0.5,0.5)` hay barChangeRate `(1.0,0.0)` ngoài hai trường đã
+  biết (scale/rot ở `+0x88`, neo ở `+0x90`). Mà bản gốc **không hề gọi**
+  `setType`/`setMidpoint`/`setBarChangeRate` (**0 chỗ gọi** trong 973 file) — nên
+  kiểu thanh hay vòng, và chiều chạy, là **mặc định C++ của engine**, chưa giải
+  được. Chốt bằng máy ảo (`work/emu_dom.py`) hoặc đọc binding trong `libgame.so`.
+  **Đoán là sai kiểu `AchieveType`.**
+* **`getLimitShowCount` / `getLetterEx` (48)** — đây là chế độ **tách từng chữ
+  thành sprite** của `RichLabel` (`sc/user/Public/RichLabel.lua:550-554`), nằm
+  trong lớp C++ `Label`. Trả 0 thì `spriteArray` rỗng và chữ vẫn hiện bình
+  thường, nhưng đó là **đoán** một con số của engine — không làm.
+* **`IsEnableGradualColor` (10) / `enableGradual` (1)** — **không phải lỗ hổng**:
+  `GradualColor` xuất hiện **0 lần** trong toàn bộ `layout_ref/`, tức mọi nhãn
+  đều không phải nhãn chuyển màu, và `nil` của ta cho ra **đúng nhánh** mà bản gốc
+  đi.
 
 
 - [~] Ải vô tận / Epic / SB / COG (11 màn) — **con số 11 sai, và sai kiểu đã
@@ -670,7 +896,10 @@ dao động đã ghi. `check.py` 24/24 xanh (gồm `verify.gd` 3.142 đạt / 0 
    chạy tốt trong game thật, bộ quét gọi `Show(tên)` trần. Trừ tiếp nhiều người
    chơi và ba màn cấu hình hoạt động không lấy lại được từ dữ liệu ship, phần
    dữ liệu người chơi/máy chủ còn làm được chỉ còn **3 màn rời rạc**
-   (`lEpicBattleChestMain`, `CUIQuestInfo`, `CUITreasureHunt`). Mẹo đã dùng được
+   (`lEpicBattleChestMain`, `CUIQuestInfo`, `CUITreasureHunt`) — và lượt soát sau
+   đã tra từng màn: `CUIQuestInfo` **nay mở được**, còn hai màn kia chết trong
+   chính nhánh mặc định của bản gốc khi thiếu dữ liệu máy chủ, nên **không màn
+   nào là việc làm được** (mục 4, nhóm B). Mẹo đã dùng được
    bốn lần, giữ lại để lần sau: bảng nào client tự khai `InitData()` thì lấy hình
    dạng từ đó; luật nào server giữ thì **tìm SỐ trong bảng cấu hình trước khi
    kết luận là mất**; và **đọc chỗ gọi hàm, không chỉ đọc hàm** — bài học đắt
@@ -777,18 +1006,30 @@ dao động đã ghi. `check.py` 24/24 xanh (gồm `verify.gd` 3.142 đạt / 0 
    tên (xem mục 4, bảng `layout_ref`) — không cần thêm lượt, vì bỏ phần đầu danh
    sách thì những đường làm chết tiến trình ở phần đầu cũng không còn chạy.
 
-3. **Âm thanh.** Chưa có gì; game câm thì cảm giác vẫn chưa phải game.
+   > **Đọc các số `quet_show.gd` trong mục 2 này cho đúng: chúng đo bằng THƯỚC ĐO
+   > CŨ.** Lúc đó bộ quét chưa **nhả khung** giữa các màn, nên `onVisible` không
+   > chạy và màn mở rồi vẫn bị tính là `im`. Vì thế `264–265 / 23 / 65–66` ở đây
+   > **không so ngang được** với bảng đầu ROADMAP (`292 / 0 / 61`). Đường đi từ
+   > 264–265 tới 292 gồm **hai đoạn khác hẳn nhau, đừng gộp**: 264–265 → 268–270
+   > là **việc thật** làm sau mục này (vẫn trên thước cũ, xem khối ngay trên), còn
+   > 268–270 → 291–292 và `im 23 → 0` là **thước đo đổi**, **không màn nào mới mở
+   > ra**. Cùng lý do, `check.py` ở đây ghi **24/24** — nay là **27/27**. Giữ
+   > nguyên các số cũ vì chúng là bản ghi của từng lượt; muốn đối chiếu ngang thì
+   > chạy lại `emu_tags.py` / `emu_join.py` rồi đo bằng thước mới.
+
+3. ~~**Âm thanh**~~ — **xong**, xem mục 6. Mục này để nguyên chữ "chưa có gì"
+   lâu hơn thực tế: `game/am_thanh.gd` đã nối `playSoundEffect` /
+   `playBackgroundMusic` / `loadEffectBank` vào `AudioStreamPlayer`, `verify_am.gd`
+   **88 đạt / 0 hỏng**, và ba việc không khôi phục được của FMOD đã ghi rõ trong mã.
 4. **Bỏ mấy chỗ ĐẶT trong trận** — chỗ đứng, tốc độ, hồi thống soái — bằng
    cách đọc tiếp `libgame.so` hoặc đo trong máy ảo.
-5. **Làm binding engine `LuaTableView_create`** — **19 file** gọi
-   `CUITableViewZ:new()` mà `CUITableViewZ.lua:180` gọi hàm này, và ta **chưa có
-   nó** (không có trong `lua/` lẫn `.gd` nào), nên `tv` là **bong**: những màn
-   ấy chạy được là nhờ may — bong trả bong và không chạm chỗ nào kiểm tra. Màn
-   nào chạm thì chết: `PetIllustration` nay chết đúng ở đó
+5. ~~**Làm binding engine `LuaTableView_create`**~~ — **xong**
+   (`lua/bang.lua`, gắn ở `bootstrap.lua:228`), cùng lượt ấy làm luôn
+   `LuaTableViewCell_create`. Trước đó `tv` là bong nên màn nào chạm vào nó thì
+   chết: `PetIllustration` chết đúng ở đó
    (`cocos.lua:391: diem neo khong phai so … cua <bong LuaTableView_create()>`).
-   Đây là **việc engine, có biên**: một khung cuộn + ô, không phải đi tìm dữ liệu.
-   Nhưng **chưa đo được nó mở thêm bao nhiêu màn** — 19 file là số gọi, không
-   phải số màn sẽ mở; muốn biết thì làm rồi đo bằng `quet_show.gd`
+   Mục này đòi "làm rồi đo bằng `quet_show.gd`" — phép đo ấy đã có số: xem bảng
+   "màn mở được" ở mục 0 và mục 4.
 6. ~~**Lớp cuộn `CCScrollLayer`**~~ — **xong**, và đây là chìa khoá vào ải vô
    tận: `btnMainEvilCastle` nằm ở x = 1582,9 trong khi sân khấu rộng 1152, nên
    **không cuộn thì không có điểm màn hình nào chạm tới nó được**.
@@ -812,7 +1053,10 @@ dao động đã ghi. `check.py` 24/24 xanh (gồm `verify.gd` 3.142 đạt / 0 
    — kiểm bằng chính bộ lọc chạm của engine, không phải bằng mắt.
    Chống hồi quy: `quet_show.gd` — so **danh sách TÊN màn hỏng** giữa hai lượt
    cùng mức (65 hỏng): **giống hệt nhau**; các lượt còn lại nằm trong dải đã ghi
-   (`264–265 / 23 / 65–66`, dao động ±3). `check.py` 25/25 xanh.
+   (`264–265 / 23 / 65–66`, dao động ±3). `check.py` **25/25** lúc đó, nay
+   **27/27**. Dải `264–265` ấy cũng là **thước đo cũ** (chưa nhả khung): cùng
+   phép đo này chạy trên thước mới ra **291–292 / 0 / 61–62** — xem khối
+   "thước đo đổi" ở đầu ROADMAP.
    Ba chỗ **ĐẶT**, ghi rõ trong `cuon.lua`: ngưỡng phân biệt bấm-với-kéo **12 px**
    (ranh giới ấy nằm trong C++, không có trong bảng phương thức), thời gian nhả
    về biên **0,2 giây** (hằng số ở `0x2c0d34`/`0x2c18da` chưa giải), và **trục
@@ -823,5 +1067,36 @@ dao động đã ghi. `check.py` 24/24 xanh (gồm `verify.gd` 3.142 đạt / 0 
    mỗi lần kẹp biên hay nhả về biên là gốc **trôi**, và lần kẹp sau sai tiếp.
    Nay `day_lech(gd, t, mới)` đọc gốc theo độ lệch **đang áp** rồi mới ghi.
 
-Việc 2(b) rẻ, mở đường cho việc 4, và nay là việc có giá trị nhất. Sau đó là
-việc 3 (âm thanh) — nó là mảng lớn còn nguyên vẹn duy nhất.
+7. ~~**Đường vẽ theo `zOrder`**~~ — **xong, và đây là việc lộ ra muộn nhất mà
+   đáng giá nhất.** `lua/cocos.lua` gọi `_godot_zsort` ở hai chỗ nhưng **chưa
+   từng viết hàm ấy**: tên rơi vào `_G` giả lập → trả **bóng** → bóng gọi được →
+   nên `setZOrder` và `addChild(c, z)` chỉ ghi meta rồi thôi. **Mọi thứ bản gốc
+   đẩy lên bằng zOrder đều không được đẩy**, kể cả `SetOpenZorder` của hộp thoại
+   (50, trên lớp che 20, dưới thanh Back 60). Không lỗi nào được ném ra nên 27 bộ
+   kiểm xanh suốt thời gian ấy — **cùng kiểu lỗi im lặng với `setGray`**. Nay xếp
+   lại mảng con thật theo `(zorder, thứ tự thêm)`; kèm `Node:reorderChild`
+   (1.200 lượt gọi, đứng đầu bảng "API chưa làm" và **không phải một API thiếu**
+   mà là dấu vết của một hàm chưa viết). Chi tiết và cái bẫy `if node.method then`
+   của chính bộ đếm: mục 4.
+8. **`setPercentage`** — 139 lượt gọi, 325 node, 83 file, và là thứ **duy nhất
+   trong bảng còn phải đo bằng máy ảo hoặc `libgame.so`**. Đã đo phần chắc chắn
+   đo được: bản ghi `CCProgressTimer` **không** chứa midpoint/barChangeRate ở bất
+   kỳ offset 4 byte nào (quét cả 325 bản ghi), và bản gốc **không hề gọi**
+   `setType`/`setMidpoint`/`setBarChangeRate` (**0 chỗ** trong 973 file) — nên
+   kiểu thanh hay vòng, và chiều chạy, là mặc định C++ chưa giải. **Không đoán.**
+9. **Nhóm armature còn thiếu** — `sngFixInfoReflash` (27), `_lua_addChildToPlugIn`
+   (2 lúc quét, **33 chỗ gọi** trong mã), `_lua_clearPlugIn` (6 lúc quét / 10),
+   `_lua_getPlugInPositionInNode` (5). `sngFixInfoReflash` nằm trong danh sách
+   thiếu của **cảnh `Main`** từ lâu (CLAUDE.md, mục "(7) còn thiếu ở Main").
+10. **`RichLabel` tách từng chữ** — `getLimitShowCount` (48) và `getLetterEx`.
+    Nằm trong lớp C++ `Label` của engine (`RichLabel.lua:550-554` tạo bằng
+    `Label:new()` rồi `createWithTTF`). Trả một con số đoán ra ở đây là đổi cách
+    hiện chữ, nên **để nguyên cho tới khi đọc được binding**.
+
+Việc 2(b) rẻ và mở đường cho việc 4. **Việc 7 vừa xong, và nó đổi thứ tự ưu
+tiên**: nó là một lỗi im lặng **trong chính lớp giả lập**, đúng loại đã gặp ở
+`setGray` — nên câu hỏi đúng không phải "còn thiếu API nào" mà là "**còn tên nào
+được gọi mà chưa từng được viết**". Bảng "API CHUA LAM" của `quet_show.gd` trả lời
+được câu đó, và `reorderChild` là ca đầu tiên nó bắt đúng. Sau đó là việc 4 (bỏ
+ĐẶT trong trận), rồi việc 8 và việc 10 — hai chỗ duy nhất phải đo bằng máy ảo
+hoặc đọc `libgame.so` mới đi tiếp được.

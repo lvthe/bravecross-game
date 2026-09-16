@@ -479,16 +479,21 @@ lại là mã của nó: nạp bố cục, `onInit`, hoạt cảnh mở, `onShow
 |---|---|
 | module của bản gốc nạp được | **875/876** |
 | màn đăng ký | 353 |
-| màn mở được | **246** |
-| màn "im" (đòi tham số, không phải hỏng) | 22 |
-| màn hỏng | 85 — phần lớn là **thiếu dữ liệu người chơi** |
+| màn mở được | **291–292** |
+| màn "im" (đòi tham số, không phải hỏng) | **0** |
+| màn hỏng | 61–62 — phần lớn là **thiếu dữ liệu người chơi** |
 
-Bộ hẹn giờ thật, `S_CCSprite` và phép đổi toạ độ mở thêm `ArenaMain`,
-`CUIFirstPayGift`, `CUIWCSShop` (243 → 246).
+Hai con số trên đã **đổi thước đo**, không phải chỉ đổi kết quả — đọc kỹ trước
+khi so với bảng cũ ở ROADMAP. Bộ quét cũ không **nhả khung** giữa các màn nên
+`onVisible` không bao giờ chạy (`CUIManager` chỉ gọi nó từ
+`OnShowAnimationFinish`, mà cái đó nằm sau một `S_CCDelayTime`); vì thế 23 màn
+**đã mở** vẫn bị xếp vào "im" chỉ vì phép đếm đọc cờ `IsUiVisible` quá sớm. Nay
+mỗi màn được nhả 30 × 0,05 giây trước khi đọc cờ: **im 23 → 0, mở được 246 → 292.**
+Không màn nào mới mở ra.
 
-Quét không hoàn toàn tất định: giữa hai lần chạy, vài màn đổi qua lại giữa "im"
-và "hỏng" (vd `ArenaSummary`, `ThreeButtonDialog`) vì màn trước để lại trạng
-thái. Số tổng thì giữ nguyên — kể cả khi bỏ phần chạm đi (đã đo đối chứng).
+Quét không hoàn toàn tất định: giữa hai lần chạy, vài màn đổi qua lại trong khoảng
+±3 (đo ba lượt liền: 292, 292, 291) — nên muốn biết một sửa đổi có ăn thua không
+thì **so danh sách TÊN màn, đừng so con số tổng**.
 
 Đo lại bất cứ lúc nào:
 
@@ -507,6 +512,35 @@ không báo lỗi mà cũng không mở gì, nên đây là bẫy phải tránh)
 godot --headless --path . --script tools/do_mot_man.gd -- <tên màn> <module>
 godot --headless --path . --script tools/do_mot_man.gd -- BarracksMain user.UI.CUIBarracksMain
 ```
+
+Cần đọc **trạng thái lúc chạy** mà mã nguồn không nói ra — một biến toàn cục là
+node thật hay là **bóng**, một bảng dữ liệu đã được điền chưa, một hàm trả về gì
+— thì dùng `tools/chay_lua.gd`: nó chạy **một đoạn Lua bất kỳ** bên trong phiên đã
+đăng nhập (đúng chuỗi Login → Main qua lớp offline), trong **cùng một máy ảo** với
+phiên đo, nên thấy đúng những gì mã gốc thấy. `do_mot_man.gd` đo **một màn**; cái
+này đo **bất kỳ câu hỏi nào** miễn là chỉ đọc, không ghi.
+
+```bash
+godot --headless --path . --script tools/chay_lua.gd -- <đường dẫn file .lua>
+```
+
+Ví dụ đã dùng thật: hỏi thẳng `_G['lVIPRightUI']` và `getmetatable` của nó để phân
+biệt "node không tồn tại" với "node là bóng" — câu trả lời ấy **không đọc ra được
+từ file `.lua` nào**, và nó là gốc của cả nhóm màn chết ở
+`CUIDialogAnimation.lua:242` (xem ROADMAP, khối "`lVIPRightUI` là BÓNG").
+
+`quet_show.gd` in thêm hai bảng nữa ở cuối, cả hai đều để **chia việc** chứ không
+để tính điểm:
+
+* **hụt theo TỪNG TAG** — nhóm 2.008 lượt hụt theo tag (93,9% trúng), nhờ đó
+  tách được phép **thử có mặt của chính mã gốc** (`if item:getChildByTag(t) then
+  removeChildByTag(t) end`, tag 2514 ×224) ra khỏi hụt thật. Lượt quét sau khi
+  sửa cắt số lẻ kiểu tolua (`getChildByTag(3.5)` → tag 3) **không còn một tag lẻ
+  nào** trong bảng.
+* **API Cocos CHƯA LÀM** — đã trừ đi phần dùng lúc đăng nhập, nên chỉ còn phần
+  của 353 màn. Đây là danh sách việc của lớp giả lập: mỗi cái ở đây là một hàm
+  engine trả `nil`, mà `nil` trong Lua **không báo lỗi** — nó lặng lẽ chảy xuống
+  dòng sau.
 
 **Bấm được.** Tên chạm và đối tượng nhận chạm nằm ngay trong bản ghi node của
 `.xgg` (+0x0C tên chạm, +0x14 tên biến toàn cục của đối tượng): 2.005 node,
@@ -565,6 +599,18 @@ thành 353, và 105 màn mở được thành 244.
   `lNetWorkMask` 6000, `lDebugBoxMask` 9000 — 10/12 trùng khít. Godot chỉ nhận
   `z_index` trong ±4096 mà bản gốc dùng tới 9000, nên phải **xếp lại anh em**
   chứ không đặt `z_index`.
+* **Và chỗ xếp lại anh em ấy từng KHÔNG TỒN TẠI** — thêm vào đây vì đây là bẫy
+  đúng loại "đừng tìm lại": `lua/cocos.lua` gọi `_godot_zsort` ở hai chỗ nhưng
+  chưa từng định nghĩa nó, nên tên ấy rơi vào `_G` giả lập và trả về một **bóng**
+  — mà bóng thì **gọi được**, trả tiếp bóng. Kết quả: `setZOrder` và
+  `addChild(c, z)` chỉ ghi meta `zorder` rồi thôi, **không đẩy gì lên cả**, và
+  **không có lỗi nào được ném ra** nên mọi bộ kiểm vẫn xanh. Phạm vi: lúc **nạp**
+  bố cục thì `XggLayout.sap_xep_theo_z` vẫn xếp đúng như trước; cái mất là thứ tự
+  đặt **lúc chạy**, tức đúng những chỗ mã gốc điều khiển bằng tay. Cùng kiểu với
+  `setGray` (một no-op đội lốt "chưa làm"). Nay đã viết thật. Bài học dùng lại
+  được: trong lớp giả lập này, **một tên được gọi mà chưa từng được viết thì
+  không ồn ào — nó im lặng**, nên phải đọc bảng "API CHUA LAM" của
+  `quet_show.gd` chứ đừng chờ lỗi.
 * **Tag thật không nằm trong `.xgg`** — engine sinh lúc nạp. Đo từ chính bản
   gốc chạy trong máy ảo Android (`work/emu_tags.py`), ghép vào bằng
   `emu_join.py --ghi`. Hai đường ghép **chạy nối tiếp, đường sau đè đường trước**:

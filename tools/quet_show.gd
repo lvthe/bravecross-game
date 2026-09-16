@@ -71,6 +71,16 @@ const _LAY_HUT := """
 	return out
 """
 
+## API Cocos bi goi ma chua lam, dang "ten=so lan,...". Doc HAI lan (dau va cuoi
+## luot quet) roi tru di nhau: phan lech moi la cua 353 man, con phan giong nhau
+## la cua chinh buoc dang nhap. Khong tru thi bang xep hang bi loi cuoi cua
+## buoc nap de len — dung loi phep do da mac o bang "hut theo man" (xem _MOT).
+const _LAY_MISSING := """
+	local out = {}
+	for k, v in pairs(require('cocos').missing) do out[#out + 1] = k .. '=' .. v end
+	return table.concat(out, ',')
+"""
+
 ## Nap mot module man hinh roi mo moi man MOI ma no vua dang ky.
 ##
 ## Hut tag duoc dem theo TUNG KHOA man (`~hut`), khong theo TUNG FILE nhu truoc:
@@ -104,6 +114,19 @@ const _MOT := """
 	for i, m in ipairs(moi) do
 		local h0 = c.tag_misses
 		local ok2, err2 = pcall(function() m.ql:Show(m.ten) end)
+		-- NHA KHUNG truoc khi dem hut VA truoc khi doc IsUiVisible.
+		--
+		-- CUIManager chi goi onVisible() — cho chua phan refresh cua rat nhieu
+		-- man — tu OnShowAnimationFinish, va no duoc xep qua mot
+		-- S_CCSequence(S_CCDelayTime, S_CCCallFunc) chay tren rootUI
+		-- (CUIDialogAnimation.lua:86-95). Khong nha khung thi onVisible KHONG
+		-- chay. Do duoc tren CUIQuest: khong nha khung ra hoi=71 hut=0,
+		-- IsUiVisible=false; nha 30x0,05 giay ra hoi=819 hut=35,
+		-- IsUiVisible=true. Nghia la hut dem o day truoc do la hut TRUOC khi
+		-- refresh chay, va "hut=0" khong he chung minh man do ghep du tag.
+		pcall(function()
+			for _ = 1, 30 do c.tick(0.05) end
+		end)
 		local dm = c.tag_misses - h0
 		if dm > 0 then hut[#hut + 1] = m.khoa .. '=' .. dm end
 		local obj = m.ql.UI[m.ten]
@@ -148,6 +171,18 @@ const _MOT := """
 	out['~hut'] = table.concat(hut, ';')
 	return out
 """
+
+
+func _doc_dem(s) -> Dictionary:
+	var d := {}
+	if not (s is String) or (s as String).is_empty():
+		return d
+	for phan in (s as String).split(",", false):
+		var eq := phan.rfind("=")
+		if eq <= 0:
+			continue
+		d[phan.substr(0, eq)] = int(phan.substr(eq + 1))
+	return d
 
 
 func _init() -> void:
@@ -205,6 +240,8 @@ func _init() -> void:
 		print("san sang hong: %s" % ", ".join(lua.errors))
 		quit(1)
 		return
+
+	var thieu_dau := _doc_dem(lua.run(_LAY_MISSING, "api dau"))
 
 	var ds: Array = []
 	var thu_muc := DirAccess.open("res://sc/user/UI")
@@ -309,6 +346,27 @@ TUNG MAN HONG:")
 	hut_man.sort_custom(func(a, b): return a[0] > b[0])
 	for e in hut_man.slice(0, 12):
 		print("   hut %-4d  %s" % [e[0], e[1]])
+	# Hut theo TUNG TAG. Mot phan lon hut la phep THU CO MAT cua chinh ma goc
+	# (CUIPublic.lua:569, CUIHeroListEx.lua:858: 'if item:getChildByTag(t) then
+	# removeChildByTag(t) end'), khong phai thieu tag — nhom theo tag moi tach
+	# duoc no ra. Bo dem o cocos.lua (M.tag_miss_theo_tag).
+	var the_tag := []
+	var r_tag = lua.run("""
+		local c = require('cocos')
+		local ra = {}
+		for k, v in pairs(c.tag_miss_theo_tag) do ra[#ra + 1] = tostring(k) .. '=' .. v end
+		return table.concat(ra, ',')
+	""", "hut theo tag")
+	if r_tag is String and not (r_tag as String).is_empty():
+		for phan in (r_tag as String).split(",", false):
+			var eq := phan.rfind("=")
+			if eq <= 0:
+				continue
+			the_tag.append([int(phan.substr(eq + 1)), phan.substr(0, eq)])
+		the_tag.sort_custom(func(a, b): return a[0] > b[0])
+		print("\nHut theo TUNG TAG (tag dong nhat truoc):")
+		for e in the_tag.slice(0, 12):
+			print("   tag %-8s x%d" % [e[1], e[0]])
 	var hut_xep := []
 	for k in hut_loi:
 		hut_xep.append([int(hut_loi[k]), String(k)])
@@ -316,4 +374,18 @@ TUNG MAN HONG:")
 	print("\nCho hut nhieu nhat (ten node cha hoi tag, va cac tag no co):")
 	for e in hut_xep.slice(0, 15):
 		print("   x%-4d %s" % [e[0], e[1].substr(0, 118)])
+
+	# API Cocos CHUA LAM, tru di phan da dung luc dang nhap. Day la danh sach
+	# viec cua lop gia lap: cai nao o day thi moi man hinh deu bi no cham vao
+	# va tra ve nil — ma nil trong Lua khong bao loi, no lan xuong dong sau.
+	var thieu_cuoi := _doc_dem(lua.run(_LAY_MISSING, "api cuoi"))
+	var thieu := []
+	for k in thieu_cuoi:
+		var n := int(thieu_cuoi[k]) - int(thieu_dau.get(k, 0))
+		if n > 0:
+			thieu.append([n, String(k)])
+	thieu.sort_custom(func(a, b): return a[0] > b[0])
+	print("\nAPI Cocos CHUA LAM trong luot quet (%d loai):" % thieu.size())
+	for e in thieu.slice(0, 30):
+		print("   %-36s x%d" % [e[1], e[0]])
 	quit()

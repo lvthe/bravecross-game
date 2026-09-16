@@ -26,6 +26,10 @@ layout_ref/
 #   cd ../brave-cross/work && python uiart.py --out <day>/ui_ref
 ui_ref/
 
+# Dinh nghia he hat cua ban goc (33 file .plist) — co ban quyen, sinh lai bang:
+#   cd ../brave-cross/work && python hatref.py --out <day>/hat_ref
+hat_ref/
+
 # Ma nguon Lua cua ban goc — CO BAN QUYEN, khong commit. Bê lai bang:
 #   python tools/import_lua.py
 sc/

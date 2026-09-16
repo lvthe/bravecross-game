@@ -1,7 +1,7 @@
 # Lộ trình dựng lại Búa Tạ
 
 Danh sách mọi phần cần làm để ra được game, kèm chỗ đang đứng. Cập nhật
-2026-09-15.
+2026-09-16.
 
 **Cách đọc dấu**
 
@@ -24,7 +24,8 @@ Số trong ngoặc là **đo được**, không phải ước lượng. Cách đ
 | Màn hình mở được | **291–292 / 353** | `tools/quet_show.gd` |
 | Hàm máy chủ `Client*` đã có bản offline | **13 / 411** | đếm `sc/` vs `offline/handlers` |
 | Lệnh kịch bản `g_DramaSystem` đã có | **60 / 60** | đối chiếu `sc/plot/drama_*.lua` |
-| Bộ kiểm | **29**, xanh hết | `tools/check.py` |
+| Định nghĩa hạt đã dịch | **33 / 33** (87 node, 7 định nghĩa được dùng) | `tools/verify_hat.gd` |
+| Bộ kiểm | **30**, xanh hết | `tools/check.py` |
 
 > Con số màn hình **dao động ±3 giữa các lần chạy** (đo 3 lần trong ngày:
 > 258, 259, 260; hôm sau: 258, 257; hôm nay, **sáu lần chạy cùng một mã**:
@@ -620,6 +621,16 @@ phụ thuộc lớp C++ có method ấy hay không. Tức bảng "API chưa làm
 lượt gọi thật, và lượt **dò** xem method có tồn tại không. `setOrange ×5` là loại
 thứ hai.
 
+**Nay đo được đúng ca này** (bảng bind `libgame.so` — xem mục "setGray" và
+`brave-cross/work/binder.py`): `setOrange` chỉ có trên **một** lớp duy nhất là
+`CCProgressTimer`, và **cả 6 chỗ gọi** `setOrange` trong mã gốc đều nhắm vào
+progress timer (`pPtExp` CUIGameFinish.lua:1429, `pProgressTimer`
+CUIPublic.lua:524, `pExp` CUIHeroInfoMainUI.lua:1513, `uiExPt`
+CUIHeroListEx.lua:1312, `pMainUIHeroExp` CUIMain.lua:1522, `pExp`
+CUIExpShop.lua:148). Nên ở **đúng ca này** phép thử của bản gốc cũng **đúng** —
+lớp giả lập trùng với bản gốc. Đó là một sự trùng hợp, nhưng là trùng hợp **đã
+đo**; cái bẫy `if node.method then` vẫn còn nguyên với mọi tên khác.
+
 ### Lớp giả lập: những gì đã làm thêm trong lượt này
 
 | API | chỗ gọi | làm gì | cơ sở |
@@ -633,17 +644,73 @@ thứ hai.
 | `removeAllChildrenAndArray` | 37 | bỏ hết con + huỷ | cùng nghĩa `removeAllChildrenWithCleanup`; khác `removeChildByTag`, ở đây **không** có kho nào nhận lại node |
 | `_lua_getAnimationTime` / `_lua_setAnimationRate` / `_lua_stop` / `_lua_setOpacity` | 97 / 26 / 24 / 2 | 4 lệnh armature | thêm 3 method vào `rig/sng_rig.gd`: `thoi_luong` (giây — **thiếu thì trả 0**, mà 0 giây = đi tiếp ngay), `dat_toc_do`, `dung` (giữ nguyên tư thế: Cocos `stopAnimation` **không** đưa về khung 0) |
 | `_lua_addChildToPlugIn` / `_lua_clearPlugIn` / `_lua_getPlugInPositionInNode` | 33 / 10 / 5 | treo một node Lua lên **điểm gắn** trong bộ xương | số trong tên plug là **số chứ**, đo trên 418 file `.xml` / 587 biến thể, và khoá bằng một ca không thể trùng (`Gashapon` có đúng `PlugIn_4_Hero`/`_5_Word`/`_6_Light`/`_7_HeroName`, còn `CUIUnlockHeroAnimation.lua:166-169` gọi `_lua_clearPlugIn` đúng bốn số 4, 5, 6, 7); `tools/verify_plug.gd` — 12 đạt / 0 hỏng |
+| `pauseActions` / `resumeActions` | 2 (`CPublic`) | tạm dừng / chạy lại action **và** hẹn giờ của node | `CCNode::pauseActions` của bản gốc gọi `pauseSchedulerAndActions`, tức **cả hai** bộ. Đo trong `libgame.so` (`work/binder.py --nut`): `+0xdc` là bộ quản lý action (5 hàm action đều đọc đúng ô này), `+0xd8` là bộ thứ hai mà **không hàm action nào** đọc, `+0xe0` là `m_bRunning` — nhận ra nhờ `eor r3,r3,#1` (= `!m_bRunning`) nằm đúng chỗ đối số, đúng chữ ký `CCNode::runAction`/`schedule`; `pauseActions` (`0x4aeb88`) và `resumeActions` (`0x4aeacc`) đọc **cả `+0xd8` lẫn `+0xdc`**. Quét cả 132 bảng lớp **không** có hàm nào riêng cho bộ hẹn giờ (`pause`/`resume` 2 lớp; `schedule`/`scheduleOnce`/`scheduleUpdate` chỉ ở lớp `CCSchedule`), nên đây là đường **duy nhất**. Khung hình tạm dừng **không** cộng dồn thời gian, nên chạy lại không nhảy một bước; `tools/verify_lua_actions.gd` — 39 đạt / 0 hỏng |
 
 Ba thứ **cố ý KHÔNG làm**, ghi rõ để lần sau không đoán:
 
 * **`setPercentage` (139 lượt, 325 node, 83 file)** — đo rồi mới quyết: quét cả
   325 bản ghi `CCProgressTimer` ở **mọi** offset 4 byte **không** tìm ra cặp float
   nào khớp midpoint `(0.5,0.5)` hay barChangeRate `(1.0,0.0)` ngoài hai trường đã
-  biết (scale/rot ở `+0x88`, neo ở `+0x90`). Mà bản gốc **không hề gọi**
-  `setType`/`setMidpoint`/`setBarChangeRate` (**0 chỗ gọi** trong 973 file) — nên
-  kiểu thanh hay vòng, và chiều chạy, là **mặc định C++ của engine**, chưa giải
-  được. Chốt bằng máy ảo (`work/emu_dom.py`) hoặc đọc binding trong `libgame.so`.
-  **Đoán là sai kiểu `AchieveType`.**
+  biết (scale/rot ở `+0x88`, neo ở `+0x90`). Nay xác nhận lại bằng **đường thứ
+  hai**: đọc thẳng `layout_ref/*.json` thì **cả 325** node `CCProgressTimer` chỉ
+  mang **đúng bộ trường chung** của mọi node (`type`, `name`, `zOrder`, `res`,
+  `x`, `y`, `scaleX/Y`, `rot`, `anchorX/Y`, `w`, `h`, `img`, `visible`, `tag`) —
+  không có trường riêng nào cho kiểu thanh hay chiều chạy. Nên kiểu thanh hay
+  vòng là **mặc định C++ của engine**, chưa giải được. Chốt bằng máy ảo
+  (`work/emu_dom.py`) hoặc đọc thêm `libgame.so`. **Đoán là sai kiểu
+  `AchieveType`.**
+
+  **Câu cũ ngay trên đây — "bản gốc không hề gọi `setType` (0 chỗ)" — đã SAI, nay
+  sửa.** Bản gốc CÓ gọi, **đúng một chỗ**: `sc/user/UI/CUIDownload.lua:65` và
+  `:67`, qua `S_CCCallFunc:create(ptLoadingGamePercent, "setType", "cw")` rồi
+  `"ccw"`. Phép grep `:setType(` **không bao giờ thấy** nó, vì tên method được
+  truyền dưới dạng **chuỗi** cho `CCCallFunc` — nên đây là một cái bẫy của phép
+  đếm, ghi lại để lần sau đừng lặp: **grep tên method bỏ sót lối gọi theo chuỗi.**
+
+  Đọc thẳng thân hàm (thunk bind `0x2bd438` → thân thật `0x2bd2d8`) thì `setType`
+  nhận **chuỗi**, và engine nhận **đúng sáu tên** — `ccw`, `cw`, `lr`, `rl`, `bt`,
+  `tb` — đọc ra từ sáu ô hằng số PC-tương-đối (`0x2bd420` → `ccw` `0x7aceca`, `cw`
+  `0x7acece`, `lr` `0x7aced1`, `rl` `0x7aced4`, `tb` `0x7aced7`; còn `bt`
+  `0x7a7a78` nằm khác vùng chuỗi). Sáu tên chia làm hai lối:
+
+  * `ccw` / `cw` **không** đặt hình dạng gì, chỉ gọi `0x4c9030` với **1** / **0**.
+    Hai con số ấy đọc ra được nhờ **thanh ghi**: nhánh `ccw` nhảy thẳng tới lệnh
+    `bl`, **bỏ qua** lệnh `mov r1, r5`, nên `r1` vẫn là **1** đặt từ trước; nhánh
+    `cw` đi qua lệnh đó nên `r1 = 0`.
+  * `lr` / `rl` / `bt` / `tb` truyền **0**, rồi đặt thêm **hai** method nhận một
+    cặp float, ở **vtable `+0x280`** và **`+0x288`**:
+
+    | tên | `+0x280` | `+0x288` |
+    |---|---|---|
+    | `lr` | (0, 0) | (1.0, 0) |
+    | `rl` | (1.0, 0) | (1.0, 0) |
+    | `bt` | (0, 0) | (0, 1.0) |
+    | `tb` | (0, 1.0) | (0, 1.0) |
+
+    Cột `+0x288` là **trục**: `(1,0)` cho hai tên ngang, `(0,1)` cho hai tên dọc —
+    khớp `barChangeRate` của Cocos2d-x. Cột `+0x280` là **điểm mốc**, chỗ thanh
+    mọc ra. **Đây là suy luận có cơ sở, KHÔNG phải phép đo**: hai slot
+    `+0x280`/`+0x288` **không có bản ghi bind nào** trong cả 132 bảng lớp — không
+    hề lộ ra cho Lua, nên **tên** của chúng không đọc được từ bảng bind (khác
+    `setGray` ở `+0x290` và `setOrange` ở `+0x298`, cả hai đều **có** bản ghi).
+    Con số thì đo được; tên thì không, và đã ghi rõ là không.
+
+  **Có HAI lớp progress timer, không phải một** — danh sách cũ chỉ nói tới
+  `CCProgressTimer`. `setPercentage` / `getPercentage` / `setType` xuất hiện
+  trong **đúng 2** bảng lớp: `CCProgressTimer` (lớp 20) và `CCProgressWithClock`
+  (lớp 125), **cả hai đều 71 bản ghi**, và cả hai **dùng chung** địa chỉ mã
+  (`getPercentage` `0x2bccb5`, `setPercentage` `0x2bd095`, `setType` `0x2bd439`).
+  Khác nhau ở chỗ: lớp 125 có thêm `setClock` (`0x2bd98b`) / `stopClock`
+  (`0x2bda11`), còn `setGray` `+0x290` và `setOrange` `+0x298` thì **chỉ** lớp 20
+  có. Nên dựng `ProgressTimer` ở đây là phải dựng **hai** loại. Thêm một dữ kiện
+  cho câu hỏi "thanh hay vòng": engine tách hẳn một lớp riêng tên **mặt đồng hồ**
+  ra khỏi lớp chung — ghi lại, chưa suy ra gì từ đó.
+
+  Điều này **không** giải được mặc định — mặc định mới là thứ chi phối 325 node
+  kia — nhưng chốt được **từ vựng** và chốt được rằng `CUIDownload` là chỗ **duy
+  nhất** đặt kiểu bằng tay. Thêm một suy luận nữa (ghi rõ là suy luận, **chưa**
+  đưa vào mã): vì `ccw`/`cw` không đặt hình dạng gì, mặc định của engine **hợp
+  với kiểu vòng** — nếu mặc định là thanh thì hai tên ấy đã phải đặt cặp float.
 * **`getLimitShowCount` / `getLetterEx` (48)** — đây là chế độ **tách từng chữ
   thành sprite** của `RichLabel` (`sc/user/Public/RichLabel.lua:550-554`), nằm
   trong lớp C++ `Label`. Trả 0 thì `spriteArray` rỗng và chữ vẫn hiện bình
@@ -652,6 +719,190 @@ Ba thứ **cố ý KHÔNG làm**, ghi rõ để lần sau không đoán:
   `GradualColor` xuất hiện **0 lần** trong toàn bộ `layout_ref/`, tức mọi nhãn
   đều không phải nhãn chuyển màu, và `nil` của ta cho ra **đúng nhánh** mà bản gốc
   đi.
+
+### Hệ hạt (particle): bố cục CÓ ghi tệp hạt — lỗi ở bộ đọc của ta, đã sửa
+
+Lượt này đo cho hết câu "`stopSystem` / `resetSystem` / `pauseActions` thiếu thì
+hỏng cái gì", và sửa luôn một kết luận **sai** của lượt trước. Số đo, không suy:
+
+* `layout_ref/` có **87** node `CCParticleSystemQuad` (`type` = **5**) trên **23**
+  màn hình, trong **15** giá trị `cls` khác nhau; **78** node để `visible = false`,
+  **9** để hiện; **11** node mang tag (`99` **×9**, `3` ×1, `1` ×1). Tag `99` khớp
+  đúng lối mã gốc tìm hạt: `CUIFriend2.lua:470-471` gọi `btn:getChildByTag(99)`
+  rồi `(100)`. — Lượt trước ghi `99` ×8 và `1` ×2: **sai**, đếm lại ra 9/1/1.
+* Về `w`/`h`: **81** node là 0×0, còn **6** node là **40×40** — và 6 node có cỡ ấy
+  đúng là 6 node mà mã gốc **điều khiển bằng tên** (`cpCampsFireSmall`,
+  `cpCampsFireBig`, `particleDestinyStar1..4`), tất cả đều `visible = false`. Lượt
+  trước ghi "đều 0": **sai** với đúng 6 node này.
+* **Câu cũ — "Bố cục KHÔNG nói hạt nào" — SAI, đã sửa.** Bản ghi `.xgg` CÓ ghi
+  tệp hạt, ngay sau hai chuỗi tên. Đọc thẳng byte của
+  `vn/decrypted/assets/conf/UI_ArmyGroup_Campsite_Info_960_640.xgg` tại `0x955b`:
+
+  ```
+  cpCampsFireSmall cpCampsFireSmall ../map/beachfiresmall.plist
+  ```
+
+* Vì sao bộ đọc của ta ra rỗng — đo được, và là một cái bẫy đáng nhớ: bản ghi node
+  của hạt dài **232 byte**, và 232 là kích thước **dành riêng** cho hạt (quét cả
+  `assets/conf`: **85/85** bản ghi 232 byte đều là `CCParticleSystemQuad`). Ở bản
+  ghi 232 byte, ô `res` quen thuộc (`+0x70`/`+0x74`) có **độ dài bằng 0** cho
+  **cả 87** node, nên `xgg.py` trả chuỗi rỗng và `layout_ref` ghi lại chuỗi rỗng.
+  **Nhưng địa chỉ ở `+0x70` vẫn đúng**: nó trỏ vào đúng chỗ chứa đường dẫn tệp hạt
+  trong kho chuỗi — đo: `+0x70` của **cả 87** node **trùng khít** địa chỉ `+0xE0`.
+  Độ dài thật nằm ở **`+0xE4`**.
+* Đã kiểm `+0xE0` là ô **duy nhất**: quét mọi cặp `(địa chỉ, độ dài)` thẳng hàng 4
+  byte trong cả bản ghi 232 byte → **85/85** node (cây `decrypted`; 87/87 trên cây
+  `vn/decrypted`) có **đúng một** ô cho ra chuỗi `.plist`, và ô đó là `+0xE0`;
+  không node nào có hai.
+* Đọc ra **khớp nghĩa**, không phải trùng số: `cpCampsFireSmall` →
+  `../map/beachfiresmall.plist`, `cpCampsFireBig` → `../map/beachfirebig.plist`,
+  `particleDestinyStar1..4` → `../png/particle/StarTrail.plist`,
+  `g_mail*Particle*` → `../map/finishfirework.plist`. **7** tệp khác nhau, và **cả
+  7 đều có thật** trong `assets/` (giải tương đối theo `assets/conf/`). Một tên có
+  **dấu cách lạc** trong chính bản gốc — `../map/buttonbling .plist` (74 node) — và
+  tệp trên đĩa cũng mang đúng dấu cách ấy; chép nguyên văn, không sửa.
+* **Một luật tổng quát đã bị BỎ, ghi lại để lần sau đừng thử lại.** Luật ấy là
+  "nếu `+0x74` bằng 0 thì tìm trong bản ghi một cặp `(địa chỉ, độ dài)` có địa chỉ
+  bằng `+0x70`". Nó **đúng** cho hạt nhưng **sai** ở bản ghi 320/352 byte: ô
+  `+0xDC` ở đó tình cờ mang đúng giá trị địa chỉ ấy rồi giải ra chuỗi `'2'`/`'1'`
+  (cỡ chữ của `CCLabelTTF`) — **8.328 node** trùng số chứ không trùng nghĩa (đo
+  lại cả cây `vn/decrypted/assets/conf`: bản ghi 320 byte **299**, 352 byte
+  **8.029**, trong đó **7.726** ra chuỗi ngắn ≤ 2 ký tự). Nên luật phải **theo
+  kích thước bản ghi**, cùng lối với bảng `IMG_FIELD` đã có trong
+  `xgg.py`. Sửa vào `xgg.py`: `RES_FIELD = {232: 0xE0}`. Hai con số ghi ở các
+  lượt trước — **8.176** (trong `xgg.py`) và **8.968** (ở đây) — **không phải**
+  kết quả của phép đo này (`8.968` là tổng số `CCLabelTTF` của cả cây), nay sửa
+  lại cả hai. Kiểm không làm đổi thứ khác: đối chiếu cách đọc cũ với cách đọc mới
+  trên **33.472 node** — đúng **87**
+  node đổi, tất cả đều là hạt.
+* Bản gốc có **33** `.plist` chứa `maxParticles` (định nghĩa hạt thật) trong cây
+  `assets/` — đo bằng `plistlib` trên **cả cây** chứ không bằng `grep` (lượt trước
+  ghi 32 vì `grep -l` chạy trên danh sách do shell mở rộng, thiếu một tệp). Con số
+  đúng của **cả cây** là **534** `.plist`, phần lớn là atlas khung hình. Cả 33 tệp
+  hạt đều có **đủ 51 khoá** của lược đồ Cocos 2.x (không tệp nào thiếu khoá). Bảy
+  tệp được bố cục dùng đều nằm trong 33 tệp ấy, và mỗi tệp khai cả `maxParticles`,
+  `particleLifespan` lẫn `textureFileName`: `beachfiresmall` 20 hạt / 0,2 s /
+  `firefog.png`; `beachfirebig` 80 / 0,8 / `firefog.png`; `buttonbling ` 36 /
+  0,511 / `buttonbling.png`; `finishfirework` 100 / 0 / `finishfirework.png`;
+  `StarTrail` 20 / 0 / `StarTrail.png`; `NewYearSnow` 95 / 10 / `NewYearSnow.png`;
+  `ChristmasSnow` 188 / 10 / `ChristmasSnow.png`.
+* **Sáu ảnh hạt ấy đã nằm sẵn trong `ui_ref/` của bản port** (`.pkm` → PNG do
+  `uiart.py` giải, kèm `.import`), và engine **có** bộ đọc plist hạt
+  (`maxParticles`, `particleLifespan`, `textureFileName` đều có trong
+  `libgame.so`). Nên **không thiếu gì** cho việc dựng hạt: bố cục → `.plist` →
+  khoá + ảnh → `.pkm` mà bản port đã giải được từ trước.
+
+Ngoài lề nhưng cùng phép đo, ghi lại làm **manh mối**: chính khối đuôi ấy còn giữ
+**tên hiệu ứng âm thanh** ở ô `+0xC0` của bản ghi 216/244/248/260 byte — **2.095**
+node, **2.095/2.095** đều là chuỗi bắt đầu bằng `event:` (10 tên khác nhau, nhiều
+nhất là `event:/UI/UI_Click` 1.455 node). Khớp với mã gốc:
+`CUIEpicChapter.lua:282` và `CUISelectLevel.lua:1687` gọi
+`setSoundStrArr({"event:/UI/UI_Click"})` — **đúng chuỗi ấy**. Chưa đo node nào ứng
+với âm nào, nên **không kết luận**; đây là chỗ để tra tiếp cho `setSoundStrArr`.
+
+### Hệ hạt: đã dịch xong sang `GPUParticles2D` (33 định nghĩa, 87 node)
+
+Các lượt trên chỉ đo được **chỗ tắc** (node hạt rơi vào `"layer"` rồi thành
+`Control` rỗng 0×0, `stopSystem`/`resetSystem` là no-op có đếm trong `M.missing`).
+Lượt này dịch hết, và khoá lại bằng một bộ kiểm.
+
+Đường đi: bố cục → trường `res` → `.plist` → `hat_ref/*.json` →
+`ui/hat.gd` dựng `GPUParticles2D`. Bộ bóc là `brave-cross/work/hatref.py`, nhận
+diện tệp hạt bằng khoá `maxParticles` — cần vậy vì cả cây `assets/` có **534**
+`.plist` mà phần lớn là atlas khung hình. Lớp Lua `lua/hat.lua` nối ba hàm
+(`stopSystem` **13** chỗ gọi, `resetSystem` **9**, `isActive` **0** — lượt trước
+ghi `resetSystem` 17, **đếm lại bằng `grep -rho "[:.]resetSystem(" sc/` ra 9**;
+`setTotalParticles` và `setDuration` thật sự là 0) và đăng ký
+trong `bootstrap.lua`, đúng chỗ ba cái tên ấy từng rơi vào `__index` của `Node`
+rồi trả về một hàm đếm lại (bóng — gọi được, không báo lỗi, không tắt gì).
+
+Bốn chỗ Cocos và Godot làm khác nhau, và cách khớp. Mỗi dòng dưới đây truy về một
+lệnh trong chuỗi shader của `ParticleProcessMaterial` — chuỗi ấy nằm **nguyên
+trong** `Godot_v4.7.2-stable_win64.exe` (vùng ~`0x7309000`–`0x730c400`), nên đọc
+được thay vì đoán:
+
+| chỗ khác | Cocos | Godot | cách khớp |
+|---|---|---|---|
+| thời gian sống | hai phía, `[L−v, L+v]` | **một** phía: `params.lifetime = (1.0 − lifetime_randomness·rand)` (`0x730b0e`) → `[T(1−r), T]` | `T = L+v`, `r = 2v/(L+v)` chặn ở 1 — khớp **đúng**; khi `v ≥ L` thì ra `[0, L+v]`, **cũng** là dải có hiệu lực của Cocos vì hạt thời gian sống âm chết ngay. Đối chiếu chéo: `process_orbit_displacement(..., params.lifetime * LIFETIME)` — tức `LIFETIME` là nền, tham số kia là hệ số rút |
+| trục y của lực | `gravityy` hướng xuống | `force = gravity` (`0x730be92`) rồi `USERDATA1.xyz += force * DELTA`, đơn vị pixel/giây² | lật dấu: `gravity = (gx, −gy)`. Cùng thứ nguyên nên **không** phải đổi đơn vị |
+| gốc của góc | ngược chiều kim đồng hồ, y hướng lên | y hướng xuống | `direction = (cos(−a), sin(−a))`, `spread = angleVariance` (Godot cũng nhận **nửa góc**, `angle1_rad = rand_m1_p1()·spread_rad + atan2(...)`) — cùng luật `rot` của bố cục |
+| hệ toạ độ | hạt sống trong hệ **của node** | `local_coords` mặc định `false` | `local_coords = true` — đúng tính chất mà `CPublic:playButtonParticleSystem` dựa vào để hạt bay theo action của nút |
+
+Phần dịch còn lại, cũng theo số đo: `scale_curve` **NHÂN** vào `scale`
+(`parameters.scale *= texture(scale_curve, …)`), nên đường cong là `1,0 →
+finish/start`; `scale_min/max` chia **bề rộng ảnh** vì kích thước trong `.plist`
+tính bằng pixel của ảnh gốc còn Godot phóng theo tỉ lệ — và **cả 6 ảnh hạt đều
+vuông** (firefog 256×256, năm ảnh còn lại 64×64) nên một trục là đủ **và đúng**;
+hộp phát là phân bố đều trong `±sourcePositionVariance` (`pos = vec3(rand·2−1, …) *
+emission_box_extents`); `amount = maxParticles` (nhịp phát hiệu lực là
+`amount/lifetime`, theo tài liệu `GPUParticles2D.amount` — nên `amount` **không**
+phải nhịp phát); `fixed_fps = 60` vì bản gốc cộng vận tốc theo **từng khung vẽ**;
+`visibility_rect` mở rộng theo **chính định nghĩa** — `(tốc độ + phương sai)·T +
+biên độ phát + ½·|gy|·T²`, cộng 64 — vì mặc định của Godot chỉ `±100` quanh gốc,
+hạt bay xa hơn sẽ biến mất khi node ra khỏi màn, còn bản gốc vẽ vô điều kiện.
+
+Phép trộn: **31/33 định nghĩa khớp ĐÚNG** một chế độ của `CanvasItemMaterial` —
+`(770,1)` → ADD **25**, `(1,771)` → PREMULT_ALPHA **5**, `(770,771)` → MIX **1**
+(cặp thứ ba này lượt trước đếm sót — đã đếm lại, nên số định nghĩa khớp đúng là 31
+chứ không phải 30). Hai cặp còn lại không có phép tương ứng trong Godot:
+`(772,1)` (`map/finishfirework`, **đang được dùng**) và `(775,1)`
+(`map/LvBuFireP`) → dùng ADD và ghi rõ là **xấp xỉ**.
+
+Bốn khẳng định trong chú thích `ui/hat.gd` nay là **phép kiểm**, không còn là câu
+chữ — vì mỗi cái là một nhánh mã **không dựng**, hoặc một phép chia cho 0:
+`duration < 0` ×**33** (nên **không** dựng cửa sổ phát hữu hạn: dựng thì không có gì
+để kiểm; riêng `map/finishfirework` là `−0,55` chứ không phải hằng số
+`kCCParticleDurationInfinity = −1`, nên đó là một **cách đọc** chứ không phải số đo,
+và cách đọc ngược lại sẽ làm quả pháo hoa ấy không bao giờ phát hạt nào dù nó được
+đặt ở 5 chỗ), `rotationEnd == rotationStart` ×**33** (nên `angular_velocity = 0` là
+**đúng**, không phải xấp xỉ), `L+v > 0` ×**33** (nhỏ nhất `png/particle/StarTrail`
+`0 + 1,0`), và không kênh màu nào bằng 0 kèm phương sai. Định nghĩa nào sau này phá
+một trong bốn cái đó thì bộ kiểm **báo**, và `ui/hat.gd` cũng `push_warning` lúc chạy.
+
+Cái **KHÔNG** dịch được, ghi ra chứ không làm mờ đi:
+
+* **`sourcePositionx/y` bỏ qua có chủ ý**, trên cơ sở hai phản ví dụ trong chính dữ
+  liệu: `spMainUITheme_christmas`/`_newYear` ngồi ở `y = 602,2` trên màn cao 640 mà
+  `ChristmasSnow` có `sourcePositiony = 320,6` → tuyết sinh ở `y = 922`, **ngoài
+  màn**; còn `buttonbling` có `sourcePosition = (194,1; 185,8)` trong khi node ở
+  `(5, 55)`. Bỏ nó đi thì cả hai ra đúng. Phần **phương sai vẫn dùng** (dải tuyết
+  rộng ±557 chính là chỗ làm tuyết phủ hết bề ngang). Chưa đo được Cocos có trừ
+  `sourcePosition` trong đường vẽ hay không: các khoá ấy **không được mã nào trong
+  `libgame.so` tham chiếu trực tiếp**.
+* **Phương sai màu lúc CHẾT** (`finishColorVariance*`) và **phương sai cỡ lúc chết**
+  (`finishParticleSizeVariance`) — Cocos rút ngẫu nhiên **hai lần độc lập** (lúc
+  sinh và lúc chết), Godot rút **một** lần rồi đi theo đường cong tất định. Lúc sinh
+  khớp **đúng từng kênh** (kể cả phần chặn ở 1,0 — màu hạt của Cocos đi vào vertex
+  colour dạng byte nên cũng bị chặn), lúc chết lấy giá trị trung bình.
+* **Các kênh màu biến thiên ĐỘC LẬP** — một tham số gradient chạy cho cả ba kênh
+  cùng lúc; lệch này chỉ lộ ở `map/finishfirework` (đỏ ±0,51 / lam ±0,30).
+* **Dấu của `tangentialAcceleration`** — hai hệ lật trục y nhau nên chiều trên màn
+  hình ngược nhau, và cả 33 định nghĩa đều bằng **0** trừ hai cái không màn nào
+  dùng, nên **không đo được**. (`radialAcceleration` thì cùng dấu và khớp thẳng.)
+* **Chế độ bán kính** (`maxRadius`/`minRadius`/`rotatePerSecond`) — cả 33 định nghĩa
+  đều `emitterType = 0`, tức **không có gì để dựng**, không phải bỏ sót.
+
+`tools/verify_hat.gd` (**bộ thứ 30**) kiểm bốn tầng. **A. Dữ liệu**: 33 định nghĩa,
+87 node, 7 định nghĩa được dùng, mọi `res` tra ra định nghĩa — kể cả tên có **dấu
+cách thật** `'../map/buttonbling .plist'` (74/87 node dùng nó; khoá **giữ nguyên**
+dấu cách, còn khoá ảnh thì không có, đúng như dữ liệu gốc — không tự sửa). **B. Phép
+dịch**: **tính lại từng tham số ở chính bộ kiểm**, từ file JSON, bằng công thức viết
+độc lập rồi đối chiếu với vật liệu mà `ui/hat.gd` đặt ra — hai đường khác nhau phải
+ra cùng số; đây cũng là chỗ bốn khẳng định trên thành phép kiểm. **C. Bố cục thật**:
+node trong `UI_ArmyGroup_Campsite_Info` (`cpCampsFireSmall`/`cpCampsFireBig`) và màn
+dùng `buttonbling` phải là `HatNode` có con vẽ, neo đúng gốc Cocos, và **không** node
+hạt nào bị bỏ lại thành `Control` rỗng. **D. Lớp Lua**: `stopSystem`/`resetSystem`/
+`isActive` phải đổi đúng cờ `emitting` của node **thật** (node lấy từ cây bố cục đã
+dựng, nên lớp được chọn theo meta `type_name` mà chính `XggLayout._make` đặt), theo
+**đúng thứ tự** của `CPublic:playButtonParticleSystem`. **154 đạt / 0 hỏng.**
+
+Một cái bẫy của chính Godot, **đo bằng script thử rồi mới viết mã** (và là lý do
+`ui/hat.gd` đặt tham số theo một thứ tự nhất định): **Godot kẹp hai đầu của mọi cặp
+min/max vào nhau** — đặt `angle_min = 30` rồi `angle_max = -30` thì ra `(-30, -30)`
+(đầu `max` kéo đầu `min` xuống), đặt ngược lại thì ra `(30, 30)`; `scale_min = 2`
+rồi `scale_max = 1` cũng ra `(1, 1)`. Nên **đầu thấp phải đặt trước**; đã kiểm lại
+thì mọi cặp đang dùng đều đã đúng thứ tự ấy, trừ cặp góc — nay đặt `angle_min`
+trước `angle_max`, và bộ kiểm đọc theo đúng thứ tự đó.
 
 ### `setGray`: đã giải xong, bằng hai đường độc lập
 
@@ -717,6 +968,30 @@ vật liệu của node cha **không** truyền xuống `Sprite2D` con trong God
   shader xám đọc **ảnh chữ** mà atlas chữ thì màu **trắng** — chữ sẽ ra **trắng**
   chứ không ra xám, lại còn mất đường viền. Chính vì vậy trong mã gốc có nhiều
   dòng `setGray` trên biến nhãn **đã bị comment sẵn** (`--pBtnText:setGray(true)`).
+* **Đây là kết quả ĐO, không phải suy luận.** Đọc bảng bind của `libgame.so`
+  (`brave-cross/work/binder.py`; 132 lớp, 3.523 bản ghi method, và **131/132**
+  bảng kết thúc bằng đúng bản ghi 12 byte toàn số 0 — nên mốc chặn là thật, không
+  phải chỗ đọc tràn): `setGray` có **đúng 5 lớp** — `CCSprite`, `CCScale9Sprite`,
+  `CCButton`, `Label`, `CCProgressTimer` — và **`CCLabelTTF` thì KHÔNG có**. Nên
+  với **nhãn chữ thường** (`CCLabelTTF`) thì lời gọi `setGray` ở bản gốc **không
+  thể** chạy: nó ném lỗi Lua thật ("attempt to call method 'setGray'").
+  Cùng phép đo ấy: `CCLayerColorRoundRect` cũng **không** có `setGray`, còn
+  `setOrange` chỉ có trên **một** lớp duy nhất là `CCProgressTimer` — khớp đúng
+  **6 chỗ gọi** `setOrange` trong mã gốc, cả 6 đều là progress timer.
+  Một chi tiết nữa, cũng đo được: `setGray` **không phải một hàm duy nhất** —
+  `CCSprite` và `CCButton` dùng **chung** một địa chỉ mã (`0x49d70d`),
+  `CCScale9Sprite` riêng (`0x2d2839`), `Label` riêng (`0x2cb1c9`), còn
+  `CCProgressTimer` thì đi qua **slot** `+0x290`. Bốn đường, không phải một.
+* **Nhưng đừng vì thế mà bảo mọi dòng `setGray` bị comment là vì thiếu method —
+  đã kiểm và KHÔNG đúng.** Các dòng bị comment nằm **liền với** một lời gọi
+  `SetLableGray` ngay trên nó (`CUIHeroInfoMainUI.lua:190-191` và `:200-201`:
+  `g_CUIPublic:SetLableGray(pBtnText, false)` rồi `--pBtnText:setGray(false)`),
+  tức đó là một lần **đổi đường** chứ không phải một lời gọi sai. Và người nhận
+  không chỉ toàn nhãn chữ: có cả **nút** (`buyButton` CUIActivityFund.lua:246,
+  `replayButton` CUIArenaRecord.lua:186, `btn` CUIHeroInfoFightSoulUI.lua:697) mà
+  `CCButton` thì **có** `setGray` — ở những chỗ đó, comment là **lựa chọn**, không
+  phải bắt buộc. Chưa đo được **từng dòng một** (tên biến khác nhau theo từng màn
+  hình, không suy từ tên), nên ở đây không kết luận thay.
 * `ColorRect` (`CCLayerColorRoundRect`): **CHƯA LÀM, và không đoán bừa.** Trong
   mã gốc có đúng **12 chỗ** gọi `setGray` nhắn vào năm biến tên kiểu lớp/nền.
   Đã tra tận nơi **từng chỗ một** bằng bố cục gốc (`layout_ref/*.json`, đi theo
@@ -1194,9 +1469,15 @@ không chạy được `CPublic:SetObjGray` ở đó), `scheduleOnce` báo thàn
 8. **`setPercentage`** — 139 lượt gọi, 325 node, 83 file, và là thứ **duy nhất
    trong bảng còn phải đo bằng máy ảo hoặc `libgame.so`**. Đã đo phần chắc chắn
    đo được: bản ghi `CCProgressTimer` **không** chứa midpoint/barChangeRate ở bất
-   kỳ offset 4 byte nào (quét cả 325 bản ghi), và bản gốc **không hề gọi**
-   `setType`/`setMidpoint`/`setBarChangeRate` (**0 chỗ** trong 973 file) — nên
-   kiểu thanh hay vòng, và chiều chạy, là mặc định C++ chưa giải. **Không đoán.**
+   kỳ offset 4 byte nào (quét cả 325 bản ghi), và **cả 325** node ấy trong
+   `layout_ref/*.json` cũng chỉ mang bộ trường chung — không có trường riêng cho
+   kiểu thanh hay chiều chạy. Nên kiểu thanh hay vòng là mặc định C++ chưa giải.
+   **Không đoán.**
+   Đã chốt thêm **từ vựng** của `setType` — sáu tên `ccw`/`cw`/`lr`/`rl`/`bt`/`tb`
+   cùng sáu cặp hằng số của chúng — và chỗ gọi **duy nhất** trong mã gốc. Xem mục
+   4, đoạn "câu cũ đã SAI": ghi cũ ở đây rằng bản gốc **không hề gọi** `setType`
+   là **sai**, do phép grep `:setType(` bỏ sót lối gọi theo **chuỗi** qua
+   `CCCallFunc` (`CUIDownload.lua:65/67`).
 9. ~~**Nhóm armature: ba hàm điểm gắn**~~ — **xong.** `_lua_addChildToPlugIn`
    (2 lúc quét, **33 chỗ gọi** trong mã), `_lua_clearPlugIn` (6 lúc quét / 10),
    `_lua_getPlugInPositionInNode` (5) **chưa từng tồn tại** ở lớp giả lập: tên

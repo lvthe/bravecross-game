@@ -51,6 +51,11 @@ python ../brave-cross/work/move_speed.py
 # 2e. Số liệu kỹ năng thức tỉnh (khối `<fight>` tên `fight_<Sprite>Wake`).
 #     Thiếu nó thì tuyệt chiêu kịch bản rơi về 1 đòn cho mọi tướng.
 python ../brave-cross/work/wake_ref.py
+# 2f. Định nghĩa hệ hạt của bản gốc — 33 file `.plist` (bộ bóc nhận diện bằng
+#     khoá `maxParticles`, vì 534 file `.plist` trong cây phần lớn là atlas
+#     khung hình). Thiếu nó thì 87 node hạt trong 296 bố cục dựng ra Control
+#     rỗng, KHÔNG báo lỗi gì.
+python ../brave-cross/work/hatref.py --out hat_ref
 
 # 3. Bảng số liệu cho máy chủ — cũng gitignore, cùng lý do
 python sim/export_stats.py --all
@@ -1685,6 +1690,7 @@ tự làm trước khi phát hành:
 | `ui_ref/` | 12 491 ảnh giao diện giải từ `.pkm` | 408 MB |
 | `assets_ref/` | art nhân vật và nền cảnh | 332 MB |
 | `layout_ref/` | 296 bố cục màn hình trích từ `.xgg` | 16 MB |
+| `hat_ref/` | 33 định nghĩa hạt bóc từ `.plist` | 160 KB |
 | `data_ref/` | bảng số chiến đấu | 232 KB |
 
 Không đẩy lên repo, nhưng **sinh lại được hết** từ APK — thứ đáng giữ trong
@@ -1727,6 +1733,13 @@ nó dùng tiếp những ảnh đã giải:
 
 ```bash
 python uiart.py --out <bravecross-game>/ui_ref
+```
+
+Định nghĩa hệ hạt, 33 tấm (cần cho `ui/hat.gd` — `XggLayout` dựng node
+`CCParticleSystemQuad` bằng nó):
+
+```bash
+python hatref.py --out <bravecross-game>/hat_ref
 ```
 
 Và sinh lại bảng số — lệnh này chạy từ **thư mục game**:

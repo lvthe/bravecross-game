@@ -717,17 +717,23 @@ vật liệu của node cha **không** truyền xuống `Sprite2D` con trong God
   shader xám đọc **ảnh chữ** mà atlas chữ thì màu **trắng** — chữ sẽ ra **trắng**
   chứ không ra xám, lại còn mất đường viền. Chính vì vậy trong mã gốc có nhiều
   dòng `setGray` trên biến nhãn **đã bị comment sẵn** (`--pBtnText:setGray(true)`).
-* `ColorRect` (`CCLayerColorRoundRect`): **CHƯA LÀM, và không đoán bừa.** Đếm
-  chính xác: `setGray` được gọi **12 chỗ** trên các biến tên kiểu lớp/nền —
-  `lItemBackground` (CUIActivityLoginTurnplate 2), `bgview` (CUISign 2),
-  `upgradeLayer`/`completeLayer` (CUIResearch 5), `pOrdinaryBg` **và hai con của
-  nó** qua `getChildByTag(4)`/`(5)` (CUIActivityLoginRewards 3); lệnh đếm:
-  `grep -rn "\(bgview\|upgradeLayer\|completeLayer\|pOrdinaryBg\|lItemBackground\):setGray("`.
-  Song **đã xác định được một trong số đó không thuộc trường hợp này**:
-  `lItemBackground` là **`CCSprite`** — `CUIActivityLoginTurnplate.lua:186` gọi
-  `setDisplayFrame` trên chính nó — nên nó đi đường `TextureRect` bình thường.
-  Số còn lại thì **chưa biết** node đó có ảnh hay không (`bgview`,
-  `pOrdinaryBg` + hai con, `upgradeLayer`, `completeLayer`).
+* `ColorRect` (`CCLayerColorRoundRect`): **CHƯA LÀM, và không đoán bừa.** Trong
+  mã gốc có đúng **12 chỗ** gọi `setGray` nhắn vào năm biến tên kiểu lớp/nền.
+  Đã tra tận nơi **từng chỗ một** bằng bố cục gốc (`layout_ref/*.json`, đi theo
+  `getChildByTag`), và đối chiếu **hai chiều với tên biến** — tên trong mã gốc
+  mách loại node (`Sp`, `ttf`, `Bg`), nên đọc ra loại nào thì phải khớp tên đó:
+
+  | chỗ gọi | loại đo được | nguồn |
+  |---|---|---|
+  | `lItemBackground` ×2<br>(CUIActivityLoginTurnplate.lua:204/211) | **CCSprite** | dòng 186 gọi `setDisplayFrame` trên chính nó |
+  | `bgview` ×2<br>(CUISign.lua:1006/1020) | **CCScale9Sprite** | `view:getChildByTag(1)`, `tvTemplate = lLuxurySignTemp` (CUISign.lua:727); trong `UI_SignInReward_960_640` node đó là scale9, và các con khớp từng tag `_initCell` đọc: tag 6 = `CCLabelTTF` (`ttfSignTimes`), tag 5 = `CCScale9Sprite` (`unRewardBgSp`), tag 2 = `CCButton` (`rewardBtn`) |
+  | `pOrdinaryBg` + con tag 4/5 ×3<br>(CUIActivityLoginRewards.lua:328/329/330) | **CCScale9Sprite**<br>+ 2 × **CCSprite** | trong `UI_RotatingActivity_UI_960_640`, tag 1 của `lActivityLoginRewardsItemTemplate` là scale9, hai con tag 4/5 là sprite; khớp: tag 3 là `CCLabelTTF` mà mã gốc gọi `setString` lên nó, còn tag 4/5 thì `SetTitleCloseAlignment` (`CPublic.lua:2321`) đặt hai bên tiêu đề |
+  | `upgradeLayer`/`completeLayer` ×5<br>(CUIResearch.lua:419/430/443/461/489) | **chưa xác định được** | `conf/UI_Research_UI_960_640.xgg` **không có** trong APK gốc — nằm trong danh sách **6 bố cục thiếu `.xgg`** ở mục 4, nên không có bố cục nào để tra |
+
+  Vậy **7 chỗ là node VẼ có ảnh** — đã đi đường `TextureRect`/`NinePatchRect` ở
+  trên rồi, không rơi vào trường hợp này. **5 chỗ còn lại ghi là CHƯA BIẾT**,
+  không suy diễn.
+
   Lý do không làm: lớp màu **không có ảnh**, mà chương trình xám của bản gốc thì
   đọc `CC_Texture0` — với lớp màu thì texture đó **không được gắn**, nên kết quả
   là rác của GL chứ không phải một màu nào suy ra được. Gắn shader đọc ảnh ở đây
@@ -735,6 +741,11 @@ vật liệu của node cha **không** truyền xuống `Sprite2D` con trong God
   ràng; còn tự tính luma của màu nền thì là **suy đoán ý tác giả**, không phải
   phép đo. Muốn biết thật phải mở bản gốc, gọi `setGray` lên **đúng node đang
   được vẽ**, rồi đổi điểm ảnh.
+
+  Ghi chú về số 6 bố cục thiếu `.xgg`: phép đếm trên đối chiếu với `layout_ref/`,
+  còn lượt này đối chiếu thẳng với `conf/*.xgg` của APK (307 file) và
+  `grep` nội dung cả 307 file — **cùng ra đúng 6 file đó**, nên con số đã được
+  kiểm bằng hai nguồn độc lập.
 * Node khác (Control rỗng, node mang armature): **không**. Bản gốc chỉ đổi chương
   trình của **chính** node, mà node đó không tự vẽ gì; armature vẽ ở các node
   **con** của nó nên vẫn giữ màu — và gắn vật liệu lên node cha trong Godot cũng

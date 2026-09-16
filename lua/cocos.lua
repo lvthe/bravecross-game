@@ -845,22 +845,41 @@ end
 --     co nhieu dong `setGray` tren bien nhan da bi COMMENT san
 --     (`--pBtnText:setGray(true)`), va `SetLableGray` moi la duong that.
 --   * `ColorRect` (CCLayerColorRoundRect) — **CHUA LAM**, va khong doan bua.
---     Trong ma goc co **12 cho** goi `setGray` nhan vao bien ten kieu lop/nen:
---     `lItemBackground` (CUIActivityLoginTurnplate.lua:204/211), `bgview`
---     (CUISign.lua:1006/1020), `upgradeLayer`/`completeLayer`
---     (CUIResearch.lua:419/430/443/461/489), `pOrdinaryBg` va hai con cua no
---     (CUIActivityLoginRewards.lua:328/329/330) — dem bang
---     grep -rn "\(bgview\|upgradeLayer\|completeLayer\|pOrdinaryBg\|lItemBackground\):setGray(".
---     Da xac dinh duoc DUNG MOT cho trong so do: `lItemBackground` la
---     **CCSprite** (CUIActivityLoginTurnplate.lua:186 goi `setDisplayFrame` tren
---     no), nen no di duong TextureRect binh thuong chu khong roi vao day. Sau
---     cho do thi lop that su KHONG co anh: chuong trinh do doc `CC_Texture0`
---     khong duoc gan, nen ket qua la rac cua GL chu khong phai mot mau nao ta
---     suy ra duoc. Gan shader doc anh o day thi Godot se lay anh TRANG mac dinh
---     va lop mau bien thanh TRANG — sai ro rang; con tu tinh luma cua mau nen
---     thi la SUY DOAN y do tac gia, khong phai phep do. Muon biet that thi phai
---     mo ban goc, goi setGray len DUNG node dang duoc VE, roi doi diem anh —
---     xem ROADMAP muc "setGray".
+--     Trong ma goc co dung **12 cho** goi `setGray` nhan vao nam bien ten kieu
+--     lop/nen. Da tra tan noi tung cho mot bang bo cuc goc
+--     (`layout_ref/*.json`, di theo `getChildByTag`), va doi chieu hai chieu voi
+--     TEN bien — ten trong ma goc ma loai node (`Sp`, `ttf`, `Bg`), nen doc ra
+--     loai nao thi phai khop ten do:
+--       - `lItemBackground` (CUIActivityLoginTurnplate.lua:204/211) — CCSprite,
+--         chung minh truc tiep: dong 186 goi `setDisplayFrame` tren chinh no;
+--       - `bgview` (CUISign.lua:1006/1020) — `view:getChildByTag(1)` voi
+--         `self.tvTemplate = lLuxurySignTemp` (CUISign.lua:727). Trong
+--         UI_SignInReward_960_640 thi node do la **CCScale9Sprite**, va sau con
+--         cua no khop tung tag ma `_initCell` doc: tag 6 la CCLabelTTF
+--         (`ttfSignTimes`), tag 5 la CCScale9Sprite (`unRewardBgSp`), tag 2 la
+--         CCButton (`rewardBtn`);
+--       - `pOrdinaryBg` + hai con tag 4/5 (CUIActivityLoginRewards.lua:328/329/
+--         330) — trong UI_RotatingActivity_UI_960_640, tag 1 cua
+--         `lActivityLoginRewardsItemTemplate` la **CCScale9Sprite**, hai con
+--         tag 4/5 la **CCSprite**. Khop: tag 3 la CCLabelTTF ma ma goc goi
+--         `setString` len no, con tag 4/5 thi `SetTitleCloseAlignment` dat hai
+--         ben tieu de (`CPublic.lua:2321`, `pLeft:getContentSize()` roi
+--         `setPosition(x-w/2-nTempW/2, y)`).
+--     Bay cho do la node VE **co anh**, tuc da di duong TextureRect /
+--     NinePatchRect o tren roi, khong roi vao day.
+--     Nam cho con lai — `upgradeLayer`/`completeLayer` (CUIResearch.lua:419/430/
+--     443/461/489, la tag 1/2 cua `potionUpgradeButton`) — thi **khong xac dinh
+--     duoc**: `conf/UI_Research_UI_960_640.xgg` khong co trong APK goc (nam
+--     trong danh sach 6 bo cuc thieu `.xgg` o ROADMAP), nen khong co bo cuc nao
+--     de tra. Ghi lai la chua biet, khong suy dien.
+--     Vi sao khong suy dien: lop mau **khong co anh**, ma chuong trinh xam cua
+--     ban goc thi doc `CC_Texture0` — voi lop mau thi texture do **khong duoc
+--     gan**, nen ket qua la rac cua GL chu khong phai mot mau nao ta suy ra
+--     duoc. Gan shader doc anh o day thi Godot se lay anh **TRANG** mac dinh va
+--     lop mau bien thanh TRANG — sai ro rang; con tu tinh luma cua mau nen thi la
+--     **SUY DOAN y do tac gia**, khong phai phep do. Muon biet that thi phai mo
+--     ban goc, goi setGray len DUNG node dang duoc VE, roi doi diem anh — xem
+--     ROADMAP muc "setGray".
 --   * Cac node khac (Control rong, node mang armature) — KHONG. Ban goc chi
 --     doi chuong trinh cua CHINH node, ma node do khong tu ve gi: armature ve
 --     o cac node CON cua no nen van giu mau. Dat vat lieu len node cha cung

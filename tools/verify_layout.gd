@@ -302,10 +302,18 @@ func _init() -> void:
 	quit(0 if n_fail == 0 else 1)
 
 
+## Dem node do CHINH bo cuc dung ra, khong dem con ve ma lop gia lap tu them.
+##
+## Dau hieu "do bo cuc dung ra" la meta `type_name`, ma `XggLayout._make` dat cho
+## MOI node (`ui/xgg_layout.gd:329`, khong nhanh nao thoat truoc do). Truoc day
+## phep dem dem MOI con va chi tru mot cai ten `_debug`, nen vua roi vao bay khi
+## he hat ra doi: `HatNode` mang theo mot `GPUParticles2D` con de ve, va 87 node
+## hat tren 23 man hinh lam phep dem lech dung 87 (do: hieu so tung man +
+## 2+10+6+2+4+2+8+2+6+2+3+2+5+2+4+2+4+9+2+2+4+2+2 = 87). Node hat khong ve
+## duoc thi khong co con nao, va do cung la mot ly do de dem theo meta chu khong
+## theo so con.
 func _count_nodes(n: Node) -> int:
-	if n.name == "_debug":
-		return 0
-	var c := 1
+	var c := 1 if n.has_meta("type_name") else 0
 	for k in n.get_children():
 		c += _count_nodes(k)
 	return c

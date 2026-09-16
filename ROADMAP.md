@@ -1773,6 +1773,17 @@ không chạy được `CPublic:SetObjGray` ở đó), `scheduleOnce` báo thàn
     **32**), chạy đúng chuỗi bước của `emu_nhan.py` và đã qua **phép thử phá**
     (bỏ luật ⇒ 10 hỏng đúng chỗ).
 
+    **Đo hồi quy của riêng việc này** (so **tên màn**, không so tổng): dựng lại
+    đúng bản trước khi sửa bằng `git show <commit cũ>:lua/cocos.lua`, quét, rồi trả
+    lại và `git status --short lua/cocos.lua` phải rỗng. Kết quả: **danh sách tên
+    màn hỏng giống hệt nhau** giữa bản trước và **cả hai** lượt sau (`diff` rỗng,
+    62 tên), tổng đều `291 mở / 0 im / 62 hỏng`, và bảng "API Cocos CHUA LAM"
+    **16 loại → 15 loại**, mất đúng `setDimensions ×10` như dự đoán. Một lượt sau
+    duy nhất ra `290 / 63` với `g_CUISubDialog/UIFuctionOpen` hỏng thêm — chứng
+    minh là **dao động**, không phải hồi quy: tên ấy **cũng có** trong bản quét cũ
+    trước khi sửa, và hai lượt sau còn lại đều cho `291 / 62` với tên ấy mở được.
+    (Đó cũng là lý do luật của dự án cấm so tổng: ±1 màn ở đây là nhiễu.)
+
 Việc 2(b) rẻ và mở đường cho việc 4. **Việc 7 vừa xong, và nó đổi thứ tự ưu
 tiên**: nó là một lỗi im lặng **trong chính lớp giả lập**, đúng loại đã gặp ở
 `setGray` — nên câu hỏi đúng không phải "còn thiếu API nào" mà là "**còn tên nào

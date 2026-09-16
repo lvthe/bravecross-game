@@ -78,6 +78,8 @@ func _init() -> void:
 	t("nap gan het ma goc", so_module > 800 and so_module - nap_duoc <= 1,
 			"%d/%d module" % [nap_duoc, so_module])
 	print("  -> nap %d/%d module cua ban goc" % [nap_duoc, so_module])
+	print("  luc nap doc ra nil: %s" % str(r.get("doc ra nil", "?")))
+	print("  so bien_lua = %s, so thieu = %s" % [r.get("so bien_lua", "?"), r.get("so thieu", "?")])
 
 	# MOT DONG. Tu day tro di khong con dong nao cua minh.
 	var d = lua.run(_SHOW, "mo man hinh")
@@ -88,6 +90,7 @@ func _init() -> void:
 		return
 	t("loadLevelFile nap bo cuc cua man hinh",
 			str(d.get("nap bo cuc", "")) == "true", str(d.get("nap bo cuc", "?")))
+	print("  so muc seed tu cau hinh = %s" % str(d.get("so muc lay tu cau hinh", "?")))
 	t("bo cuc duoc nap vao UIRootLayer",
 			str(d.get("nam trong UIRootLayer", "")) == "true",
 			str(d.get("nam trong UIRootLayer", "?")))
@@ -135,6 +138,7 @@ func _init() -> void:
 	for k in sau:
 		if str(k).begins_with("O HONG"):
 			print("      %s = %s" % [k, sau[k]])
+	print("  doc ra nil: %s" % str(sau.get("doc ra nil", "?")))
 
 	# Bao cao: con thieu nhung gi.
 	var ghosts = lua.run("""
@@ -183,6 +187,9 @@ const _NAP := """
 	-- — loi hien o ma goc chu khong o cho thieu.
 	boot.install_cocos()
 	boot.install()
+	-- Do xem luc NAP doc tien bien nao ra nil: trong bong thi mot ten doc ra
+	-- BONG (khac nil), ma `if X == nil then` trong ma goc re sang nhanh khac.
+	boot.danh_dau()
 	local out = Dictionary()
 	-- Nap TOAN BO ma goc theo dung bon ban ke khai cua no (876 module), chu
 	-- khong phai mot danh sach ngan minh chon. Khac nhau rat lon: cai gi
@@ -194,6 +201,16 @@ const _NAP := """
 	out['nap duoc'] = bao.nap
 	for m, e in pairs(bao.hong) do out['HONG ' .. m] = e end
 	out['cau hinh'] = boot.init_config()
+	out['so bien_lua'] = boot.so_bien_lua
+	out['so thieu'] = boot.so_thieu()
+	do
+		local dem = {}
+		for _, k in ipairs(boot.tu_dau) do dem[k] = (dem[k] or 0) + 1 end
+		local dk = {}
+		for k, v in pairs(dem) do dk[#dk + 1] = v .. ' ' .. k end
+		table.sort(dk)
+		out['doc ra nil'] = table.concat(dk, ' | ')
+	end
 	return out
 """
 
@@ -201,6 +218,9 @@ const _NAP := """
 ## Do du lieu vao roi goi DUNG MOT dong cua ban goc.
 const _SHOW := """
 	local out = Dictionary()
+	local boot = require('bootstrap')
+	-- Do xem doan nay doc tien bien nao ra nil (xem bootstrap.danh_dau).
+	boot.danh_dau()
 	-- Ban goc luon dang o trong MOT CANH, va CLevelLoader ghi ten xgg da nap
 	-- vao danh sach cua canh do; ten canh la nil thi registerPreloadXgg bo
 	-- qua, khong ban tin OnLoadXGG, va onInit khong bao gio chay. Ta chua
@@ -316,6 +336,19 @@ const _SAU := """
 	-- So MUC danh sach nhan duoc (khac so DONG dung duoc: mot o hong thi
 	-- cocos.lua ghi lai roi di tiep chu khong giet ca danh sach).
 	out['ItemCellNumber sau'] = tostring(tv and tv.ItemCellNumber)
+	-- Ten ma doan nay doc ra nil vi luat `bien_lua` (bootstrap.install): ten do
+	-- CHINH Lua ban goc dat, nhung module dat no khong nam trong bon ban ke
+	-- khai nen no chua duoc nap. Ban goc cung doc ra nil o day — khac han bong,
+	-- va khac han la mot loi. In ra de biet minh dang thieu module nao.
+	local boot = require('bootstrap')
+	if boot.tu_dau ~= nil then
+		local dem = {}
+		for _, k in ipairs(boot.tu_dau) do dem[k] = (dem[k] or 0) + 1 end
+		local dk = {}
+		for k, v in pairs(dem) do dk[#dk + 1] = v .. ' ' .. k end
+		table.sort(dk)
+		out['doc ra nil'] = table.concat(dk, ' | ')
+	end
 	for i, e in ipairs(require('cocos').cell_errors) do out['O HONG ' .. i] = e end
 	return out
 """

@@ -56,7 +56,10 @@ SUA_SO_DINH_TU_KHOA = re.compile(
 
 def va_dau_cach(text):
     """Tra (chuoi da sua, so cho da sua)."""
-    return SUA_SO_DINH_TU_KHOA.subn('\g<1> \g<2>', text)
+    # Chuoi tho (r'...') chu khong phai '...': '\g' khong phai escape hop le nen
+    # Python 3.12 in SyntaxWarning moi lan chay — mot dong canh bao gia o dau ra
+    # cua buoc cai dat, dung cho de lan voi canh bao that.
+    return SUA_SO_DINH_TU_KHOA.subn(r'\g<1> \g<2>', text)
 
 
 def main() -> int:
@@ -136,6 +139,10 @@ def main() -> int:
     n_nil = ghi_bien_nil()
     if n_nil >= 0:
         print('   + %d bien toan cuc chac chan nil -> data_ref/bien_nil.json' % n_nil)
+    n_gan = ghi_bien_gan()
+    if n_gan >= 0:
+        print('   + %d bien toan cuc do CHINH Lua ban goc dat -> data_ref/bien_gan.json'
+              % n_gan)
     return 0
 
 
@@ -214,6 +221,205 @@ def ghi_bien_nil():
         'ten': ten,
     }, ensure_ascii=False, indent=1), encoding='utf-8')
     return len(ten)
+
+
+# BIEN TOAN CUC DO CHINH LUA BAN GOC DAT — khong bao gio duoc lam bong.
+#
+# Lop bong thay moi ten CHUA CO bang mot bong, ke ca nhung ten ma chinh Lua ban
+# goc se tu dat. Do la cho sai: voi nhung ten do, ban goc doc ra nil (chua gan
+# thi la nil), con ta doc ra mot bang truthy — moi phep kiem 'if x then' va moi
+# vong 'pairs(x)' di mot duong khac han.
+#
+# Do duoc mot cho that: `sc/user/Public/RichLabel.lua:710` viet
+#
+#     failed = true            -- :672, khi mot the bi tach sai
+#     ...
+#     if failed then return self:defaultResult(originalStr) end   -- :710
+#
+# Lan goi DAU TIEN thi `failed` chua he duoc gan, nen ban goc di tiep va tach
+# duoc chuoi co the; ta doc ra mot BONG (truthy) nen `parseString_` tra ve
+# nguyen chuoi lam MOT doan — tuc RichLabel khong bao gio tach the nao ca, va
+# moi chuoi dang '[fontColor=...]chu[/fontColor]' hien nguyen ca the ra man
+# hinh. Ten `failed` nam trong libgame.so va classes.dex (chi la mot chu tieng
+# Anh xuat hien trong chuoi), nen phep thu "co trong file nhi phan" — dung cho
+# bien_nil — KHONG dung duoc o chieu nay: no se mien nham cho gan het tu thong
+# dung.
+#
+# Ten nao ma ban goc GAN (khong 'local') thi no la bien cua Lua, va vang mat
+# thi phai doc ra nil. Bong chi con lai cho nhung ten KHONG file Lua nao gan —
+# tuc be mat engine (C++/Java) chua lam xong, dung y nghia ban dau cua no.
+#
+# NHUNG con mot duong nua ma luat "Lua co gan" khong nhin thay: ban goc doi khi
+# BOC mot ham cua ENGINE chu khong phai dinh nghia moi. Do duoc o
+# `sc/user/Logical/Device.lua:249`:
+#
+#     local pRawFunc_LGG_Device_UUID = LGG_Device_UUID   -- :249, DOC truoc
+#     LGG_Device_UUID = function () ... pRawFunc_LGG_Device_UUID() ... end
+#
+# `LGG_Device_UUID` la ham C++ cua engine (co trong bang ten ham toan cuc cua
+# `libgame.so`, .rodata 0x7af167..0x7af4eb: `LGG_Device_Init`, `LGG_Device_UUID`,
+# `KGuide_*`, `LGG_App_*`...). Ban goc doc no ra truoc khi gan, nen phep gan do
+# la BOC, khong phai dinh nghia — ep nil thi `pRawFunc_...` = nil va loi o
+# `:251` (`attempt to call upvalue 'pRawFunc_LGG_Device_UUID' (a nil value)`).
+# Do la loi THAT da gap khi chay `tools/vao_main.gd`: khong vao duoc Main.
+#
+# Nen them mot phep thu nua: ten nao co CHUOI RIENG `\0TEN\0` trong
+# libgame.so / classes.dex thi engine CO lo ra ten do — khong duoc ep nil.
+#
+# Vi sao phai doi `\0` hai dau chu khong tim tran: `failed` xuat hien 311 lan
+# trong hai file nhi phan (chi la chu tieng Anh trong chuoi), nhung `\0failed\0`
+# **0 lan**; con `LGG_Device_UUID` la **1** lan — dung mot chuoi dang ky. Do la
+# phep thu phan biet duoc "engine lo ra ten nay" voi "chuoi nay co chu do".
+# Gia phai tra da do: `data` co 2 chuoi rieng nen van la bong (khong doi gi so
+# voi truoc — no von da la bong).
+#
+# Do lai tren luot quet 353 man (tools/quet_show.gd): 143 ten bi lam bong luc
+# vao Main, trong do 22 ten thuoc nhom nay. Xem so sanh truoc/sau o ROADMAP.
+#
+# Quet CHAT (khac `gan` cua ghi_bien_nil, thu do co y gom ca local/tham so/bien
+# vong lap vi no chi dung de TRU di cho chac): o day gom thua mot ten thi chi
+# mat mot chan doan, con gom thieu mot ten thi van con loi bong — nen quet chat
+# theo dau cau lenh, va them ca dang viet noi tren cung dong ('; x = 1').
+def ghi_bien_gan():
+    gan = set()
+    for f in SRC.rglob('*.lua'):
+        s = f.read_bytes().decode('utf-8', 'replace')
+        gan.update(quet_gan(s))
+        for m in re.finditer(r'_G\s*(?:\.\s*|\[\s*["\'])(' + ID + ')', s):
+            gan.add(m.group(1))
+    gan -= KW | LUA_STD
+    # Ten trong bien_nil.json da co luat rieng (`never`, tra nil) — de rieng ra
+    # thi hai danh sach khong chong nhau va doc ra biet cai nao vi cai nao.
+    nil_p = ROOT / 'data_ref' / 'bien_nil.json'
+    if nil_p.is_file():
+        import json
+        try:
+            gan -= set(json.loads(nil_p.read_text(encoding='utf-8'))['ten'])
+        except Exception:
+            pass
+    # Ten nao engine CO lo ra (chuoi rieng `\0TEN\0`) thi bo ra: phep gan cua
+    # Lua o nhung ten do la BOC ham engine, khong phai dinh nghia (xem dau muc).
+    apk = ROOT.parent / 'brave-cross' / 'work' / 'apk'
+    blob = b''
+    for p in (apk / 'lib' / 'armeabi-v7a' / 'libgame.so', apk / 'classes.dex'):
+        if p.is_file():
+            blob += p.read_bytes() + b'\x00'
+    giu_lai, bo_ra = [], []
+    for n in sorted(gan):
+        b = n.encode()
+        if blob and blob.count(b'\x00' + b + b'\x00') > 0:
+            bo_ra.append(n)
+        else:
+            giu_lai.append(n)
+    ten = giu_lai
+    import json
+    out = ROOT / 'data_ref' / 'bien_gan.json'
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps({
+        'ghi_chu': 'tools/import_lua.py sinh — bien toan cuc do chinh Lua ban goc '
+                   'gan (dau cau lenh, khong local), TRU nhung ten engine co lo '
+                   'ra (chuoi rieng \\0TEN\\0 trong libgame.so/classes.dex). Lop '
+                   'bong khong duoc thay nhung ten nay: ban goc doc ra nil.',
+        'ten': ten,
+        'bo_ra_vi_engine_co': bo_ra,
+    }, ensure_ascii=False, indent=1), encoding='utf-8')
+    return len(ten)
+
+
+# Vi sao khong quet bang bieu thuc chinh quy theo DONG: ban dau toi lam dung
+# the ('^[ \t]*(ten)[ \t]*='), va no bat luon KHOA CUA BANG nam tren dong rieng
+# — `CUITab.lua:17` co dong `\t\tLabel = 1,` trong mot bang, the la ten `Label`
+# (lop engine that) bi ghi nham la bien cua Lua. Dem duoc: trong 10.594 ten cua
+# luat cu co ca `A`, `Add`, `Count`, `Color`, `Content`, `Class`... — toan khoa
+# bang. Moi ten nham nhu vay la mot chan doan bi mat, va te hon la mot lop
+# engine co the bi ep nil.
+#
+# Nen phai di theo TOKEN va theo DO SAU ngoac: mot ten la bien toan cuc khi no
+# dung o CAP CAU LENH (ngoai moi {}, (), []) va dung sau mot moc cau lenh —
+# dau file, dau dong, ';', 'then', 'else', 'do', 'end'. Chinh phep kiem moc do
+# loai luon `local x = 1` (truoc `x` la `local`), `t.k = 1` (truoc `k` la `.`),
+# va `f(x = 1)` (trong ngoac).
+def quet_gan(text):
+    out = set()
+    i, n = 0, len(text)
+    sau = 0            # do sau {}, (), []
+    moc = True         # dang o moc cau lenh (chua co gi tren dong nay)
+    while i < n:
+        c = text[i]
+        # chu thich dai --[[ ]] / --[=[ ]=] va chuoi dai [[ ]] / [=[ ]=]
+        if c == '-' and text.startswith('--', i):
+            m = re.match(r'--\[(=*)\[', text[i:])
+            if m:
+                ket = ']' + m.group(1) + ']'
+                j = text.find(ket, i + m.end())
+                i = n if j < 0 else j + len(ket)
+                continue
+            j = text.find('\n', i)
+            i = n if j < 0 else j + 1
+            moc = (sau == 0)
+            continue
+        if c == '[':
+            m = re.match(r'\[(=*)\[', text[i:])
+            if m:
+                ket = ']' + m.group(1) + ']'
+                j = text.find(ket, i + m.end())
+                i = n if j < 0 else j + len(ket)
+                moc = False
+                continue
+        if c in '"\'':
+            j = i + 1
+            while j < n:
+                if text[j] == '\\':
+                    j += 2
+                    continue
+                if text[j] == c or text[j] == '\n':
+                    break
+                j += 1
+            i = j + 1 if j < n and text[j] == c else j
+            moc = False
+            continue
+        if c in '{[(':
+            sau += 1
+            i += 1
+            moc = False
+            continue
+        if c in '}])':
+            sau = max(0, sau - 1)
+            i += 1
+            moc = False
+            continue
+        if c == '\n':
+            i += 1
+            if sau == 0:
+                moc = True
+            continue
+        if c in ' \t\r':
+            i += 1
+            continue
+        if c == ';' and sau == 0:
+            i += 1
+            moc = True
+            continue
+        if (c.isalpha() or c == '_'):
+            j = i
+            while j < n and (text[j].isalnum() or text[j] == '_'):
+                j += 1
+            tu = text[i:j]
+            k = j
+            while k < n and text[k] in ' \t':
+                k += 1
+            gan = k < n and text[k] == '=' and not text.startswith('==', k)
+            # `local x =`: tu ngay truoc la `local` thi khong phai bien toan cuc
+            if moc and gan and tu not in KW:
+                truoc = text[:i].rstrip()
+                if not truoc.endswith('local'):
+                    out.add(tu)
+            moc = tu in ('then', 'else', 'do', 'end', 'local')
+            i = j
+            continue
+        i += 1
+        moc = False
+    return out
 
 
 if __name__ == '__main__':

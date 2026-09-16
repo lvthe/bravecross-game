@@ -1081,18 +1081,148 @@ function Node:getEffectColor()
 	return 0, 0, 0, 0
 end
 
--- CHUA LAM: ban goc lay TUNG CHU cua mot label ra lam mot sprite rieng roi
--- tu xep cho (RichLabel:createSprite_). Godot khong cho voi vao tung chu nhu
--- vay, va lam lai bang tay thi phai tu do tung chu mot. Tra 0 nghia la khong
--- co chu nao de lay: doan chu VAN HIEN (Label da duoc addChild o dong tren),
--- chi khong duoc xep lai tung chu.
-function Node:getLimitShowCount()
-	note('getLimitShowCount')
-	return 0
+-- Kich thuoc bao quanh cua node, trong khong gian node CHA — dung nghia
+-- `boundingBox()` cua Cocos: hinh chu nhat (0,0,w,h) di qua phep bien doi node
+-- sang cha. Ban goc chi doc HAI so cuoi (RichLabel.lua:280
+-- `local x,y,w,h = sprite:boundingBox()` roi chi dung w va h), nhung tra du bon
+-- cho dung chu ky: `getSizeOfSprites_` goi no cho TUNG chu, thieu thi ra
+-- 'attempt to compare nil with number' ngay o :282 — do la loi da gap that.
+function Node:boundingBox()
+	local gd = raw(self)
+	if gd.size == nil then return 0, 0, 0, 0 end
+	local w, h = gd.size.x, gd.size.y
+	local ax, ay = anchor_of(gd)
+	return -ax * w, -ay * h, w, h
 end
 
-function Node:getLetterEx(_, _)
-	note('getLetterEx')
+-- So KY TU (diem ma), khong phai so byte: chuoi tieng Viet o day la UTF-8, mot
+-- chu 2-3 byte, nen dem byte thi `getLetterEx` cat doi chu ra.
+local function so_ky_tu(s)
+	local n, i = 0, 1
+	while i <= #s do
+		local b = s:byte(i)
+		i = i + (b >= 0xF0 and 4 or b >= 0xE0 and 3 or b >= 0xC0 and 2 or 1)
+		n = n + 1
+	end
+	return n
+end
+
+-- nhan Godot -> mang node chu cua no. Yeu (__mode='k') de nhan bi bo thi so chu
+-- di theo, khong giu node da chet.
+local chu_cua = setmetatable({}, { __mode = 'k' })
+
+-- Cat mot nhan thanh tung chu. Tra ve mang node chu (userdata) va AN nhan goc.
+--
+-- Vi sao phai AN: hai kha nang chi co mot ket qua dung. Neu nhan doan VAN ve
+-- thi moi doan chu hien HAI lan — mot lan tai cho cu (0,0), mot lan tai cho ma
+-- `adjustPosition_` xep. Chinh `_containLayer` chi `addChild` nhan doan chu
+-- KHONG he dat cho no (RichLabel.lua:548 so voi :550-557) la dau hieu ban goc
+-- khong ve no. Chay duoc ma goc thi moi doc ra duoc cho nay, nen ghi lai la SUY
+-- RA tu cau truc, khong phai doc tu engine.
+--
+-- Vi sao chu con phai chep ca vien va bong do: ten nhan vat / ten tuong deu di
+-- qua RichLabel voi vien, nen chu con khong co vien thi chu ra hai kieu khac nhau
+-- trong cung mot chuoi.
+local function cat_chu(gd)
+	local co = gd:get_theme_font_size('font_size')
+	local mau = gd.modulate
+	local vien = nil
+	if gd:has_theme_color_override('font_outline_color') then
+		vien = gd:get_theme_color('font_outline_color')
+	end
+	local day_vien = gd:get_theme_constant('outline_size')
+	local bong = nil
+	if gd:has_theme_color_override('font_shadow_color') then
+		bong = gd:get_theme_color('font_shadow_color')
+	end
+	local lx = gd:get_theme_constant('shadow_offset_x')
+	local ly = gd:get_theme_constant('shadow_offset_y')
+
+	local ra = {}
+	local s = tostring(gd.text)
+	local i = 1
+	while i <= #s do
+		local b = s:byte(i)
+		local n = (b >= 0xF0 and 4 or b >= 0xE0 and 3 or b >= 0xC0 and 2 or 1)
+		local g = _godot_new_node('label')
+		g.text = s:sub(i, i + n - 1)
+		g:add_theme_font_size_override('font_size', co)
+		g.size = g:get_minimum_size()
+		g.modulate = mau
+		if vien ~= nil then
+			g:add_theme_color_override('font_outline_color', vien)
+			g:add_theme_constant_override('outline_size', day_vien)
+		end
+		if bong ~= nil then
+			g:add_theme_color_override('font_shadow_color', bong)
+			g:add_theme_constant_override('shadow_offset_x', lx)
+			g:add_theme_constant_override('shadow_offset_y', ly)
+		end
+		gd:add_child(g)
+		-- Cao cua CHA that, y nhu Node:addChild lam. Node tao luc chay mang san
+		-- parent_h = 640 (_new_node), ma cha o day chi cao bang dong chu (~23).
+		-- Doi chieu A/B tren cung mot chuoi (tools/chay_lua.gd, doan do
+		-- RichLabel): giu 640 thi sau `adjustPosition_` moi chu ra toa do the gioi
+		-- y = 617 (ca sau chu deu 617, trong khi lop chi cao 23 — chu roi ra
+		-- ngoai khung 617 px); dat bang gd.size.y thi ra y = 0, dung bang chieu
+		-- cao lop. Vi sao lech dung 617: `adjustPosition_` (:506) goi
+		-- `sprite:setPosition`, ma `to_godot` tru them `parent_h` — 640 - 23 = 617.
+		g:set_meta('parent_h', gd.size.y)
+		local u = wrap(g)
+		-- Cho dat BAN DAU khong phai toa do ma la SO DO cua chu: `adjustPosition_`
+		-- doc lai no bang `local fAdvance,fAddY = sprite:getPosition()`
+		-- (RichLabel.lua:492) — fAdvance la be rong de di tiep (con so quyet dinh
+		-- xep chu), fAddY la lech doc. Lay be rong cua chinh chu do lam fAdvance
+		-- la cach duy nhat do duoc o day, va no dung thu phai do: do rong hien ra
+		-- cua chu. Ban goc lay so do tu font cua engine; ta dung font cua minh nen
+		-- hai so khong the bang nhau tung byte — cho nay khong co gi de khoi phuc.
+		Node.setPosition(u, g.size.x, 0)
+		ra[#ra + 1] = u
+		i = i + n
+	end
+	gd.visible = false
+	return ra
+end
+
+-- CHUA LAM: ban goc lay TUNG CHU cua mot label ra lam mot sprite rieng roi
+-- tu xep cho (RichLabel:createSprite_). Godot khong cho voi vao tung chu nhu
+-- vay, va lam lai bang tay thi phai tu do tung chu mot.
+--
+-- NAY DA LAM (2026-09-16): moi KY TU mot Label cua Godot, la CON cua nhan doan,
+-- va nhan doan bi AN di. Xem `cat_chu` ngay duoi.
+--
+-- Do duoc truoc khi lam (tools/chay_lua.gd, doan do RichLabel): khi hai ham nay
+-- con tra 0 / nil thi `_spriteArray` rong, nen `adjustPosition_` chi dat cho
+-- anh; moi doan chu nam im o (0,0) cua `_containLayer` — chuoi dang
+-- '[fontColor=0000FF]...' hien nguyen the, va nhieu doan chong len nhau.
+function Node:getLimitShowCount()
+	local gd = raw(self)
+	if gd.text == nil then return 0 end
+	return so_ky_tu(tostring(gd.text))
+end
+
+-- Lay chu ra: `getLetterEx(so)` theo CHI SO (0..n-1) nhu RichLabel:552, va
+-- `getLetterEx(chu)` theo KY TU nhu CGuideLogical:221,:315.
+--
+-- Dang CHUOI chi TRA CUU trong so chu da lay ra, khong tu cat: CGuideLogical
+-- truyen vao mot nhan cua bo cuc ma no khong he xep lai tung chu, nen cat ra o
+-- do thi moi chu dong lo len mot cho. Tra nil thi CGuideLogical:315 tu bo qua
+-- (`if pLetter then`) — dung nhu truoc.
+function Node:getLetterEx(a, _)
+	local gd = raw(self)
+	if a == nil or (type(a) ~= 'number' and type(a) ~= 'string') then return nil end
+	local ds = chu_cua[gd]
+	if ds == nil then
+		if type(a) ~= 'number' then return nil end
+		ds = cat_chu(gd)
+		chu_cua[gd] = ds
+	end
+	if type(a) == 'number' then
+		return ds[a + 1]      -- chi so cua ban goc bat dau tu 0
+	end
+	for i = 1, #ds do
+		if ds[i]:getString() == a then return ds[i] end
+	end
 	return nil
 end
 

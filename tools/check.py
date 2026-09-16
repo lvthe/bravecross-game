@@ -85,6 +85,12 @@ SUITES = [
     # ca 33, L+v > 0 ca 33, khong kenh mau nao 0 kem phuong sai) thanh phep kiem
     # chu khong con la cau chu.
     ('he hat',               'script', 'tools/verify_hat.gd',    False, []),
+    # RichLabel: chu co the mau (bien `failed` ma CHINH Lua ban goc gan — truoc
+    # day la bong nen `parseString_` tra nguyen chuoi lam mot doan, moi chuoi co
+    # the hien nguyen the ra man hinh) va che do tach TUNG KY TU
+    # (`getLimitShowCount` / `getLetterEx` tung tra 0/nil nen moi doan chu nam im
+    # o (0,0) thay vi duoc xep cho). Do bang so tren chuoi that co dau.
+    ('RichLabel',            'script', 'tools/verify_richlabel.gd', False, []),
 ]
 
 SCORE = re.compile(r'dat (\d+), hong (\d+)')
@@ -219,6 +225,20 @@ def main():
         print('  ... sinh %s' % os.path.relpath(eq_ref, ROOT), flush=True)
         subprocess.run([sys.executable, os.path.join(ROOT, 'sim', 'equipment.py'),
                         '--export'], capture_output=True, text=True, timeout=120)
+
+    # Cung loai: bien_gan.json la danh sach 6.901 ten ma CHINH Lua ban goc gan
+    # (tools/import_lua.py: ghi_bien_gan). Thieu no thi boot.la_bong() tra ve
+    # sai cho dung nhung ten do — RichLabel lai tra nguyen chuoi lam mot doan,
+    # tuc la bo RichLabel bao hong vi mot file thieu, chu khong vi code hong.
+    # Sinh lai duoc tu sc/ nen tu sinh, y nhu tren.
+    gan_ref = os.path.join(ROOT, 'data_ref', 'bien_gan.json')
+    if not os.path.isfile(gan_ref):
+        print('  ... sinh %s (tools/import_lua.py)'
+              % os.path.relpath(gan_ref, ROOT), flush=True)
+        subprocess.run([sys.executable, os.path.join(ROOT, 'tools', 'import_lua.py')],
+                       capture_output=True, text=True, timeout=900)
+        if not os.path.isfile(gan_ref):
+            print('  (khong sinh duoc — thieu ma goc sc/: xem README brave-cross)')
 
     # Am thanh thi KHAC: no la du lieu cua ban goc, khong sinh ra duoc — chi
     # boc lai duoc tu APK. Khong co APK thi bo do am thanh tu bao BO QUA (xem

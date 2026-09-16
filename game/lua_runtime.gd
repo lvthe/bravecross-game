@@ -160,6 +160,7 @@ func open() -> bool:
 	state.globals["_godot_doc_ngoai"] = _doc_ngoai
 	state.globals["_godot_ghi_ngoai"] = _ghi_ngoai
 	state.globals["_godot_xoa_ngoai"] = _xoa_ngoai
+	state.globals["_godot_ky_thuoc_ngoai"] = _ky_thuoc_ngoai
 	# Kich thuoc cua so. Ban goc doc qua hai bien toan cuc nay
 	# (CPublic:GetWinSize tra thang chung), va SetNodeAdaptWinSize chia cho
 	# chung — de la bong thi bao 'arithmetic on a table value'.
@@ -521,10 +522,29 @@ const CONFIG := "res://data_ref/"
 
 ## Doi duong dan ma goc yeu cau ("config/share/KDBGamePrizeConfig.xgg") thanh
 ## duong dan that. Ban goc giu nguyen cay thu muc nen chi can gan tien to.
+##
+## Duong dan TUYET DOI thi tra nguyen: `sngUtil:isFileExist` duoc goi voi
+## `sngUtil:getDownloadPath().."<ten>"` (set.lua:259, :286-292), tuc mot duong
+## dan ngoai — gan tien to vao thi no thanh "res://data_ref/C:/..." va luon ra
+## 'khong co file', sai lang le.
 static func _duong(p: String) -> String:
-	if p.begins_with("res://"):
+	if p.begins_with("res://") or p.contains("://") or p.is_absolute_path():
 		return p
 	return CONFIG + p
+
+
+## Nang mot file theo byte, -1 khi khong co. Khong dung get_file_as_string: file
+## nhi phan se bi thay byte sai thanh ky tu thay the, va do dai dem ra SAI —
+## ma sngAsyncDLMgr:436,:735,:742 dem tien do tai bang chinh con so nay.
+func _ky_thuoc_ngoai(p: String) -> int:
+	if not FileAccess.file_exists(p):
+		return -1
+	var f := FileAccess.open(p, FileAccess.READ)
+	if f == null:
+		return -1
+	var n := f.get_length()
+	f.close()
+	return n
 
 
 func _co_file(p: String) -> bool:

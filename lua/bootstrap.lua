@@ -190,6 +190,54 @@ local function nap_bien_nil()
 end
 M.so_bien_nil = nap_bien_nil()
 
+-- Bien toan cuc do CHINH Lua ban goc dat: khong duoc lam bong.
+--
+-- Lop bong thay moi ten chua co bang mot bang truthy. Voi ten ma chinh ma goc
+-- se gan thi do la SAI: ban goc chua gan thi doc ra nil, nen moi phep kiem
+-- 'if x then' / 'x == nil' va moi vong 'pairs(x)' di mot duong khac han.
+--
+-- Do duoc mot cho that: RichLabel.lua:710 doc co `failed` (mot bien ma chinh
+-- no gan o :672 khi tach the loi). Lan goi dau tien `failed` la nil, nen ban
+-- goc tach duoc chuoi '[fontColor=..]chu[/fontColor]' thanh tung doan; ta doc
+-- ra bong nen `parseString_` tra ve nguyen chuoi lam MOT doan — RichLabel
+-- khong bao gio tach the, moi chuoi co the deu hien nguyen the ra man hinh.
+--
+-- Danh sach do `tools/import_lua.py` sinh bang cach QUET TOKEN sc/ (xem
+-- quet_gan o do: phai theo do sau ngoac, khong quet theo dong, khong thi khoa
+-- cua bang nhu `Label = 1,` bi ghi nham la bien cua Lua). Ten nao khong file
+-- Lua nao gan thi VAN la bong — do la be mat engine chua lam, dung y nghia
+-- ban dau cua lop bong.
+--
+-- Vi sao khong dung phep thu "co trong libgame.so/classes.dex" nhu bien_nil:
+-- chieu nay no mien nham qua nhieu. `failed` la mot chu tieng Anh co trong ca
+-- hai file, nen luat do se de nguyen loi bong o RichLabel.
+local bien_lua = {}
+
+-- Dem rieng: ten do Lua ban goc gan ma luc doc ra lai VANG MAT. Khong phai
+-- loi (ban goc cung doc ra nil), nhung la dau vet "module chua nap" — doc duoc
+-- qua require('bootstrap').thieu_bien_lua khi can.
+--
+-- Day la BANG DEM theo ten (ten -> so lan), khong phai danh sach: `#` tren no
+-- luon la 0. Muon so luong thi goi M.so_thieu().
+M.thieu_bien_lua = {}
+
+function M.so_thieu()
+	local n = 0
+	for _ in pairs(M.thieu_bien_lua) do n = n + 1 end
+	return n
+end
+
+local function nap_bien_lua()
+	if _godot_doc_file == nil then return 0 end
+	local s = _godot_doc_file('bien_gan.json')
+	if s == nil then return 0 end
+	local ok, t = pcall(function() return require('json').decode(s) end)
+	if not ok or type(t) ~= 'table' or type(t.ten) ~= 'table' then return 0 end
+	for _, ten in ipairs(t.ten) do bien_lua[ten] = true end
+	return #t.ten
+end
+M.so_bien_lua = nap_bien_lua()
+
 -- Dat cac doi tuong toan cuc cua engine ma lop gia lap CO lam that.
 -- Phai goi TRUOC install(), khong thi chung bi lam bong va ma goc se goi vao
 -- bong roi khong ra gi.
@@ -257,12 +305,71 @@ function M.install_cocos()
 
 	function LGG_GetPathWithFileName(rel) return rel end
 
+	-- He dieu hanh. Ban goc CO ban Windows that: sc/user/Globals/GameOS.lua:8-13
+	--     OS_TYPE = { WINDOWS = "windows", ANDROID = "android", IOS = "ios" }
+	-- va 24 cho trong sc/ dem chuoi nay ra so sanh (engine.lua:13 va :289,
+	-- KDebug.lua:181, rpc.lua:249 va :497, Device.lua:43, game.lua:189/:510...).
+	-- Ta CHAY tren Windows, nen tra dung chu do. De no lam bong thi moi phep so
+	-- sanh kia deu SAI — bong la mot bang, khac moi chuoi — va ma goc di nhanh
+	-- cua Android/iOS.
+	--
+	-- Do duoc mot hau qua that: KDebug.PrintError (:181) chi goi
+	-- sngDownload:getCurResVersion khi KHONG phai windows. Bong lam no goi, ma
+	-- `sngDownload` chinh Lua ban goc dat (user/Public/sngDownload.lua:52) va
+	-- chi duoc nap tu game.lua:243 — KHONG nam trong bon ban ke khai ma
+	-- boot_goc doc — nen no ra nil, va moi lan in mot dong loi deu nem
+	-- 'KDebug.lua:185: attempt to index global sngDownload (a nil value)',
+	-- lam Reflesh cua CUIAchieve dung giua duong. Do la ly do man thanh tuu
+	-- ra 0 dong.
+	function LGG_GetPlatformString() return 'windows' end
+
 	function LGG_IsFileExist(p) return _godot_co_file(p) end
 
 	-- Thu muc GHI duoc cua game (noi dat set.xgg). Lop offline luu tien trinh
 	-- va nhat ky vao day. Tren may that la thu muc ngoai cua app; o day la
 	-- user:// cua Godot, doi ra duong dan that vi Lua mo file bang io.open.
 	function LGG_GetSetFilePath() return _godot_thu_muc_ghi or '' end
+
+	-- Thu muc TAI VE cua ban goc (sngUtil_getDownloadPath,
+	-- sngUtil_getTempDownloadPath). Ten hai ham nay CO trong libgame.so nen
+	-- khong ep nil duoc — phai lam that, cung ly do voi sngUtil_getIDFV.
+	--
+	-- Hai cho phai dung y: (1) LUON co dau phan cach o cuoi, vi moi cho dung
+	-- deu noi chuoi truc tiep — sngDownload.lua:246 `getDownloadPath()..
+	-- "version.ini"`, sngAsyncDLMgr.lua:130 `..pFileInfo.RELATIVENAME`;
+	-- (2) tra mot thu muc CON cua thu muc ghi duoc, khong tra thang no:
+	-- `sngUtil:deletePath` cua ban goc xoa CA CAY (game.lua:286-290 xoa
+	-- "sc/", "conf/", "config/", "img_all/", "map/"), xoa nham vao thu muc
+	-- ghi that la mat du lieu nguoi choi. Thu muc con nay RONG — ta khong tai
+	-- gi ca — nen moi phep doc trong no deu ra 'chua co', dung nhu mot may vua
+	-- cai xong chua tai gi.
+	local thu_muc_tai = (_godot_thu_muc_ghi or '') .. 'tai/'
+	local thu_muc_tai_tam = (_godot_thu_muc_ghi or '') .. 'taitam/'
+	function sngUtil_getDownloadPath() return thu_muc_tai end
+	function sngUtil_getTempDownloadPath() return thu_muc_tai_tam end
+
+	-- Doc mot file trong thu muc tai ve. Ban goc GIAI MA noi dung (nen moi co
+	-- ban 'noDecryPt' doc tho) — ta chua tai gi thi khong co gi de giai ma.
+	--
+	-- Tra nil khi khong doc duoc: do la gia tri THAT cua ban goc, chinh no viet
+	-- phep kiem ra — sngDownload.lua:221 `if strContent == nil then break end`,
+	-- va `getCurResVersion` (:245-249) dua ket qua do di `or "0"` de ra
+	-- "0","0","0" tren may moi. Bong (mot bang) thi `string.gmatch` o :223 nem
+	-- 'bad argument #1 to gmatch (string expected, got table)' — da gap that.
+	function sngUtil_getFileData(p)
+		if p == nil then return nil end
+		return _godot_doc_ngoai(tostring(p))
+	end
+	sngUtil_getFileData_noDecrypt = sngUtil_getFileData
+
+	-- Nang file theo BYTE; 0 khi khong co. sngAsyncDLMgr:436,:735,:742 dem
+	-- tien do tai bang hieu so nay. Tra 0 chu khong tra bong: mot bang thi
+	-- phep tru ra 'arithmetic on a table value'.
+	function sngUtil_getFileSize(p)
+		if p == nil then return 0 end
+		local n = _godot_ky_thuoc_ngoai(tostring(p))
+		return n < 0 and 0 or n
+	end
 
 	-- Do dai ten de thu nho chu (CPublic.lua:697, :728 — ten nhan vat va ten
 	-- tuong; o danh sach xep tuong goi no cho TUNG o). Ham co that trong
@@ -670,13 +777,32 @@ end
 -- va lan doc sau roi vao __index — ra BONG chu khong ra nil, phep kiem truot,
 -- roi AchieveLogic.lua:1448 so bong voi so va ca chuoi vao game chet. Ban goc
 -- khong co bong nen o day ra nil va di tiep binh thuong.
+--
+-- `bien_lua` la ban TINH SAN cua cung y do (quet ca 973 file .lua truoc khi
+-- chay), nho vay no phu ca truong hop doc TRUOC lan gan dau tien — dung ca cua
+-- `failed` o RichLabel. `da_gan` van can: no bat nhung ten ma ma goc gan bang
+-- duong khac (rawset, _G[...] = ..., tham so ham) ma phep quet khong thay.
 local da_gan = {}
 M.da_gan = da_gan
+
+-- Tu day tro di, ghi lai nhung ten doc ra nil vi luat `bien_lua`. Dung de do
+-- xem mot doan ma cu the doc tien bien nao — xem tools/verify_lua_screen.gd.
+-- Day la DANH SACH (chi so 1,2,3...), khac `thieu_bien_lua` la bang dem theo
+-- ten: `#thieu_bien_lua` luon la 0 vi bang do khong co phan mang.
+M.tu_dau = nil
+function M.danh_dau()
+	M.tu_dau = {}
+end
 
 function M.install()
 	local mt = getmetatable(_G) or {}
 	mt.__index = function(_, k)
 		if never[k] or da_gan[k] then return nil end
+		if bien_lua[k] then
+			note(M.thieu_bien_lua, tostring(k))
+			if M.tu_dau then M.tu_dau[#M.tu_dau + 1] = tostring(k) end
+			return nil
+		end
 		note(M.ghosts, tostring(k))
 		return make_ghost(tostring(k))
 	end
@@ -699,15 +825,26 @@ function M.load(name)
 	return require(name)
 end
 
--- Khung suon toi thieu de mo mot man hinh, theo dung thu tu phu thuoc.
+-- Khung suon toi thieu de mo mot man hinh. Day deu la file THAT cua ban goc,
+-- khong phai do minh viet. Truoc khi co danh sach nay thi chung bi lam bong, va
+-- bong tra ve nil nen 'CUIGuildTableView:new()' ra nil roi chet o dong sau.
 --
--- Day deu la file THAT cua ban goc, khong phai do minh viet. Truoc khi co
--- danh sach nay thi chung bi lam bong, va bong tra ve nil nen
--- 'CUIGuildTableView:new()' ra nil roi chet o dong sau.
--- Thu tu o day khong tuy y — no la thu tu KE THUA cua ban goc:
---   EventManager    = class(EventManagerBase)
---   CDlgHeroDropOut = class(CUIPublic)      <- nam trong CUISubDialog.lua
--- Nap sai thu tu thi lop cha thanh bong, va bong khong the lam lop cha.
+-- THU TU NAP KHONG DO DAY QUYET DINH. Bon file duoi day la chinh bon file ma
+-- `sc/game.lua:174-183` require, theo dung thu tu do; muon thu tu cua mot ten
+-- thi tra no trong chung. Truoc day danh sach nay tu sap thu tu va da sai hai
+-- cho, chi khong lo vi bong con che: `Protocol` (dat `PropertyType` va
+-- `EquipmentCategory`) phai nam TRUOC `share_configManager`, va `CUIManager`
+-- (dat `g_CUISubDialog`) phai nam TRUOC `CUISubDialog` — ban goc xep
+-- user/require.lua:137 roi :153. Dao lai thi `read` ra nil va module khong nap
+-- duoc: do duoc `share/share_configManager.lua:3171: attempt to index global
+-- 'EquipmentCategory'`, `user/Public/CUISubDialog.lua:25: ... 'g_CUISubDialog'`.
+M.DAN_NGUON = {
+	'share/share_public_require',     -- game.lua:174
+	'share/share_gameLogic_require',  -- game.lua:175
+	'system/s_require',               -- game.lua:179
+	'user/require',                   -- game.lua:183
+}
+
 M.FRAMEWORK = {
 	'share.class',                       -- he lop, thuan Lua
 	-- Mo rong cho string (string.split...). PHAI co: addon Lua mo ca API
@@ -718,19 +855,56 @@ M.FRAMEWORK = {
 	'share.KDebug',                      -- CUIPublic goi khi thieu RootUIName
 	'share.EventManagerBase',
 	'share.EventManager',                -- G_EventManager + bang loai su kien
+	'share.Protocol',                    -- PropertyType, EquipmentCategory
+	'system.set_base',                   -- set_base, ClientConfigManager doc
+	'share.SkillLogic',                  -- G_SkillLogic, ConfigManager:Init doc
 	'user.Public.CPublic',               -- g_CPublic
 	'user.Public.sngTableViewEventHandle',
 	'user.Public.CUIPublic',             -- lop cha cua moi man hinh
-	'user.Public.CUISubDialog',
 	'user.Public.CUIManager',            -- g_CUISubDialog
+	'user.Public.CUISubDialog',
 	'user.Logical.CUIEventStatistics',   -- G_CUIEventStatistics
 	'user.UI.CUIGuildTableViewList',     -- CUIGuildTableView
-	-- Tang cau hinh: 104 bang so cua ban goc. G_ConfigManager chi TON TAI
-	-- sau khi nap ba file nay; con nap DU LIEU thi goi init_config().
+	-- Tang cau hinh: 104 bang so cua ban goc. G_ConfigManager chi TON TAI sau
+	-- khi nap `share.share_configManager` roi `user.Logical.ClientConfigManager`;
+	-- con nap DU LIEU thi goi init_config().
 	'share.StarSoul.share_StarSoulLogic',   -- ConfigManager doc hang so o day
 	'share.share_configManager',
 	'user.Logical.ClientConfigManager',
 }
+
+-- Danh sach tren -> thu tu cua bon file nguon. Ten nao khong co trong chung
+-- (do la hang so cua ta, hoac file nguon doi) thi giu nguyen cho cu, xep sau.
+local function sap_theo_ban_goc(ds)
+	local thu_tu, n = {}, 0
+	for _, duong in ipairs(M.DAN_NGUON) do
+		local src = _godot_read ~= nil and _godot_read(duong) or nil
+		if src ~= nil then
+			for m in src:gmatch('require%s*%(%s*"([%w_%.]+)"%s*%)') do
+				if thu_tu[m] == nil then
+					n = n + 1
+					thu_tu[m] = n
+				end
+			end
+		end
+	end
+	local co, khong = {}, {}
+	for i, m in ipairs(ds) do
+		if thu_tu[m] ~= nil then
+			co[#co + 1] = { thu_tu[m], i, m }
+		else
+			khong[#khong + 1] = m
+		end
+	end
+	table.sort(co, function(a, b)
+		if a[1] ~= b[1] then return a[1] < b[1] end
+		return a[2] < b[2]
+	end)
+	local ra = {}
+	for _, x in ipairs(co) do ra[#ra + 1] = x[3] end
+	for _, m in ipairs(khong) do ra[#ra + 1] = m end
+	return ra
+end
 
 -- Nap du lieu cua 104 bang cau hinh. Tach rieng vi ton ~0,35 giay va
 -- khong phai man nao cung can. Chinh ConfigManager cua ban goc lam,
@@ -770,6 +944,20 @@ function M.khoi_dong_game()
 			end
 		end },
 		{ 'math.randomseed (d.337)', function() math.randomseed(os.time()) end },
+		-- Mo-dun tai (game.lua:242-247). Ban goc require no VO DIEU KIEN
+		-- ('if true or SDK_Mgr.bIsUseUpdateV2'), va chinh no la thu dat ba
+		-- bien `sngDownload_c2l` / `sngDownload` / `sngAsyncDLMgr`. Bo qua
+		-- buoc nay thi ba ten do khong ai dat — truoc day lop bong tra ve mot
+		-- bang truthy nen `CUILogin2.lua:1834` di tiep; nay bong khong con
+		-- (xem `bien_gan` trong M.install), nen phai nap dung nhu ban goc.
+		--
+		-- Tai THAT thi khong chay: cac ham tai deu goi API engine (LGG_*), ma
+		-- engine cua ta chua lam — chung thanh bong va tra ve bong. Cai ta can
+		-- o day chi la SU TON TAI cua doi tuong va nhung co trang thai cua no.
+		{ 'mo-dun tai (d.242-247)', function()
+			require('user.Public.sngDownload_c2l')
+			g_DownloadMgr = sngDownload_c2l
+		end },
 		-- Am thanh khoi dong (game.lua:340-345), dung thu tu cua ban goc: bon
 		-- bank NHAC NEN roi hai bank tieng giao dien, cuoi cung lai `pushBankStack()`
 		-- (d.347 — ham do o day khong co gi de lam: engine cua ta khong co ngan
@@ -830,7 +1018,7 @@ function M.boot(extra)
 	local list = {}
 	for _, m in ipairs(M.FRAMEWORK) do list[#list + 1] = m end
 	for _, m in ipairs(extra or {}) do list[#list + 1] = m end
-	for _, m in ipairs(list) do
+	for _, m in ipairs(sap_theo_ban_goc(list)) do
 		local good, err = pcall(require, m)
 		out[m] = good and 'ok' or tostring(err)
 	end

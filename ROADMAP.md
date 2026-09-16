@@ -25,7 +25,7 @@ Số trong ngoặc là **đo được**, không phải ước lượng. Cách đ
 | Hàm máy chủ `Client*` đã có bản offline | **13 / 411** | đếm `sc/` vs `offline/handlers` |
 | Lệnh kịch bản `g_DramaSystem` đã có | **60 / 60** | đối chiếu `sc/plot/drama_*.lua` |
 | Định nghĩa hạt đã dịch | **33 / 33** (87 node, 7 định nghĩa được dùng) | `tools/verify_hat.gd` |
-| Bộ kiểm | **30**, xanh hết | `tools/check.py` |
+| Bộ kiểm | **31**, xanh hết | `tools/check.py` |
 
 > Con số màn hình **dao động ±3 giữa các lần chạy** (đo 3 lần trong ngày:
 > 258, 259, 260; hôm sau: 258, 257; hôm nay, **sáu lần chạy cùng một mã**:
@@ -479,6 +479,89 @@ lỗi, cùng một cơ chế.
 sẽ tăng thêm mấy màn bằng một lời nói dối, còn người chơi vẫn thấy màn trắng. Màn
 vẫn hỏng thật, chỉ là hỏng **im lặng**. Nên: ghi lại, không sửa. Muốn sửa cho thật
 thì phải có 6 bố cục ấy — chúng nằm ngoài bản ship.
+
+### Tên mà **chính Lua bản gốc gán** thì không được làm bóng
+
+Đây là mặt trái của cơ chế trên, và là lỗi **im lặng** đúng nghĩa: bóng là
+`truthy`, nên tên nào mã gốc **đọc trước lần gán đầu tiên** sẽ đi nhánh khác hẳn
+bản gốc. Bản gốc đọc ra `nil`; ta đọc ra một bảng.
+
+Đo được một chỗ thật, và nó là cả một tính năng: `RichLabel.lua` gán `failed` ở
+`:672` (khi gặp thẻ sai) rồi đọc ở `:710`. Lần gọi **đầu tiên** `failed` là `nil`,
+nên bản gốc **tách** chuỗi `[fontColor=0000FF]chu[/fontColor]` thành từng đoạn;
+ta đọc ra bóng nên `parseString_` trả cả chuỗi làm **một** đoạn — mọi chuỗi có thẻ
+màu đều hiện nguyên thẻ ra màn hình, và mọi phép đặt chỗ theo từng đoạn đều sai.
+
+**Luật:** tên nào có một **câu lệnh gán ở mức câu** trong `sc/` thì `__index` trả
+`nil` (và đếm riêng vào `M.thieu_bien_lua`, đọc được để biết module nào chưa nạp).
+
+**Bộ quét phải theo token, không theo dòng.** `quet_gan()` trong
+`tools/import_lua.py` đi theo độ sâu ngoặc và ranh giới câu lệnh. Bản đầu quét
+theo dòng và ra **10.594** tên, trong đó có `A`, `Add`, `Count`, `Color`,
+`Content`, `Class` — toàn **khoá của bảng** (`Label = 1,`) bị đọc nhầm thành biến
+của Lua. Bản đúng ra **6.901** tên.
+
+**Vì sao không dùng phép thử "có trong `libgame.so`/`classes.dex`" như `bien_nil`:**
+chiều này nó miễn **nhầm** quá nhiều. `failed` là chữ tiếng Anh bình thường, có
+mặt ở cả hai file — luật ấy sẽ để nguyên lỗi bóng ở `RichLabel`. Luật đang dùng
+hẹp hơn: tìm **tên có gói** (`\0failed\0`, đúng chuỗi mà bảng tên của engine
+dùng) — `LGG_Device_UUID` ra 1, `data` ra 2, `failed` ra **0**. Nhờ vậy giữ bóng
+cho **161** tên là tên engine thật, trong đó có `LGG_Device_UUID`.
+
+**161 tên ấy giữ bóng là ĐÚNG, không phải nhân nhượng.** `Device.lua:249-251`
+**đọc** `LGG_Device_UUID` để cất vào `pRawFunc_LGG_Device_UUID` **rồi mới** gán
+bản bọc của Lua — một tên vừa là hàm engine vừa bị Lua gán. Ép `nil` thì
+`pRawFunc_...` thành `nil` và `:251` ném
+`attempt to call upvalue 'pRawFunc_LGG_Device_UUID' (a nil value)` — đo được, và
+đó là lý do luật `\0tên\0` ra đời.
+
+**Một hệ quả bắt buộc phải theo:** `sngAsyncDLMgr` nay chỉ tồn tại sau khi module
+tải được nạp. Bản gốc nạp nó **vô điều kiện** (`game.lua:242-247`,
+`if true or SDK_Mgr.bIsUseUpdateV2`) nên `boot_goc` cũng phải nạp
+(`bootstrap.lua`, bước *mo-dun tai*). Bỏ qua thì
+`CUILogin2.lua:1834: attempt to index global 'sngAsyncDLMgr' (a nil value)`.
+
+**Hệ quả thứ hai — và đây là lỗi im lặng thứ hai của cùng luật này, to hơn cái
+thứ nhất.** Luật `bien_lua` gây hại theo **hai** chiều, không một:
+
+* **Chiều đã biết:** tên do Lua gán thì phải đọc ra `nil` — đó là ý định.
+* **Chiều mới đo được:** một tên **engine** (Lua không gán) mà ta **chưa làm** thì
+  là **bóng**, và bóng **so sánh với chuỗi luôn ra "khác"**. Nên mọi chỗ viết
+  `if <hàm engine>() == "..."` đều đi **nhánh sai**, im lặng.
+
+Chỗ đo được: `LGG_GetPlatformString` chưa từng được viết. `KDebug.lua:181` là
+`if not ISSERVER and LGG_GetPlatformString() ~= "windows" then` — bóng khác
+`"windows"`, nên ta đi vào nhánh **chỉ dành cho Android/iOS** và gọi
+`sngDownload:getCurResVersion()`. Mà `sngDownload` do **chính Lua gán**
+(`sngDownload.lua:52`) và chỉ được nạp từ `game.lua:243` — **không** nằm trong
+bốn bản kê khai `boot_goc` đọc — nên theo luật `bien_lua` nó ra **`nil`**, và
+**mỗi dòng lỗi in ra** đều ném
+`KDebug.lua:185: attempt to index global 'sngDownload' (a nil value)`. Hậu quả
+đo được: `CUIAchieve:Reflesh` dừng ngay ở `KDebug.ProcessError` đầu tiên, nên
+`AchieveDataList` **không hề được đặt** (đo: `nil`, không phải rỗng) và danh
+sách ra **0 dòng** — trước đó là 6 mục / 5 dòng.
+
+**Cách chữa KHÔNG phải nới luật `bien_lua`.** Bản gốc **có** bản Windows thật:
+`GameOS.lua:8-13` khai `OS_TYPE = { WINDOWS = "windows", ANDROID = "android",
+IOS = "ios" }` và **24 chỗ** trong `sc/` đem chuỗi ấy ra so
+(`engine.lua:13`/`:289`, `KDebug.lua:181`, `rpc.lua:249`/`:497`, `Device.lua:43`,
+`game.lua:189`/`:510`, `CUIMainTopTool.lua:538`/`:546`…). Ta **chạy trên
+Windows**, nên `install_cocos()` nay trả đúng `"windows"`. Đo lại:
+`verify_lua_screen.gd` **18 đạt / 0 hỏng** (trước 16/2), `DataList = 6`, 5 dòng
+dùng được. Nghĩa là **việc chưa làm `LGG_GetPlatformString` mới là gốc**, còn
+luật `bien_lua` chỉ là thứ làm nó **lộ ra** thay vì bị bóng che.
+
+**Bẫy đo đã mắc, ghi lại vì mất gần một lượt:** `M.thieu_bien_lua` là **bảng đếm
+theo tên** (`ten -> số lần`), nên `#M.thieu_bien_lua` **luôn là 0** — `#` chỉ đếm
+phần mảng. Tôi đọc con số 0 ấy thành "luật không hề chạy" rồi đi tìm nguyên nhân
+ở chỗ khác, trong khi luật chạy đúng. Nay có `M.so_thieu()` đếm bằng `pairs`, và
+`M.danh_dau()` ghi **danh sách** những tên đọc-ra-`nil` sau mốc (in ra ở
+`verify_lua_screen.gd`).
+
+**Kiểm chứng không hồi quy:** `tools/vao_main.gd` chạy trước và sau khi đổi
+(`git stash` để lấy bản trước), so từng khối lỗi — **giống hệt** sau khi chuẩn hoá
+số dòng, và `tag hut 94/3233`, `CurrentScene Main`, `IsEnterGame true`,
+`so loi goc 13` đều khớp.
 
 **Hệ quả cho mục 8, và nó đổi việc tiếp theo:** "nhóm đông nhất" **không phải một
 tính năng nào cả**. Nhóm đông nhất là A, và A không cần gì. **32 trong 72 màn
@@ -1565,15 +1648,59 @@ không chạy được `CPublic:SetObjGray` ở đó), `scheduleOnce` báo thàn
    `getAnchorPointInPoints()` vì (a) bảng lớp ấy ánh xạ `getAnchorPoint` sang
    **`+0xA8`**, khác slot, và (b) công thức mode 3 chỉ đúng đơn vị nếu `+0xAC`
    là toạ độ **điểm ảnh**, không phải tỉ lệ 0..1.
-10. **`RichLabel` tách từng chữ** — `getLimitShowCount` (48) và `getLetterEx`.
-    Nằm trong lớp C++ `Label` của engine (`RichLabel.lua:550-554` tạo bằng
-    `Label:new()` rồi `createWithTTF`). Trả một con số đoán ra ở đây là đổi cách
-    hiện chữ, nên **để nguyên cho tới khi đọc được binding**.
+10. ~~**`RichLabel` tách từng chữ**~~ — **xong.** `getLimitShowCount` (48 lượt gọi)
+    và `getLetterEx` nằm trong lớp C++ `Label` của engine
+    (`RichLabel.lua:550-554` tạo bằng `Label:new()` rồi `createWithTTF`).
+    Lượt trước ghi "trả một con số đoán ra ở đây là đổi cách hiện chữ, nên để
+    nguyên" — câu ấy **không còn đúng**, vì câu hỏi đã đổi:
+    `getLimitShowCount` là **số ký tự của chính chuỗi đang có** (`gd.text`), không
+    phải một con số của engine; thứ duy nhất phải chọn là **đơn vị đếm**, và đơn
+    vị ấy đo được — chuỗi ở đây là UTF-8 nên đếm **byte** thì một chữ 2 byte bị cắt
+    đôi. Đếm **điểm mã** (một chuỗi tiếng Việt có dấu), và
+    `tools/verify_richlabel.gd` đòi số node chữ **bằng** số ký tự.
+
+    Đo được **trước** khi làm (`tools/chay_lua.gd`, đoạn dò `RichLabel`): khi hai
+    hàm ấy còn trả `0` / `nil` thì `_spriteArray` rỗng, nên `adjustPosition_` chỉ
+    đặt chỗ cho ảnh — **mọi đoạn chữ nằm im ở `(0,0)` của `_containLayer`**, chữ
+    của các đoạn chồng lên nhau. Bản gốc không như vậy: `createSprite_`
+    (`:550-557`) lấy **từng ký tự** ra làm sprite rồi xếp lại.
+
+    Đoạn khó không phải chuyện tách chữ mà là **chiều cao của cha**: node tạo lúc
+    chạy mang sẵn `parent_h = 640` (`_new_node`), còn nhãn đoạn chữ chỉ cao ~23.
+    A/B trên cùng một chuỗi: giữ 640 thì sau `adjustPosition_` mọi ký tự ra
+    **y = 617** (đúng `640 − 23` — vì `to_godot` cộng thêm `parent_h`), tức rơi ra
+    ngoài khung 617 px; đặt lại bằng `gd.size.y` thì ra **y = 0**, đúng bằng chiều
+    cao lớp. Nên ký tự là **con của nhãn đoạn** (để `parent_h` đi theo), và nhãn
+    đoạn bị **ẩn** — nếu không thì mỗi đoạn chữ hiện **hai lần**, một lần tại chỗ
+    cũ và một lần tại chỗ `adjustPosition_` xếp. Chỗ "ẩn" là **suy ra từ cấu trúc**
+    (`_containLayer` chỉ `addChild` nhãn đoạn mà **không đặt chỗ** cho nó,
+    `:548` so với `:550-557`), **không** phải đọc từ engine — ghi lại đúng như vậy.
+    Một chỗ nữa **không có gì để khôi phục**: `fAdvance` bản gốc lấy từ số đo font
+    của engine, ta lấy bề rộng hiện ra của chính chữ ấy — hai số không thể bằng
+    nhau từng byte, và phép kiểm chỉ đòi nó **dương**.
+
+    `getLetterEx` có **hai** kiểu gọi, cả hai đều thật: theo **chỉ số** (0..n−1,
+    `RichLabel.lua:552`) và theo **ký tự** (`CGuideLogical.lua:221`, `:315`). Kiểu
+    theo ký tự **chỉ tra trong số chữ đã tách ra**, không tự cắt: `CGuideLogical`
+    truyền vào một nhãn của bố cục mà nó không hề xếp lại từng chữ, nên cắt ở đó
+    thì mọi chữ đổ lên một chỗ; trả `nil` thì `:315` (`if pLetter then`) tự bỏ qua
+    — đúng như trước. Kèm `Node:boundingBox()` (trả đủ **bốn** số): bản gốc chỉ
+    đọc hai số cuối (`:280`) nhưng `:282` so `w < fAdvance`, thiếu số thì ném
+    `attempt to compare nil with number` — lỗi đã gặp thật.
+
+    `tools/verify_richlabel.gd` — **20 đạt / 0 hỏng** (đã vào `check.py`, bộ thứ
+    **31**): `[fontColor=0000FF]Vu khi[/fontColor] dep` ra **2 đoạn** (trước là 1),
+    đoạn đầu mang màu của thẻ và chữ **không** còn thẻ, ghép các node chữ lại ra
+    đúng `Vu khi dep`, mỗi node đúng **một** ký tự, không ký tự nào ra ngoài khung
+    lớp, đổi chuỗi thì số node đổi theo và con của chuỗi cũ bị bỏ **hết**.
+    Một lỗi tự bắt được khi viết phép kiểm, đáng nhớ: tôi viết "node chữ là con
+    của **lớp**" và nó **hỏng** — `getParent()` trả về **nhãn đoạn**; chính phép
+    kiểm ấy là thứ xác nhận lại kết luận `parent_h` ở trên.
 
 Việc 2(b) rẻ và mở đường cho việc 4. **Việc 7 vừa xong, và nó đổi thứ tự ưu
 tiên**: nó là một lỗi im lặng **trong chính lớp giả lập**, đúng loại đã gặp ở
 `setGray` — nên câu hỏi đúng không phải "còn thiếu API nào" mà là "**còn tên nào
 được gọi mà chưa từng được viết**". Bảng "API CHUA LAM" của `quet_show.gd` trả lời
 được câu đó, và `reorderChild` là ca đầu tiên nó bắt đúng. Sau đó là việc 4 (bỏ
-ĐẶT trong trận), rồi việc 8 và việc 10 — hai chỗ duy nhất phải đo bằng máy ảo
-hoặc đọc `libgame.so` mới đi tiếp được.
+ĐẶT trong trận); việc 9 và việc 10 nay **đã xong**, nên chỗ còn phải đo bằng máy
+ảo hoặc đọc `libgame.so` chỉ còn **việc 8** (`setPercentage`).

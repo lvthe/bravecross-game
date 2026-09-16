@@ -71,6 +71,38 @@ func _init() -> void:
 
 		-- Chu tieng Viet van phai chay (bang chu la duong khac).
 		out['chu'] = GetStringWithKey('AchieveUI_Description_101_1')
+
+		-- Ham engine ma lop gia lap CO lam that: phai la HAM THAT, khong duoc
+		-- la BONG. Mot ten engine quen lam thi im lang di nhanh sai, vi bong
+		-- dem ra so sanh voi chuoi luon ra 'khac'. Da gap that voi
+		-- LGG_GetPlatformString: no thanh bong, KDebug.lua:181 so bong voi
+		-- "windows" nen di vao nhanh Android/iOS roi goi
+		-- sngDownload:getCurResVersion() — ma `sngDownload` ra nil theo luat
+		-- bien_lua — va MOI dong loi deu nem loi, lam CUIAchieve:Reflesh dung
+		-- giua duong. Xem ROADMAP, muc "Ten ma chinh Lua ban goc gan".
+		local doi = {
+			'LGG_GetPlatformString', 'LGG_GetPathWithFileName', 'LGG_IsFileExist',
+			'LGG_GetSetFilePath', 'sngUtil_getDownloadPath',
+			'sngUtil_getTempDownloadPath', 'sngUtil_getFileData',
+			'sngUtil_getFileSize', 'sngUtil_getIDFV', 'LGG_GetUtf8WordLen',
+			'GetStringWithKey', 'GetCNStringWithKey',
+		}
+		local bong = {}
+		for _, ten in ipairs(doi) do
+			if boot.la_bong(_G[ten]) then bong[#bong + 1] = ten end
+		end
+		out['bong engine'] = table.concat(bong, ' ')
+
+		out['platform'] = tostring(LGG_GetPlatformString())
+		out['platform la chuoi'] =
+			tostring(type(LGG_GetPlatformString()) == 'string')
+		out['thu muc tai co /'] = sngUtil_getDownloadPath():sub(-1)
+		out['getFileData(nil)'] = sngUtil_getFileData(nil) == nil and 'nil' or 'khac'
+		out['getFileSize(khong co)'] = tostring(sngUtil_getFileSize('khong/co/that'))
+		-- Luat bien_lua: 6.901 ten, va phai doc duoc so luong bang so_thieu()
+		-- chu khong bang '#' (bang dem khong co phan mang).
+		out['so bien_lua'] = tostring(boot.so_bien_lua)
+		out['so_thieu la so'] = tostring(type(boot.so_thieu()) == 'number')
 		return out
 	""", "cau hinh")
 	var ms := Time.get_ticks_msec() - t0
@@ -100,6 +132,32 @@ func _init() -> void:
 	t("bang chu tieng Viet van chay",
 			String(r.get("chu", "")).find("Lôi Đài") >= 0,
 			String(r.get("chu", "?")))
+
+	# Ham engine phai la ham THAT. Mot ten quen lam thi khong nem loi, khong ra
+	# nil — no ra mot BONG, va bong so voi chuoi luon ra 'khac'. Do la cach
+	# LGG_GetPlatformString lam mat mot man hinh (xem chu thich trong khoi Lua).
+	t("khong ham engine nao bi lam bong",
+			String(r.get("bong engine", "?")) == "",
+			String(r.get("bong engine", "?")))
+	t("LGG_GetPlatformString tra chuoi that",
+			String(r.get("platform la chuoi", "")) == "true")
+	# Ban goc CO ban Windows that (GameOS.lua, OS_TYPE.WINDOWS), va 24 cho trong
+	# sc/ dem chuoi nay ra so sanh. Ta chay tren Windows nen phai tra dung chu do.
+	t("he dieu hanh tra 'windows'", String(r.get("platform", "")) == "windows",
+			String(r.get("platform", "?")))
+	t("thu muc tai ve co dau phan cach cuoi",
+			String(r.get("thu muc tai co /", "")) == "/",
+			String(r.get("thu muc tai co /", "?")))
+	t("doc file khong ton tai ra nil",
+			String(r.get("getFileData(nil)", "?")) == "nil")
+	t("co file khong ton tai ra 0",
+			String(r.get("getFileSize(khong co)", "?")) == "0",
+			String(r.get("getFileSize(khong co)", "?")))
+	# Luat bien_lua phai con song: 6.901 ten, va so_thieu() dem duoc (khong dung
+	# '#' — thieu_bien_lua la bang dem theo ten nen '#' luon la 0).
+	t("luat bien_lua nap du 6.901 ten",
+			int(r.get("so bien_lua", 0)) == 6901, String(r.get("so bien_lua", "?")))
+	t("so_thieu() tra ve so", String(r.get("so_thieu la so", "")) == "true")
 	# 104 bang, ~6,5 MB. Cham hon nhieu la co gi do doc lai nhieu lan.
 	t("nap het trong 5 giay", ms < 5000, "%d ms" % ms)
 	print("  -> nap ca tang cau hinh mat %d ms" % ms)

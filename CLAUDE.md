@@ -95,9 +95,20 @@ dựng bố cục — cách cũ ấy đẩy gốc hộp thoại `CUINormalDlg` t
 `(96,64)` vì `fix = [2,2,...]`, `lMainToolbarTop` `x` `0 → 30`). Công thức trùng
 số đã lưu ở **99,0%** trong 48.089 trục — con số "~47%" ghi trước kia là **sai**,
 do đọc nhầm thứ tự hai byte kiểu; kiểm lại bằng `brave-cross/work/fix_info.py
---lech`. Còn **một** việc con: đổi `stretch/aspect` sang `expand`, vì `keep` thì
-canvas luôn đúng 960×640 nên trên cửa sổ khác tỉ lệ node neo phải không chạy ra
-mép;
+--lech`. **Chính sách co giãn đã xong cả năm việc**: `stretch/aspect = "expand"`,
+đúng bằng công thức hai nhánh của chính bản gốc
+(`CSceneManager:SetWHScaleToWinSize`, `sc/user/Public/CSceneManager.lua:305-326`:
+giữ chiều dài của 960×640 rồi nở chiều còn lại — 16:9 ra **1137,8×640**, 4:3 ra
+**960×720**). Không phải "thấy giống": `tools/verify_co_gian.gd` chép công thức ấy
+từ `sc/` rồi so với cách Godot tính `expand` trên **301 tỉ lệ 1,0→2,5, lệch
+0,000000000 điểm**. `keep` mà trước đây để mặc định thì không chỉ có viền đen: nó
+khiến `SetWHScaleToWinSize` dùng tỉ lệ **cửa sổ** (1,7778, đo được) trong khi khung
+vẽ ra tỉ lệ 1,5, tức đặt cỡ lớp Main thành 1137,78 trong khung rộng 960. Không đổi
+gì ở 960×640 và ở `--headless`. **Một chỗ chưa khớp, ghi rõ:** `GetLiuHaiWidth()`
+trừ tai thỏ chỉ trên **iOS** và chỉ khi tỉ lệ **> 2,0** (`:287-299`; Android và
+`fRate <= 2.0` đều trả `0`), nên 1137,8×640 đo trên máy ảo là đường không khuyết —
+`expand` tái tạo đúng đường ấy, còn iOS tỉ lệ > 2,0 thì bản gốc thu hẹp mà port
+chưa làm;
 kéo cuộn lớp thành phố —
 **xong** (`lua/cuon.lua`, lớp `CCScrollLayer` của engine: 315 node trong 296
 bố cục, đo bằng `tools/verify_cuon.gd`); (hiệu ứng

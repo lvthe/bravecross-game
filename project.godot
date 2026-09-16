@@ -23,6 +23,29 @@ Game="*res://game/game.gd"
 window/size/viewport_width=960
 window/size/viewport_height=640
 window/stretch/mode="canvas_items"
+; `expand`, khong phai `keep` (mac dinh cua Godot). Cong thuc CUA BAN GOC
+; (`CSceneManager:SetWHScaleToWinSize`, sc/user/Public/CSceneManager.lua:305-326)
+; giu chieu DAI cua 960x640 va no chieu con lai ra:
+;
+;     rong hon 1,5 (16:9) -> cao dung 640, rong 640*ti_le = 1137,78
+;     hep hon 1,5 (4:3)   -> rong dung 960, cao 960/ti_le = 720
+;
+; do dung bang hai nhanh ay cua `expand` (he so co = min(W/960, H/640)), va
+; 1137,78x640 la so DO DUOC tren may ao 16:9 (`ROADMAP.md` §8 muc 9, phan
+; "Chinh sach co gian", viec (e)).
+; Do la so QUAN TRONG chu khong phai chuyen hinh thuc: `lua_runtime.gd:166-178`
+; do `Window.size` vao `screenWidth`/`screenHeight`, ma `Window.size` la kich
+; thuoc CUA SO tinh bang diem anh (do duoc o `tools/do_co_gian.gd`: cua so
+; 1920x1080 -> `Window.size` 1920x1080 trong khi canvas chi 960x640 khi con
+; `keep`). Voi `keep` thi ti le ma `SetWHScaleToWinSize` dung (1,7778) KHAC ti le
+; khung dang ve ra (1,5), nen lop Main bi dat co 1137,78 trong mot khung 960 —
+; tuc day ra ngoai khung. Voi `expand` thi cua so khong con vien den nen ti le
+; cua so LUON bang ti le canvas.
+;
+; Khong doi gi o 960x640 (ti le 1,5 -> min(1, 1) = 1 -> canvas van 960x640),
+; cung khong doi gi khi chay `--headless` (o do `screenWidth/Height` lay tu
+; `Window.size` = 100x100, ti le 1,0, y het truoc).
+window/stretch/aspect="expand"
 
 [rendering]
 

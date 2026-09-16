@@ -2009,11 +2009,11 @@ bình thường — nên phép đo theo kiểu **không** hỏi lại kiểu mà
    tên, `scaleX = 0` (`fix_info.py --dem` in ra con số ấy). Cách đọc "chưa nhân"
    được chọn vì ba phép đo ở trên, không vì node ấy.
 
-   **Chính sách co giãn của bản port — (a)-(d) XONG, chỉ còn (e).**
+   **Chính sách co giãn của bản port — (a)-(e) XONG hết.**
    `project.godot` đặt `viewport 960x640`, `stretch/mode = "canvas_items"` và
-   **không** đặt `stretch/aspect`, nên tỉ lệ mặc định là `keep`: canvas **luôn
-   đúng 960×640**. Bản gốc thì lấp kín màn hình — trên 16:9 vùng thiết kế nhìn
-   thấy là **1137,8×640**, tức tương đương `expand`.
+   `stretch/aspect = "expand"`. Bản gốc lấp kín màn hình — trên 16:9 vùng thiết kế
+   nhìn thấy là **1137,8×640** — nên `expand` mới đúng, `keep` (mặc định của
+   Godot) thì canvas luôn đúng 960×640 và hai bên có viền đen.
 
    Bốn việc đầu nay đã làm, và **khác bản ghi cũ ở chỗ (c)+(d) không cần tự
    gọi**: (a) `work/xgg.py` xuất tám số ấy với khoá `fix`; (b) `ui/xgg_layout.gd:
@@ -2026,11 +2026,69 @@ bình thường — nên phép đo theo kiểu **không** hỏi lại kiểu mà
    cây** lúc dựng, đẩy gốc hộp thoại `CUINormalDlg` (KHÔNG có cờ
    `IsFullScreenAdaptation`) từ `110,30` thành `60,35`.
 
-   **Việc còn lại đúng một: (e) đổi `stretch/aspect` sang `expand`** — không có
-   nó thì khi cửa sổ khác tỉ lệ, node neo phải trong `lMainBtnLayer` /
-   `lDialogControlPanel` vẫn **không chạy ra mép** như bản gốc. Xem thêm ở dưới:
-   ngay ở tỉ lệ hiện tại reflash **đã có việc làm**, nên (e) không phải điều kiện
-   để thấy nó chạy, chỉ là điều kiện để nó chạy **đúng trên mọi cửa sổ**.
+   **Việc (e) — đổi `stretch/aspect` sang `expand` — XONG lượt này.**
+   Làm được vì đọc ra **công thức của chính bản gốc**, không phải vì "thấy giống":
+   `CSceneManager:SetWHScaleToWinSize` (`sc/user/Public/CSceneManager.lua:305-326`,
+   với `LogicWinSizeW/H = 960/640` khai ở `:73-74`) có **hai nhánh**:
+
+       if realW/realH > 960/640 then  setContentSize(640 * realW/realH, 640)
+       else                           setContentSize(960, 960 * realH/realW)
+
+   tức **giữ chiều DÀI của 960×640 rồi nở chiều còn lại** — rộng hơn 1,5 thì cao
+   đúng 640 và rộng ra; hẹp hơn 1,5 thì rộng đúng 960 và cao ra. Đó **đúng bằng**
+   cách Godot tính `expand` (hệ số phóng `min(W/960, H/640)`), và hai đường tính
+   ấy đã đối chiếu chứ không tin nhau: `tools/verify_co_gian.gd` chép lại công
+   thức hai nhánh từ `sc/` rồi so với công thức `expand` trên **301 tỉ lệ từ 1,0
+   đến 2,5** — **lệch lớn nhất 0,000000000 điểm**, tức hai đường tính là **một**.
+
+   **Đo bằng cửa sổ thật** (`tools/do_co_gian.gd`, 5 đạt / 0 hỏng ở cả ba cỡ):
+
+       960x640   -> canvas  960x640    (tỉ lệ 1,5 -> min(1,1) = 1, y như cũ)
+       1920x1080 -> canvas 1137x640    (nở ra; 1137,78 bị Godot làm tròn còn 1137)
+       1024x768  -> canvas  960x720    (nhánh thứ hai, co lại)
+
+   Hai điều đáng ghi trong phép đo ấy. **Một**, Godot làm tròn `visible_rect` về
+   **số nguyên**, nên 1920×1080 cho canvas **1137** chứ không phải 1137,78 — đúng
+   số đã đo trên máy ảo (1137,8) sai khác dưới 1 điểm, và phép kiểm vì thế phải
+   cho phép **1 điểm** chứ không phải 0,5 (lần đầu tôi đặt 0,5 và nó báo hỏng —
+   bản thân ngưỡng sai, không phải hình học sai). **Hai**, phép kiểm "tỉ lệ của
+   `Window.size` bằng tỉ lệ canvas" phải tính từ **tỉ lệ cửa sổ** rồi mới so, chứ
+   lấy tỉ lệ canvas làm đầu vào thì phép kiểm thành vòng tròn (đo chính cái đang
+   kiểm); sai số cho phép lấy từ chính phép làm tròn, `1/cao` = 1/640.
+
+   Và (e) **không chỉ là chuyện thẩm mỹ** — nó sửa một chỗ lệch thật đã có sẵn:
+   `lua_runtime.gd:166-178` đổ `Window.size` vào `screenWidth/screenHeight`, mà
+   `Window.size` là **kích thước CỬA SỔ tính bằng điểm ảnh** (đo được: cửa sổ
+   1920×1080 -> `Window.size` = 1920×1080, tỉ lệ 1,7778). Với `keep` thì canvas
+   vẫn 960×640 (tỉ lệ 1,5), nên `SetWHScaleToWinSize` **dùng một tỉ lệ khác với
+   khung đang vẽ ra** và đặt cỡ lớp Main thành 1137,78 trong một khung rộng 960 —
+   tức đẩy chúng ra ngoài khung. Với `expand` thì cửa sổ **không còn viền đen**,
+   hai tỉ lệ bằng nhau (sai khác chỉ còn phép làm tròn số nguyên ở trên).
+
+   **Không đổi gì ở 960×640** và **không đổi gì khi chạy `--headless`**: ở đó
+   `screenWidth/Height` lấy từ `Window.size` = 100×100, tỉ lệ 1,0, hai bên y hệt
+   nhau trước và sau — nên 33 bộ của `check.py` vẫn xanh. Các bộ `tools/*` cũng
+   không đổi, vì chúng tự đặt `cua_so_engine` = 1152×768 (tỉ lệ 1,5) chứ không
+   lấy cửa sổ thật; và **chưa cảnh sản phẩm nào đặt `set_touch_root`** — hiện chỉ
+   `tools/*` gọi nó.
+
+   **Một chỗ `expand` KHÔNG khớp bản gốc, ghi ra chứ không im lặng bỏ qua:**
+   `GetLiuHaiWidth()` (`:287-299`) **trừ bớt bề ngang tai thỏ** khỏi `realW` trước
+   khi tính tỉ lệ, nhưng chỉ trên **iOS** và chỉ khi **tỉ lệ > 2,0** (dòng đầu trả
+   `0` khi `LGG_GetPlatformString() == "android"`, dòng sau trả `0` khi
+   `fRate <= 2.0`). Nên 1137,8×640 đo được trên máy ảo **là đường không khuyết**,
+   và `expand` tái tạo đúng đường ấy; còn máy iOS tỉ lệ > 2,0 thì bản gốc **thu
+   hẹp** vùng thiết kế để chừa tai thỏ, `expand` thì không. Muốn khớp thì phải
+   thêm phép trừ ấy, **hiện chưa làm** (máy tính và Android đều không đi vào nhánh
+   đó).
+
+   Hai bộ giữ việc này: `tools/verify_co_gian.gd` (**15 đạt / 0 hỏng**, trong
+   `check.py`) kiểm cài đặt dự án là `expand`, công thức hai nhánh **vẫn còn
+   nguyên trong `sc/`** (neo vào mã gốc chứ không vào trí nhớ người viết), hai
+   dòng `GetLiuHaiWidth` trả 0, và hai đường tính bằng nhau trên 301 tỉ lệ; còn
+   `tools/do_co_gian.gd` (cửa sổ thật, **5 đạt / 0 hỏng** ở cả ba cỡ) đo các con
+   số mà chế độ `--headless` không đo được vì nó dùng trình điều khiển hiển thị
+   giả nên `--resolution` không có tác dụng.
 
    **Bốn đường gọi ấy, đầy đủ (grep trên `sc/`, không còn đường nào khác):**
    1. `CSceneManager.lua:304` `SetWHScaleToWinSize` — đặt `setContentSize` rồi
@@ -2072,9 +2130,9 @@ bình thường — nên phép đo theo kiểu **không** hỏi lại kiểu mà
    hệ quả là `SetWHScaleToWinSize` chỉ đặt `setContentSize(960, 640)` — **không
    đổi gì** — và **chỉ riêng reflash có tác dụng**. (Cửa sổ của máy ảo thì khác:
    đo được cả **13 CCScene là 1429×768**, tỉ lệ 1,86 — trên máy thật nhánh co giãn
-   ấy *sẽ* chạy. Đây chính là việc (e).) Ghi chú riêng, cùng họ: `MainScroll` là
-   **1366×768** trong bản ghi, khác cỡ cảnh 1152×768 của port — một việc **khác**,
-   chưa đụng tới.
+   ấy *sẽ* chạy; đó là việc (e), **nay đã làm** — xem ở trên.) Ghi chú riêng, cùng
+   họ: `MainScroll` là **1366×768** trong bản ghi, khác cỡ cảnh 1152×768 của port
+   — một việc **khác**, chưa đụng tới.
 
    Một chi tiết dễ sai khi đo: ngưỡng "đổi chỗ" phải là **0,01 điểm**, không phải
    `is_equal_approx` — đường Cocos → Godot → Cocos đi qua một lần làm tròn nên

@@ -20,6 +20,13 @@ SUITES = [
     ('rig nhan vat',         'script', 'tools/verify.gd',         False, []),
     ('mo hinh chien dau',    'script', 'tools/verify_battle.gd',  False, []),
     ('bo cuc man hinh',     'script', 'tools/verify_layout.gd',  False, []),
+    # Chinh sach co gian cua so: cai dat du an phai la `expand` (khong phai mac
+    # dinh `keep` cua Godot), cong thuc hai nhanh cua ban goc
+    # (`CSceneManager:SetWHScaleToWinSize`) van con trong `sc/`, va hai duong
+    # tinh ra CUNG ket qua tren dai ti le 1,0 -> 2,5. Bo do bang cua so that
+    # (`tools/do_co_gian.gd`) nam ngoai check.py vi `--headless` khong doi duoc
+    # do phan giai; bo nay giu phan kiem duoc ma khong can cua so.
+    ('co gian cua so',      'script', 'tools/verify_co_gian.gd', False, []),
     ('ma Lua ban goc',      'script', 'tools/verify_lua_ui.gd',  False, []),
     ('man hinh Lua ban goc','script', 'tools/verify_lua_screen.gd', False, []),
     ('action + anh (Lua)',  'script', 'tools/verify_lua_actions.gd', False, []),

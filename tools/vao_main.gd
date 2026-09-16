@@ -83,6 +83,16 @@ func _init() -> void:
 			print("  %s: %s" % [k, str(r[k]).substr(0, 200)])
 
 	var d := chay(lua)
+	print("\n[DO TAM] %s" % str(lua.run("""
+		local w, h = g_CPublic:GetWinSize()
+		local u = _G['UIRootLayer']
+		local uw, uh = u:getContentSize()
+		local m = _G['g_MainUIScrollLayer']
+		local mw, mh = m:getContentSize()
+		return string.format('win=%sx%s  UIRoot=%sx%s  fScale=%s  MainScroll=%sx%s',
+			tostring(w), tostring(h), tostring(uw), tostring(uh),
+			tostring(g_CSceneManager.fScale), tostring(mw), tostring(mh))
+	""", "do tam")))
 	print("\nchang da qua: %s" % (", ".join(d["qua"]) if not d["qua"].is_empty() else "(chua)"))
 	print("dung o: %s" % (d["dung"] if d["dung"] != "" else "(khong — toi Main)"))
 
@@ -95,6 +105,14 @@ func _init() -> void:
 		for k in bao:
 			print("  %-26s %s" % [k, bao[k]])
 	var miss := lua.missing()
+	# `sngFixInfoReflash` la phuong thuc C++ cua ban goc (khong file Lua nao
+	# dinh nghia), nen thieu no thi KHONG co loi nao — chi la moi node neo dung
+	# yen. Dem lai moi biet no co chay, va chay bao nhieu node.
+	var fx := lua.fix_reflash()
+	print("\n  sngFixInfoReflash: ma goc goi %d lan, doi cho %d node"
+			% [fx["goi"], fx["node"]])
+	for dong in XggLayout.reflash_log:
+		print("      %s" % dong)
 	var mk := []
 	for k in miss:
 		mk.append([int(miss[k]), String(k)])

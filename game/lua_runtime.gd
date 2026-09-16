@@ -127,6 +127,7 @@ func open() -> bool:
 	state.globals["_godot_frame"] = _frame
 	state.globals["_godot_dat_xam"] = _dat_xam
 	state.globals["_godot_zsort"] = _zsort
+	state.globals["_godot_reflash"] = _reflash
 	state.globals["_godot_load_xgg"] = _load_xgg
 	state.globals["_godot_new_node"] = _new_node
 	state.globals["_godot_text"] = _text
@@ -483,6 +484,19 @@ func _zsort(cha: Node) -> void:
 		XggLayout.sap_xep_theo_z(cha)
 
 
+## `sngFixInfoReflash` cua ban goc — lua/cocos.lua goi vao day. Chay tu tren
+## xuong, moi node tu tinh lai cho theo `contentSize` cua CHA no. Cong thuc va
+## tam so o ui/xgg_layout.gd, muc `reflash`.
+##
+## Ham nay KHONG duoc goi luc dung bo cuc: ban goc chi reflash nhung lop duoc
+## goi ten (CSceneManager:PreLoadFinish, UIRootLayer, va 27 man co
+## IsFullScreenAdaptation) — xem chu thich dai o lua/cocos.lua.
+func _reflash(node: Control) -> int:
+	if node == null:
+		return 0
+	return XggLayout.reflash(node)
+
+
 ## Gan anh theo ten khung. Ban goc gan anh luc CHAY chu khong ghi trong bo
 ## cuc — day la ly do bo cuc dung khong thi man hinh gan nhu trong tron.
 func _frame(node: Control, name: String) -> bool:
@@ -783,6 +797,27 @@ static func _toa_do_cocos(goc: Node, p: Vector2) -> Vector2:
 		if goc.size.y > 0.0:
 			h = goc.size.y
 	return Vector2(q.x, h - q.y)
+
+
+## Hai bo dem cua `sngFixInfoReflash` (lua/cocos.lua): so lan ma goc goi, va so
+## node no dat lai.
+##
+## Tra `Dictionary()` chu KHONG tra bang Lua: bang Lua ve ben nay la `LuaTable`,
+## khong phai `Array`, nen `r[0]` doc ra nil va ham im lang tra so 0 — da mac
+## dung cai bay ay (doc ra 0 trong khi `dem` ben Lua la 6). Tra -1 khi hong, de
+## "khong doc duoc" khong tron voi "khong he chay".
+func fix_reflash() -> Dictionary:
+	var r = state.do_string("""
+		local c = require('cocos')
+		local out = Dictionary()
+		out['goi'] = c.fix_reflash_goi
+		out['node'] = c.fix_reflash_node
+		return out
+	""")
+	if _is_error(r) or typeof(r) != TYPE_DICTIONARY:
+		errors.append("fix_reflash: %s" % r)
+		return {"goi": -1, "node": -1}
+	return {"goi": int(r["goi"]), "node": int(r["node"])}
 
 
 ## Cac API Cocos bi goi ma minh chua lam — dem duoc, de biet con thieu gi.

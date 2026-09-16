@@ -21,6 +21,12 @@
 local M = {}
 
 M.missing = {}        -- API bi goi ma chua lam -> so lan
+-- So lan ma goc goi `sngFixInfoReflash`, va so node no DOI CHO. Phuong thuc
+-- that la cua C++ nen khong co file Lua nao dinh nghia no — thieu no thi moi
+-- thu van ve ra binh thuong, khong mot loi nao. Dem lai la cach duy nhat biet
+-- no co chay hay khong (doc: tools/vao_main.gd, tools/quet_show.gd).
+M.fix_reflash_goi = 0
+M.fix_reflash_node = 0
 M.tag_lookups = 0
 M.tag_misses = 0
 M.tag_miss_log = {}
@@ -875,6 +881,44 @@ function Node:setContentSize(w, h)
 		gd:set_meta('o_chu', Vector2(w, h))
 	end
 	dat_lai_pivot(gd)
+end
+
+-- `sngFixInfoReflash` — dat lai cho cac node neo khi lop doi co.
+--
+-- Day la phuong thuc C++ cua ban goc (typeinfo `N7cocos2d16sngCCNodeFixInfoE`,
+-- ham bind o shim `0x49C07E` -> `0x4AEF96`), KHONG phai ham Lua. Thieu no thi
+-- moi cho goi deu roi vao bo dem `M.missing` va nam im: `SetWHScaleToWinSize`
+-- van keo co lop roi goi toi day, va khong ra gi. Cong thuc + tam so o
+-- ui/xgg_layout.gd, muc `reflash`.
+--
+-- Goi tu dau (dem bang grep tren toan bo `sc/`, khong phai uoc luong):
+--   * `CSceneManager:SetWHScaleToWinSize` (CSceneManager.lua:326) — duong
+--     chinh, va no la duong DUY NHAT di khap cay. Bon noi goi no:
+--       - `PreLoadFinish` (d.331) — MOT DANH SACH LOP CO TEN cho tung canh:
+--         canh "Main" 2 lop (lMainBtnLayer, lDialogControlPanel), canh "Battle"
+--         18 lop; KHONG co nhanh nao cho canh khac.
+--       - `OnLoadNextScene` (d.556) — UIRootLayer, chay o MOI lan doi canh.
+--       - `CUIPublic:onInit` (CUIPublic.lua:203) — chi voi man co
+--         `IsFullScreenAdaptation = true`: 27 man.
+--       - `FBHeroPK.lua:38` va `CUITimeHero.lua:49`.
+--   * `CUILottery.lua:1034` viet san nhung da bi chu thich hoa.
+--
+-- Vi vay DON DUNG goi ham nay luc dung bo cuc: ban goc chi reflash nhung lop
+-- duoc goi ten, chu khong phai ca cay. Da thu ca cay va do duoc cai gia — 9 bo
+-- kiem van xanh, dung mot bo do: `tools/verify_lua_screen.gd:116`, goc hop
+-- thoai `CUINormalDlg` (KHONG co co IsFullScreenAdaptation) bi day tu 110,30
+-- thanh 60,35. De ma goc tu goi thi no khong bi day.
+--
+-- Va o dung co thiet ke 960x640 thi ham nay gan nhu khong doi gi: cong thuc tra
+-- ra dung so da luu trong ban ghi o **99,0% truc** (47.605/48.089 truc co cong
+-- thuc, 484 truc lech — nguoi thiet ke dat tay, va nhom bon nut dang nhap cua
+-- UI_AccountLogin_960_640, noi cong thuc dat ra 328/632 dung nhu ban goc chay
+-- that). Nen bat no len khong lam man hinh xo lech, chi chinh 484 truc ay.
+function Node:sngFixInfoReflash()
+	M.fix_reflash_goi = M.fix_reflash_goi + 1
+	if _godot_reflash ~= nil then
+		M.fix_reflash_node = M.fix_reflash_node + (_godot_reflash(raw(self)) or 0)
+	end
 end
 
 -- Tra HAI gia tri, giong getContentSize. Thieu no thi CUIHelper:920 lam

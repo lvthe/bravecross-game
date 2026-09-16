@@ -45,6 +45,11 @@ static var use_guessed_images := false
 ## tuong khong lo chong nhau. Da thu va dung nhu vay.
 static var respect_visible := true
 
+## Ten (toi da 32) nhung node ma `reflash` DOI CHO, de doc lai duoc no vua lam
+## gi. Cong thuc trung voi so da luu o 99,0% truc (xem `reflash`), nen danh
+## sach nay ngan — va chinh no la cho tra loi cau hoi "reflash sua cai gi".
+static var reflash_log: Array = []
+
 const _DEBUG_COLORS := {
 	"sprite": Color(0.90, 0.45, 0.25, 0.55),
 	"scale9": Color(0.25, 0.55, 0.85, 0.55),
@@ -190,6 +195,7 @@ static func build(json_path: String) -> Control:
 		if n != null:
 			root.add_child(n)
 	sap_xep_theo_z(root)
+	# KHONG reflash o day — xem chu thich cua `reflash()` ben duoi.
 	var idx := {}
 	_index(root, idx)
 	root.set_meta("index", idx)
@@ -211,6 +217,144 @@ static func build(json_path: String) -> Control:
 ## giua cha (lSubDialogMask 960x640 tai 480,320), nen giu cach ap neo.
 static func bo_qua_neo(tn: String) -> bool:
 	return tn == "CCLayer" or tn == "CCScene"
+
+
+## Dat lai cho cac node neo khi lop doi co — ban sao cua `sngFixInfoReflash`.
+##
+## AI GOI: chi `Node:sngFixInfoReflash` (lua/cocos.lua) goi vao day, va no chi
+## duoc goi tu ma goc. Bon duong that:
+##   * `CSceneManager:SetWHScaleToWinSize` — keo lop theo ti le man hinh roi
+##     reflash. Bon noi goi no: `PreLoadFinish` (MOT DANH SACH LOP CO TEN cho
+##     tung canh, d.331), `OnLoadNextScene` (UIRootLayer, moi lan doi canh,
+##     d.556), `CUIPublic:onInit` (27 man co IsFullScreenAdaptation), va
+##     `FBHeroPK.lua:38` / `CUITimeHero.lua:49`.
+##   * KHONG goi luc dung bo cuc (xem `build()`): ban goc khong reflash ca cay.
+##     Da thu va do duoc cai gia — `tools/verify_lua_screen.gd:116`, goc hop
+##     thoai CUINormalDlg (khong co co IsFullScreenAdaptation) bi day tu 110,30
+##     thanh 60,35.
+##
+## `SetWHScaleToWinSize` dat `contentSize` cua lop TRUOC roi moi reflash, nen
+## khi nao doi chinh sach co gian (stretch/aspect) thi chi can `getWinSize()`
+## tra dung co man hinh that — cong thuc tu khac chay theo, khong phai sua o day.
+##
+## No di khap cay con: moi node co ban ghi fix-info va co cha thi tinh lai vi tri
+## bang chin so cua chinh no, moi cap dung `contentSize` cua CHA no. Lua that su
+## nam trong `libgame.so` (typeinfo `N7cocos2d16sngCCNodeFixInfoE`, ham bind o
+## shim `0x49C07E` -> `0x4AEF96`); luat va cac con so do duoc ghi o ROADMAP.md,
+## muc 9 cua "Bang ham thieu".
+##
+## O DUNG co thiet ke cua cha thi cong thuc tra ra dung so da luu trong ban ghi o
+## **99,0% truc** (47.605/48.089 truc co cong thuc; 484 truc lech) — nen goi no
+## o 960x640 gan nhu khong doi gi, no chi chinh 484 truc ay, va chinh VE PHIA
+## ban goc. Cho ro nhat: UI_AccountLogin_960_640 luu bon nut dang nhap (QQ /
+## Apple / Google / snsQuickEnter) o x = 480 = giua cha, con cong thuc kieu 2 voi
+## o50 = ±152 dat chung ra 328 / 632 — ban goc chay that o 960x640 cung ra 328
+## (do bang brave-cross/work/emu_pt.py, muc `--kieu23`). 484 truc lech la nguoi
+## thiet ke dat tay lech khoi cong thuc (lech 0,5 den 8,5 diem, rieng nhom nut
+## dang nhap lech dung 152) — khong phai loi doc so.
+##
+## Nam cong thuc, doc thang tu do do (khong suy ra):
+##
+##   x: 0 de yen | 1 -> o40 + neo_x*scale_x
+##                2 -> (rong_cha - w)/2 + neo_x + o50   | hop CHUA co gian
+##                3 -> rong_cha - (w - neo_x)*scale_x - o44
+##   y: 0 de yen | 1 -> cao_cha - (h - neo_y)*scale_y - o48
+##                2 -> (cao_cha - h)/2 + neo_y + o54    | hop CHUA co gian
+##                3 -> o4C + neo_y*scale_y
+##
+## Hai cho de viet sai, ca hai deu co so do:
+##   * Kieu 1 va 3 dung hop DA co gian (nhan scale), kieu 2 dung hop CHUA co
+##     gian. `lCUICOGMap` (scale 0,8) do duoc (-945,0; -797,5) o 960x640 va
+##     (-875,0; -737,5) o 1100x760 — dung (rong-2850)/2 va (rong-2235)/2 cua
+##     hop chua nhan; cach doc "kieu 2 cung co gian" lech 285 diem.
+##   * o50 va o54 la so CONG CO DAU, khong phai do lech luon duong: o54 do
+##     duoc -25 (lHeroInfoUI/lStarSoulMain o ba chieu cao) va +25 (lQQCoinsGift).
+##
+## Va kieu 0 nghia la "de yen truc do", khong phai "ve 0": btnEquipForgeUINav2/3
+## dung yen o x = -777 trong khi y duoc tinh lai thanh 753,4.
+## Tra ve SO NODE BI DOI CHO. Dem dung cai doi duoc chu khong dem so lan ap cong
+## thuc: ap cong thuc len 488 node roi ca 488 deu ra dung vi tri cu thi khong
+## phai la mot phep sua — o 960x640 phan lon la nhu vay (xem so do o duoi), nen
+## con so "doi cho" moi la con so dang doc.
+static func reflash(goc: Node) -> int:
+	# Thu tu cua ban goc: ban than truoc, roi moi xuong con chau. Vi tri cua cha
+	# khong anh huong con (cong thuc chi doc contentSize), nhung giu dung thu tu
+	# thi khi co sai thi sai giong ban goc.
+	var n := 0
+	if goc is Control and goc.has_meta("fix"):
+		var cha := goc.get_parent()
+		if cha is Control:
+			if _dat_lai(goc, cocos_size(cha)):
+				n += 1
+	for c in goc.get_children():
+		if c is Control:
+			n += reflash(c)
+	return n
+
+
+## `contentSize` cua ban goc: nhan da bi setString thi tra O CHU, con lai tra o
+## .xgg — dung nhu `Node:getContentSize` ben lua/cocos.lua:844. Node mang anh thi
+## `UiFrames.set_frame` da chinh `size` theo anh truoc khi reflash chay, va ban
+## goc cung vay (setDisplayFrame dat contentSize theo khung anh).
+static func cocos_size(n: Control) -> Vector2:
+	if n.has_meta("o_chu"):
+		return n.get_meta("o_chu")
+	return n.size
+
+
+## Chin so cua mot node, doi tu danh sach tho ra ten truong.
+##
+## Trong ban ghi, thu tu la KIEU Y TRUOC roi moi tới kieu x — doc nham thu tu ay
+## (lay [0] lam truc x) sinh ra dung hai con so dem sai 2.622 / 2.302 da tung
+## duoc ghi vao tai lieu nhu the la dung. Nen o day doi mot lan, co ten.
+static func fix_of(node: Control) -> Dictionary:
+	var f: Array = node.get_meta("fix")
+	return {"my": int(f[0]), "mx": int(f[1]), "o40": float(f[2]), "o44": float(f[3]),
+			"o48": float(f[4]), "o4C": float(f[5]), "o50": float(f[6]),
+			"o54": float(f[7])}
+
+
+static func _dat_lai(node: Control, cha_size: Vector2) -> bool:
+	var f := fix_of(node)
+	var wh := cocos_size(node)
+	var neo: Vector4 = node.get_meta("cocos")
+	# neo tinh bang DIEM ANH (Cocos getAnchorPointInPoints, +0xAC) — khong phai
+	# ti le 0..1 nhu neo trong .xgg. Lan lon hai cai nay thi moi cong thuc sai.
+	var axp := neo.z * wh.x
+	var ayp := neo.w * wh.y
+	var sx := node.scale.x
+	var sy := node.scale.y
+	# Doi ve toa do Godot — DUNG LUAT CUA _make, ke ca viec lop bo qua neo
+	# (ignoreAnchorPointForPosition cua cocos2d-x 2.x). Cong thuc doc neo THAT,
+	# con luc dat cho thi lop bo qua neo: hai viec khac nhau, dung tron.
+	var tn := String(node.get_meta("type_name", ""))
+	var pax := 0.0 if bo_qua_neo(tn) else neo.z
+	var pay := 0.0 if bo_qua_neo(tn) else neo.w
+	# Truc kieu 0 thi GIU NGUYEN cho dang co, khong phai ve so da luu — ban goc
+	# khoi dau bo dem toa do bang chinh getPosition() hien tai roi moi ghi de
+	# tung truc. Nen diem xuat phat phai lay tu vi tri DANG CO cua node (Lua co
+	# the da doi no), khong phai tu meta da ghi luc dung bo cuc.
+	var cx := node.position.x + pax * wh.x
+	var cy := cha_size.y - node.position.y - wh.y + pay * wh.y
+	match int(f["mx"]):
+		1: cx = f["o40"] + axp * sx
+		2: cx = (cha_size.x - wh.x) * 0.5 + axp + f["o50"]
+		3: cx = cha_size.x - (wh.x - axp) * sx - f["o44"]
+	match int(f["my"]):
+		1: cy = cha_size.y - (wh.y - ayp) * sy - f["o48"]
+		2: cy = (cha_size.y - wh.y) * 0.5 + ayp + f["o54"]
+		3: cy = f["o4C"] + ayp * sy
+	var moi := Vector2(cx - pax * wh.x, cha_size.y - (cy - pay * wh.y) - wh.y)
+	# Nguong 0,01 diem chu khong phai `is_equal_approx`: duong Cocos -> Godot ->
+	# Cocos di qua mot lan lam tron, nen mot node dung yen van lech lai ~2e-5
+	# (do duoc: lMainToolbarRight -1,599976 -> -1,599999). Do la nhieu lam tron,
+	# khong phai mot lan doi cho — dem vao thi con so "doi cho" thanh vo nghia.
+	var doi := absf(moi.x - node.position.x) > 0.01 \
+			or absf(moi.y - node.position.y) > 0.01
+	if doi and reflash_log.size() < 32:
+		reflash_log.append("%s %s -> %s" % [node.name, node.position, moi])
+	node.position = moi
+	return doi
 
 
 static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
@@ -360,6 +504,11 @@ static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 	# 1; san tran (battle/san_tran_ve.gd) doc de cuon nen theo camera.
 	if nd.has("parallax"):
 		node.set_meta("parallax", nd["parallax"])
+	# Khoi fix-info (+0x38..+0x54, work/xgg.py): tam so cho reflash. Chi 28.568
+	# node co (85,3%) — node khong co thi reflash bo qua, dung nhu ban goc (con
+	# tro +0x1C bang 0 thi khong tinh lai). Xem reflash() ngay tren _make.
+	if nd.has("fix"):
+		node.set_meta("fix", nd["fix"])
 
 	# Gan anh neu bo cuc co ghi. 'verified' = ten tu kiem chung duoc bang
 	# section C cua chinh man do (co trong danh sach anh VA dung kich thuoc);

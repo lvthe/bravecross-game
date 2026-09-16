@@ -1223,6 +1223,39 @@ function Node:isGray()
 	return gd:has_meta('gray') and gd:get_meta('gray') or false
 end
 
+-- Hieu ung sang: chuong trinh shader so 2 cua ban goc, cung ho "ten -> chuong
+-- trinh" voi `setGray` va cung mot o goi (`vfunc_0x158`).
+--
+-- Nam dieu DO duoc tu `libgame.so`, khong suy doan:
+--   * Bang bind Lua (`brave-cross/work/binder.py --xam` doc cung bang do) cho ra
+--     DUNG 3 ban ghi: `CCScale9Sprite` (0x2d2895), con `CCSprite` va `CCButton`
+--     dung CHUNG mot dia chi ma (0x49d775). Ba lop nay deu la lop CO ANH, va ban
+--     dung lai da di duong `TextureRect`/`NinePatchRect` cho ca ba (CCButton mang
+--     anh cung ra 'sprite' — `ui/xgg_layout.gd:365-368`), nen dung lai
+--     `la_node_ve` y nhu `setGray`.
+--   * Than ham cua CCSprite/CCButton o 0x49d740: nhanh `true` tra ten
+--     `ShaderPositionTextureColor_Glow` (`.rodata 0x7adca5`), nhanh `false`
+--     tra `ShaderPositionTextureColor` — tuc chuong trinh THUONG.
+--   * Nguon cua chuong trinh 2 nguyen van o `ui/sang.gdshader`: rgb nhan 1,5,
+--     alpha giu nguyen, va mau node VAN nhan vao (khac `setGray`, o do
+--     `v_fragmentColor` khai bao roi bo khong).
+--   * KHONG ghi co nao len node: than ham 0x49d740 khong co mot lenh `strb` nao,
+--     trong khi `setGray` ghi `[r0+0x23b] = b` ngay dong thu ba. Bang bind cung
+--     KHONG co `isGlow`/`getGlow` (trong khi `isGray` co, dung 3 lop nhu
+--     `setGray`). Nen o day CO Y khong lam ham doc trang thai: ban goc khong co
+--     thi them vao la bia ra mot API.
+--   * `CCScale9Sprite` khac mot cho: than 0x2d2854 doc `[r0+0x1d8]` (sprite BEN
+--     TRONG cua no) roi gan chuong trinh len CHINH sprite do, va `cbz` thoat neu
+--     node khong co sprite trong. Ban dung lai thi `NinePatchRect` tu ve, nen gan
+--     len chinh no la tuong duong.
+function Node:setGlow(b)
+	b = b and true or false
+	local gd = raw(self)
+	if la_node_ve(gd) then
+		_godot_dat_sang(gd, b)
+	end
+end
+
 -- Ban goc goi 56 cho, luon luon truyen true. Cocos: BAT thi do mo cua node cha
 -- nhan xuong con (mac dinh TAT). Godot thi 'modulate' LUON nhan xuong cay, tuc
 -- lop gia lap cua ta da lam san dung cai ma 56 cho kia xin — nen khong lam gi

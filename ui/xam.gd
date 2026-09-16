@@ -29,15 +29,19 @@ static func vat_lieu() -> ShaderMaterial:
 
 ## Bat/tat to xam cho mot node ve.
 ##
-## Tat chi go vat lieu CUA TA, khong dat `null` vo dieu kien: node co the dang
-## mang vat lieu khac — `SngRig._dat_tron` gan `CanvasItemMaterial` cho tung
-## `Sprite2D` cua no. Duong do khong cham duoc vao day (`setGray` chi di qua
-## `TextureRect`/`NinePatchRect`, con `Sprite2D` khong phai `Control`), nhung giu
-## phep kiem lai thi khong bao gio lam mat do cua nguoi khac.
+## Tat KHONG chi go vat lieu CUA TA, ma tra node ve chuong trinh THUONG — y nhu
+## ban goc: `setGray(false)` goi `vfunc_0x158("ShaderPositionTextureColor")`, cung
+## mot o ma `setGlow` dung, nen no xoa luon hieu ung sang neu dang co. Vi vay
+## phan go nam o `UiSang.go`, va o do moi so sanh vat lieu chu khong dat `null` vo
+## dieu kien: node co the dang mang vat lieu cua nguoi khac — `SngRig._dat_tron`
+## gan `CanvasItemMaterial` cho tung `Sprite2D` cua no. Duong do khong cham duoc
+## vao day (`setGray` chi di qua `TextureRect`/`NinePatchRect`, con `Sprite2D`
+## khong phai `Control`), nhung giu phep kiem lai thi khong bao gio lam mat do cua
+## nguoi khac.
 static func dat(node: CanvasItem, bat: bool) -> void:
 	if node == null:
 		return
 	if bat:
 		node.material = vat_lieu()
-	elif node.material == _vat_lieu:
-		node.material = null
+	else:
+		UiSang.go(node)

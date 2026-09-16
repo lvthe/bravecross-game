@@ -84,6 +84,14 @@ SUITES = [
     # Phan HINH do bang `tools/do_xam.gd`, chay CO trinh ve that nen khong nam
     # trong bang nay.
     ('to xam (Lua)',         'script', 'tools/verify_xam.gd',    False, []),
+    # Hieu ung sang (shader so 2 cua ban goc, `.rodata 0x7cccd4`): cung ho
+    # "ten -> chuong trinh" voi `setGray`. Kiem phan NOI DAY — ba lop CO ANH
+    # (CCSprite / CCButton / CCScale9Sprite) doi sang vat lieu sang, nhan va lop
+    # mau thi khong, hai node dung chung mot vat lieu, va luat kho nhat: hai hieu
+    # ung dung CUNG mot o chuong trinh cua node nen tat cai nay la tra ve chuong
+    # trinh THUONG, tuc xoa luon cai kia. Cong thuc (rgb x1,5, alpha khong nhan)
+    # doc tu chinh file `.gdshader`; phan HINH do bang `tools/do_sang.gd`.
+    ('to sang (Lua)',        'script', 'tools/verify_sang.gd',   False, []),
     # He HAT cua ban goc (ui/hat.gd + lua/hat.lua). Du lieu: 33 dinh nghia
     # .plist boc bang brave-cross/work/hatref.py; bo cuc dung 87 node, 7 dinh
     # nghia. Bo kiem tinh LAI tung tham so tu file JSON roi doi chieu voi vat

@@ -126,6 +126,7 @@ func open() -> bool:
 	state.globals["_godot_copy"] = _copy
 	state.globals["_godot_frame"] = _frame
 	state.globals["_godot_dat_xam"] = _dat_xam
+	state.globals["_godot_dat_sang"] = _dat_sang
 	state.globals["_godot_zsort"] = _zsort
 	state.globals["_godot_reflash"] = _reflash
 	state.globals["_godot_load_xgg"] = _load_xgg
@@ -510,6 +511,13 @@ func _frame(node: Control, name: String) -> bool:
 ## node CO ANH moi di duong nay.
 func _dat_xam(node: Control, bat: bool) -> void:
 	UiXam.dat(node, bat)
+
+
+## Hieu ung sang mot node ve (chuong trinh shader so 2 cua ban goc). Xem
+## ui/sang.gdshader de biet vi sao cong thuc dung nhu vay, va
+## lua/cocos.lua:setGlow de biet vi sao no dung chung duong voi `_dat_xam`.
+func _dat_sang(node: Control, bat: bool) -> void:
+	UiSang.dat(node, bat)
 
 
 ## Bang chu tieng Viet cua ban goc (data_ref/text_vi.json, 16.894 khoa).

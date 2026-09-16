@@ -153,11 +153,14 @@ của ải vô tận **không** được tính: chúng đăng ký để client k
 - [ ] **94 màn chưa mở được** — 71 hỏng (xem mục 4), 23 đòi tham số
 - [x] Kéo cuộn lớp thành phố ở `Main` (`lua/cuon.lua` — lớp `CCScrollLayer` của
       engine; số đo ở mục 8) — nhờ đó với tới được `btnMainEvilCastle` (ải vô tận)
-- [ ] Cài `sngFixInfoReflash` vào bản port: **luật và tám số đã đo xong** (mục 9
-      của "Bảng hàm thiếu"), việc còn lại là năm bước (a)-(e) ghi ở mục đó —
-      trong đó (e) đổi `stretch/aspect` sang `expand` là điều kiện để bốn bước
-      kia có tác dụng; đến lúc ấy node neo phải trong `lMainBtnLayer` /
-      `lDialogControlPanel` vẫn đứng ở chỗ bố cục thay vì chạy ra mép
+- [x] `sngFixInfoReflash` — **xong**: công thức + tám số đã đo (mục 9 của "Bảng
+      hàm thiếu"), dữ liệu xuất vào meta `fix`, và nó chạy do **chính bốn đường
+      gọi của bản gốc** (`SetWHScaleToWinSize` ← `PreLoadFinish`/`OnLoadNextScene`,
+      `CUIPublic:onInit`, `FBHeroPK`, `CUITimeHero`) chứ không reflash cả cây lúc
+      dựng bố cục. Đo trên Login → `Main`: **gọi 5 lần, đổi chỗ 3 node**. Còn
+      **một** việc con: đổi `stretch/aspect` sang `expand` (mục 9) — đến lúc ấy
+      node neo phải trong `lMainBtnLayer` / `lDialogControlPanel` mới chạy ra mép
+      trên cửa sổ khác tỉ lệ
 - [ ] Lớp phủ hướng dẫn `g_CGuideLogical`
 
 ### Ô chữ của nhãn: ba trường riêng, không phải kích thước node
@@ -1793,9 +1796,10 @@ bình thường — nên phép đo theo kiểu **không** hỏi lại kiểu mà
    chỗ — đường `addChild` thường cũng đặt lại `parent_h`, nhưng nó chỉ làm khi
    cha **mới** là `Control`, còn ở đây cha là `Marker2D`.
    Còn lại của nhóm: `sngFixInfoReflash` (27 lúc quét, nằm trong danh sách thiếu
-   của **cảnh `Main`** từ lâu) — **nay đã đo xong cả luật lẫn dữ liệu**; việc còn
-   lại là **cài vào bản port**, và nó chỉ có việc làm khi cửa sổ rộng hơn thiết
-   kế. Chi tiết ở mục sau.
+   của **cảnh `Main`** từ lâu) — **XONG**: luật đã đo, dữ liệu đã xuất, và nó nay
+   là một phương thức thật do **chính bốn đường gọi của bản gốc** kéo chạy (đo
+   được: gọi **5 lần**, đổi chỗ **3 node** trên đường Login → `Main`). Chi tiết,
+   và việc duy nhất còn lại (`stretch/aspect` sang `expand`), ở mục sau.
 
    **`sngFixInfoReflash` — luật đã đo xong.** Tên lớp lấy
    từ chính `.so`: typeinfo `N7cocos2d16sngCCNodeFixInfoE` (chuỗi @ `.rodata`
@@ -1833,9 +1837,29 @@ bình thường — nên phép đo theo kiểu **không** hỏi lại kiểu mà
    Đọc theo mép thì: kiểu 1 ghim mép **trái** ở `o40` và mép **trên** ở
    `ph - o48`; kiểu 2 ghim **tâm** hộp ở `pw/2 + o50` / `ph/2 + o54`; kiểu 3 ghim
    mép **phải** ở `pw - o44` và mép **dưới** ở `o4C`. Cặp trái/trên với phải/dưới
-   đúng như một trình sửa gốc toạ độ góc trên-trái — khớp với chuyện `x,y` trong
-   bản ghi là **giá trị của trình sửa**, không phải kết quả công thức (chỉ ~47%
-   kho khớp công thức, cả hai cách đọc). Ghi chú: bảng giải mã tĩnh ở lượt trước
+   đúng như một trình sửa gốc toạ độ góc trên-trái.
+
+   **`x,y` trong bản ghi KHÔNG phải giá trị của trình sửa — nó chính là kết quả
+   công thức.** Con số "chỉ ~47% khớp" ghi ở đây trước kia là **sai**, và sai vì
+   đọc nhầm thứ tự hai byte kiểu (`+0x38` là **y** trước, `+0x3C` mới là **x**).
+   Đọc đúng thứ tự rồi tính lại ở **cỡ cha lúc thiết kế**: khớp **47.605/48.089
+   trục = 99,0%**, lệch **484**. Chương trình kiểm là `brave-cross/work/
+   fix_info.py --lech` (thêm `<tên file>` để xem từng node) — nó không chạy gì,
+   chỉ tự tính lại từ `.xgg` rồi đối chiếu với số đã lưu, nên đây là đường đo
+   **độc lập** với `emu_pt.py`.
+
+   484 trục lệch ấy không phải lỗi công thức mà là **chỗ người làm bố cục chỉnh
+   tay sau khi đặt xong**, và chúng tụ lại thành nhóm: `x k=(1,2)` 57,
+   `x k=(1,3)` 42, `y k=(1,3)` 41, `x k=(3,2)` 38, `x k=(3,3)` 34, `y k=(3,3)` 34.
+   Theo file: `UI_Main_960_640` **0**, `Main_Dialog_UI_960_640` **0**,
+   `UI_NormalDlg_960_640` **0**, `UI_Main_ControlPanel_960_640` **1** —
+   `lMainToolbarTop` lưu `x = 0` trong khi công thức ra `30` — và
+   `UI_AccountLogin_960_640` **8 trục, cả 8 đều `k=(2,3)`**: tám nút ấy lưu
+   `x = 480` (giữa) trong khi công thức ra 328/632/330/630, kể cả `snsQuickEnter`
+   `480 -> 328`. Tức cả một họ nút bị **kéo về giữa bằng tay** sau khi đặt theo
+   luật — đúng loại việc mà một trình sửa bố cục vẫn làm.
+
+   Ghi chú: bảng giải mã tĩnh ở lượt trước
    ghi **số hiệu hai nhánh y đổi chỗ cho nhau** (nó gọi `info[+0x2C] + ay*sy` là
    "y 1"); phép đo dưới đây nói nhánh cộng ấy là **y 3**, còn sáu nhánh kia thì
    hai bên khớp nhau. Bản đo thắng, vì nó chạy chính file `.so` ấy.
@@ -1888,20 +1912,78 @@ bình thường — nên phép đo theo kiểu **không** hỏi lại kiểu mà
    tên, `scaleX = 0` (`fix_info.py --dem` in ra con số ấy). Cách đọc "chưa nhân"
    được chọn vì ba phép đo ở trên, không vì node ấy.
 
-   **Chính sách co giãn của bản port — chưa chốt.** `project.godot` đặt
-   `viewport 960x640`, `stretch/mode = "canvas_items"` và **không** đặt
-   `stretch/aspect`, nên tỉ lệ mặc định là `keep`: canvas **luôn đúng 960×640**
-   và reflash **không có việc gì làm**. Bản gốc thì lấp kín màn hình — trên 16:9
-   vùng thiết kế nhìn thấy là **1137,8×640**, tức tương đương `expand`. Hệ quả đo
-   được khi port còn để `keep`: dựng cảnh ở 1152×768 thì node neo phải trong
-   `lMainBtnLayer` / `lDialogControlPanel` của `Main` **không chạy ra mép** như
-   bản gốc mà đứng ở chỗ bố cục ghi. Muốn đúng thì phải làm **cả năm** việc:
-   (a) `xgg.py`/`layout.py` xuất thêm 8 cột ấy vào `layout_ref` (thư mục sinh
-   lại được, không nằm trong git); (b) `ui/xgg_layout.gd` giữ chúng làm meta của
-   node; (c) viết một `sngFixInfoReflash` tương đương — **đệ quy, mỗi cấp dùng
-   `contentSize` của cha nó, nhánh kiểu 2 theo dạng KHÔNG co giãn**; (d) gọi nó ở
-   chỗ dựng cảnh, cùng chỗ với `SetWHScaleToWinSize`; (e) đổi `stretch/aspect`
-   sang `expand` — không có (e) thì (a)-(d) là code chết.
+   **Chính sách co giãn của bản port — (a)-(d) XONG, chỉ còn (e).**
+   `project.godot` đặt `viewport 960x640`, `stretch/mode = "canvas_items"` và
+   **không** đặt `stretch/aspect`, nên tỉ lệ mặc định là `keep`: canvas **luôn
+   đúng 960×640**. Bản gốc thì lấp kín màn hình — trên 16:9 vùng thiết kế nhìn
+   thấy là **1137,8×640**, tức tương đương `expand`.
+
+   Bốn việc đầu nay đã làm, và **khác bản ghi cũ ở chỗ (c)+(d) không cần tự
+   gọi**: (a) `work/xgg.py` xuất tám số ấy với khoá `fix`; (b) `ui/xgg_layout.gd:
+   507-511` giữ chúng làm meta `fix` của node; (c) `XggLayout.reflash()` là công
+   thức — **đệ quy, mỗi cấp dùng `contentSize` của cha nó, kiểu 2 theo dạng
+   KHÔNG co giãn**, và nó trả về **số node đã đổi chỗ**; (d) **không gọi lúc dựng
+   bố cục** — thay vào đó `Node:sngFixInfoReflash` là một phương thức trong
+   `lua/cocos.lua`, nên **chính bốn đường gọi của bản gốc** kéo nó chạy. Cách này
+   là cách của bản gốc, và nó đã sửa một lỗi thật: bản port trước đây reflash **cả
+   cây** lúc dựng, đẩy gốc hộp thoại `CUINormalDlg` (KHÔNG có cờ
+   `IsFullScreenAdaptation`) từ `110,30` thành `60,35`.
+
+   **Việc còn lại đúng một: (e) đổi `stretch/aspect` sang `expand`** — không có
+   nó thì khi cửa sổ khác tỉ lệ, node neo phải trong `lMainBtnLayer` /
+   `lDialogControlPanel` vẫn **không chạy ra mép** như bản gốc. Xem thêm ở dưới:
+   ngay ở tỉ lệ hiện tại reflash **đã có việc làm**, nên (e) không phải điều kiện
+   để thấy nó chạy, chỉ là điều kiện để nó chạy **đúng trên mọi cửa sổ**.
+
+   **Bốn đường gọi ấy, đầy đủ (grep trên `sc/`, không còn đường nào khác):**
+   1. `CSceneManager.lua:304` `SetWHScaleToWinSize` — đặt `setContentSize` rồi
+      gọi `uiObj:sngFixInfoReflash()` ở `:326`. Người gọi nó:
+      - `PreLoadFinish` (`:331`) — **chỉ có nhánh cho cảnh `"Main"`**
+        (`lMainBtnLayer`, `lDialogControlPanel`) và cảnh `"Battle"` (18 lớp, kể
+        cả `g_GameUILayer`, `lUITopLayer`, `lUIDrama`, `lGameUIWakeSkill`,
+        `lUIGameLogic`, `lUINormal`, `clBattlePause`); **không nhánh nào cho cảnh
+        khác** — nên đừng trông nó chạy ở màn khác.
+      - `OnLoadNextScene` (`:556`) — `UIRootLayer`, mỗi lần đổi cảnh.
+   2. `CUIPublic:onInit` (`CUIPublic.lua:203`) — chỉ với **27 màn** có
+      `IsFullScreenAdaptation = true`.
+   3. `FBHeroPK.lua:38`. 4. `CUITimeHero.lua:49`.
+   `CUILottery.lua:1034` bị comment; `CMessageBox.lua` có 6 chỗ comment.
+   `sngFixInfoReflash` là **phương thức C++** của bản gốc (`N7cocos2d16sngCCNode
+   FixInfoE`, shim `0x49C07E` → `0x4AEF96`) — **không file Lua nào định nghĩa
+   nó**, nên thiếu nó thì **không một lỗi nào**, chỉ là mọi node neo đứng yên.
+   Vì vậy phải **đếm** mới biết nó có chạy (`LuaRuntime.fix_reflash`).
+
+   **Đo trên đường Login → `Main`** (`tools/vao_main.gd`):
+
+       sngFixInfoReflash: ma goc goi 5 lan, doi cho 3 node
+           UIRootLayer (31.573, 63.819) -> (96.0, 64.0)      ×2 (hai bản mỗi cảnh)
+           lMainToolbarTop (0.0, 0.0) -> (30.0, 0.0)
+
+   `UIRootLayer` mang `fix = [2,2,0,0,0,0,0,0]` — **cả hai trục kiểu 2, lệch 0**,
+   tức "canh giữa ta trong cha"; mà cha nó là **cảnh 1152×768** còn nó thì
+   `960×640`, nên ra đúng `(96, 64)`. `lMainToolbarTop` thì lưu `x = 0` mà công
+   thức ra `30` — **đúng bằng dòng `UI_Main_ControlPanel_960_640` của
+   `fix_info.py --lech`**, tức phép đo trong game và phép đo trong Python gặp
+   nhau ở cùng một node.
+
+   **Cửa sổ đo được** (đặt trong `tools/vao_main.gd`, không lấy từ `root.size`
+   vì lúc `_init` cửa sổ chưa về cỡ thật):
+
+       win=1152x768   UIRoot=960x640   fScale=1.2   MainScroll=1366x768
+
+   Tỉ lệ cửa sổ **đúng 1,5**, nên `GetLiuHaiWidth()` trả `0` và `fRate <= 2.0`;
+   hệ quả là `SetWHScaleToWinSize` chỉ đặt `setContentSize(960, 640)` — **không
+   đổi gì** — và **chỉ riêng reflash có tác dụng**. (Cửa sổ của máy ảo thì khác:
+   đo được cả **13 CCScene là 1429×768**, tỉ lệ 1,86 — trên máy thật nhánh co giãn
+   ấy *sẽ* chạy. Đây chính là việc (e).) Ghi chú riêng, cùng họ: `MainScroll` là
+   **1366×768** trong bản ghi, khác cỡ cảnh 1152×768 của port — một việc **khác**,
+   chưa đụng tới.
+
+   Một chi tiết dễ sai khi đo: ngưỡng "đổi chỗ" phải là **0,01 điểm**, không phải
+   `is_equal_approx` — đường Cocos → Godot → Cocos đi qua một lần làm tròn nên
+   node **đứng yên** vẫn lệch lại ~2e-5 (đo được `lMainToolbarRight -1,599976 ->
+   -1,599999`). Không có ngưỡng thì con số "đổi chỗ mấy node" đếm cả node không
+   hề nhúc nhích.
 
    Cách đọc bảng "slot vtable → tên": shim của mỗi phương thức là một chuỗi
    `ldr rX,[r0]; ldr rX,[rX,#off]; blx rX`, nên quét 690 tên trong bảng bind

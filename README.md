@@ -918,14 +918,20 @@ và đo ra thì cả kho chỉ có **9 node** vượt quá ngưỡng ấy nên k
      ba thanh tài nguyên — suy cấu trúc từ `setNum` / `rollNum`, không có số
      đo đối chiếu. Giờ hiện đúng 50.000 vàng, 0 kim cương, 120/120 thể lực
      của `GameUserBaseInfoReset`.
-7. **Còn thiếu ở `Main`:** `sngFixInfoReflash` (sắp lại con khi đổi cỡ) —
-   **luật và tám số nó đọc nay đã đo xong**: số nằm ngay trong `.xgg` ở
+7. ~~**`sngFixInfoReflash` ở `Main`**~~ — **xong.** Số nằm ngay trong `.xgg` ở
    `+0x38`..`+0x54` của bản ghi node, `+0x38` là kiểu **y** TRƯỚC rồi mới tới
-   kiểu x, kiểu 1/3 dùng hộp đã co giãn còn kiểu 2 dùng hộp chưa co giãn. Nhưng
-   **chưa cài vào port**, và nó chỉ có việc làm khi `stretch/aspect` đổi sang
-   `expand` — đang để `keep` thì canvas luôn đúng 960×640. Năm bước cài, cách
-   kiểm lại (`fix_info.py --kiem`: khớp 81, lệch 0) ở `ROADMAP.md`, mục 9 của
-   "Bảng hàm thiếu". Nhà ở nửa phải lớp cuộn trước đây chưa xem được vì chưa kéo
+   kiểu x, kiểu 1/3 dùng hộp đã co giãn còn kiểu 2 dùng hộp chưa co giãn. Nó nay
+   là **phương thức thật** trong `lua/cocos.lua`, do **chính bốn đường gọi của
+   bản gốc** kéo chạy — không phải port tự reflash cả cây lúc dựng bố cục (cách
+   ấy đẩy gốc hộp thoại `CUINormalDlg` từ `110,30` thành `60,35`). Đo trên
+   Login → `Main`: **gọi 5 lần, đổi chỗ 3 node**. Công thức trùng số đã lưu ở
+   **99,0%** trong 48.089 trục; con số "~47%" ghi ở đây trước kia là **sai**, do
+   đọc nhầm thứ tự hai byte kiểu. Cách kiểm lại: `fix_info.py --kiem` (khớp 81,
+   lệch 0) và `fix_info.py --lech` (khớp 47.605, lệch 484 — kèm bảng nhóm và chỗ
+   lệch từng node) ở `ROADMAP.md`, mục 9 của "Bảng hàm thiếu". Còn **một** việc
+   con: `stretch/aspect` đổi sang `expand`, vì đang để `keep` thì canvas luôn
+   đúng 960×640 nên trên cửa sổ khác tỉ lệ node neo phải không chạy ra mép.
+   Nhà ở nửa phải lớp cuộn trước đây chưa xem được vì chưa kéo
    cuộn — kéo cuộn nay đã **xong** (`lua/cuon.lua`).
    (Hiệu ứng sáng `UITongYong` từng vẽ thành **đốm xanh** — nay **xong**, xem
    mục "Đốm xanh ở Main". Phỏng đoán cũ "có lẽ thiếu hoà màu cộng" **đúng**,

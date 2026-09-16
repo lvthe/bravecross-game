@@ -83,12 +83,21 @@ chạy trọn và `g_MainUIScene` lên màn hình,
 `godot --path . --script tools/vao_main.gd -- --chup=main.png`; mở cửa sổ
 để bấm tay: `... -- --xem` (bấm tới trận được — khoá bằng `tools/bam_that.gd`;
 lớp phủ nào nuốt cú bấm thì bộ đó chỉ ra node và vết gọi),
-(7) **còn thiếu ở Main**: `sngFixInfoReflash` — **luật và tám số nó đọc nay đã
-đo xong** (số nằm ngay trong `.xgg` ở `+0x38`..`+0x54`, `+0x38` là kiểu **y**
-TRƯỚC rồi mới tới kiểu x; kiểu 1/3 dùng hộp đã co giãn còn kiểu 2 dùng hộp chưa
-co giãn; luật đầy đủ, cách kiểm lại và năm bước cài vào port ghi ở `ROADMAP.md`,
-mục 9 của "Bảng hàm thiếu" — trong đó bước đổi `stretch/aspect` sang `expand` là
-điều kiện để bốn bước kia có tác dụng, vì `keep` thì canvas luôn đúng 960×640);
+(7) **`sngFixInfoReflash` — XONG.** Số nằm ngay trong `.xgg` ở `+0x38`..`+0x54`,
+`+0x38` là kiểu **y** TRƯỚC rồi mới tới kiểu x; kiểu 1/3 dùng hộp đã co giãn còn
+kiểu 2 dùng hộp chưa co giãn. Nó nay là **phương thức thật** trong
+`lua/cocos.lua` (bản gốc: phương thức C++ `N7cocos2d16sngCCNodeFixInfoE`, **không
+file Lua nào định nghĩa** — thiếu nó thì **không một lỗi nào**, nên phải **đếm**
+mới biết nó chạy: `LuaRuntime.fix_reflash`). Do **chính bốn đường gọi của bản
+gốc** kéo chạy (đầy đủ ở `ROADMAP.md` mục 9) chứ **không** reflash cả cây lúc
+dựng bố cục — cách cũ ấy đẩy gốc hộp thoại `CUINormalDlg` từ `110,30` thành
+`60,35`. Đo trên Login → `Main`: **gọi 5 lần, đổi chỗ 3 node** (`UIRootLayer` về
+`(96,64)` vì `fix = [2,2,...]`, `lMainToolbarTop` `x` `0 → 30`). Công thức trùng
+số đã lưu ở **99,0%** trong 48.089 trục — con số "~47%" ghi trước kia là **sai**,
+do đọc nhầm thứ tự hai byte kiểu; kiểm lại bằng `brave-cross/work/fix_info.py
+--lech`. Còn **một** việc con: đổi `stretch/aspect` sang `expand`, vì `keep` thì
+canvas luôn đúng 960×640 nên trên cửa sổ khác tỉ lệ node neo phải không chạy ra
+mép;
 kéo cuộn lớp thành phố —
 **xong** (`lua/cuon.lua`, lớp `CCScrollLayer` của engine: 315 node trong 296
 bố cục, đo bằng `tools/verify_cuon.gd`); (hiệu ứng

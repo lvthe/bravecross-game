@@ -918,8 +918,15 @@ và đo ra thì cả kho chỉ có **9 node** vượt quá ngưỡng ấy nên k
      ba thanh tài nguyên — suy cấu trúc từ `setNum` / `rollNum`, không có số
      đo đối chiếu. Giờ hiện đúng 50.000 vàng, 0 kim cương, 120/120 thể lực
      của `GameUserBaseInfoReset`.
-7. **Còn thiếu ở `Main`:** `sngFixInfoReflash` (sắp lại con khi đổi cỡ) chưa
-   làm; nhà ở nửa phải lớp cuộn chưa xem được vì chưa có kéo cuộn.
+7. **Còn thiếu ở `Main`:** `sngFixInfoReflash` (sắp lại con khi đổi cỡ) —
+   **luật và tám số nó đọc nay đã đo xong**: số nằm ngay trong `.xgg` ở
+   `+0x38`..`+0x54` của bản ghi node, `+0x38` là kiểu **y** TRƯỚC rồi mới tới
+   kiểu x, kiểu 1/3 dùng hộp đã co giãn còn kiểu 2 dùng hộp chưa co giãn. Nhưng
+   **chưa cài vào port**, và nó chỉ có việc làm khi `stretch/aspect` đổi sang
+   `expand` — đang để `keep` thì canvas luôn đúng 960×640. Năm bước cài, cách
+   kiểm lại (`fix_info.py --kiem`: khớp 81, lệch 0) ở `ROADMAP.md`, mục 9 của
+   "Bảng hàm thiếu". Nhà ở nửa phải lớp cuộn trước đây chưa xem được vì chưa kéo
+   cuộn — kéo cuộn nay đã **xong** (`lua/cuon.lua`).
    (Hiệu ứng sáng `UITongYong` từng vẽ thành **đốm xanh** — nay **xong**, xem
    mục "Đốm xanh ở Main". Phỏng đoán cũ "có lẽ thiếu hoà màu cộng" **đúng**,
    nhưng nói thế thì chưa dùng được: cách trộn nằm trong **từng khung** của

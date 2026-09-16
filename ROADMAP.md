@@ -153,10 +153,11 @@ của ải vô tận **không** được tính: chúng đăng ký để client k
 - [ ] **94 màn chưa mở được** — 71 hỏng (xem mục 4), 23 đòi tham số
 - [x] Kéo cuộn lớp thành phố ở `Main` (`lua/cuon.lua` — lớp `CCScrollLayer` của
       engine; số đo ở mục 8) — nhờ đó với tới được `btnMainEvilCastle` (ải vô tận)
-- [ ] Còn thiếu ở `Main`: `sngFixInfoReflash` — **đã đọc ra luật, chưa lần ra
-      số** (mục 4, mục 9 của "Bảng hàm thiếu"); trên cửa sổ rộng hơn thiết kế
-      thì node neo phải trong `lMainBtnLayer` / `lDialogControlPanel` đứng ở chỗ
-      bố cục thay vì chạy ra mép
+- [ ] Cài `sngFixInfoReflash` vào bản port: **luật và tám số đã đo xong** (mục 9
+      của "Bảng hàm thiếu"), việc còn lại là năm bước (a)-(e) ghi ở mục đó —
+      trong đó (e) đổi `stretch/aspect` sang `expand` là điều kiện để bốn bước
+      kia có tác dụng; đến lúc ấy node neo phải trong `lMainBtnLayer` /
+      `lDialogControlPanel` vẫn đứng ở chỗ bố cục thay vì chạy ra mép
 - [ ] Lớp phủ hướng dẫn `g_CGuideLogical`
 
 ### Ô chữ của nhãn: ba trường riêng, không phải kích thước node
@@ -1792,10 +1793,11 @@ bình thường — nên phép đo theo kiểu **không** hỏi lại kiểu mà
    chỗ — đường `addChild` thường cũng đặt lại `parent_h`, nhưng nó chỉ làm khi
    cha **mới** là `Control`, còn ở đây cha là `Marker2D`.
    Còn lại của nhóm: `sngFixInfoReflash` (27 lúc quét, nằm trong danh sách thiếu
-   của **cảnh `Main`** từ lâu) — **đã đọc ra nó làm gì, nhưng chưa lần ra số của
-   nó**, nên vẫn để là bóng; chi tiết và hệ quả ở mục sau.
+   của **cảnh `Main`** từ lâu) — **nay đã đo xong cả luật lẫn dữ liệu**; việc còn
+   lại là **cài vào bản port**, và nó chỉ có việc làm khi cửa sổ rộng hơn thiết
+   kế. Chi tiết ở mục sau.
 
-   **`sngFixInfoReflash` — đọc được luật, không đọc được dữ liệu.** Tên lớp lấy
+   **`sngFixInfoReflash` — luật đã đo xong.** Tên lớp lấy
    từ chính `.so`: typeinfo `N7cocos2d16sngCCNodeFixInfoE` (chuỗi @ `.rodata`
    `0x7D2B37`, typeinfo @ `0x8793B0`, vtable @ `0x879370`). Hàm bind Lua là một
    shim **10 byte** @ `0x49C07E` → `0x4AEF96`, **duy nhất trong `.text`**, và cả
@@ -1804,24 +1806,53 @@ bình thường — nên phép đo theo kiểu **không** hỏi lại kiểu mà
 
    Nó **đi khắp cây con** (bản thân `self` rồi mọi con cháu, qua `getChildren`)
    và với **mỗi node có bản ghi fix-info** (`+0x1C` khác 0) **và có cha** thì
-   tính lại vị trí rồi `setPosition`:
+   tính lại vị trí rồi `setPosition` (slot `+0x74`). Con cháu cũng được tính lại,
+   **mỗi cấp dùng `contentSize` của cha nó** — đo được: cháu
+   `g_EquipForgeUIEffectSmaillIconBg` từ `(-777, -888)` về `(39,5; 39,5)`.
 
-       pw, ph = cha->getContentSize()            ; slot vtable +0xB4
-       nw, nh = node->getContentSize()           ; +0xB4
+   **Tám số ấy nằm ngay trong `.xgg`.** Chỗ tắc cũ ("quét .xgg không thấy") là vì
+   đi tìm sai chỗ: bản ghi node mang **8 số int32 liền nhau ở `+0x38`**, thứ tự
+   `+0x38` = kiểu **y**, `+0x3C` = kiểu **x**, rồi `+0x40 o40`, `+0x44 o44`,
+   `+0x48 o48`, `+0x4C o4C`, `+0x50 o50`, `+0x54 o54`. Nghĩa là
+   `struct.unpack_from('<8i', data, a+0x38)` ra **kiểu y TRƯỚC** — đọc nhầm thứ tự
+   ấy sinh ra đúng hai con số đếm sai (2.622 và 2.302) đã ghi ở các lượt trước.
+
+       pw, ph = cha->getContentSize()            ; slot +0xB4
+       w, h   = node->getContentSize()           ; +0xB4
        sx, sy = node->getScaleX() / getScaleY()  ; +0x60 / +0x68
        ax, ay = node->getAnchorPointInPoints()   ; +0xAC
-       mx = info[+0x1C] (trục x), my = info[+0x18] (trục y) — nhận 1, 2, 3
-       x: 1 -> info[+0x20] + ax*sx
-          2 -> (pw - nw)*0,5 + ax + info[+0x30]
-          3 -> pw - (nw - ax)*sx - info[+0x24]
-       y: 1 -> info[+0x2C] + ay*sy
-          2 -> (ph - nh)*0,5 + ay + info[+0x34]
-          3 -> ph - (nh - ay)*sy - info[+0x28]
-       node->setPosition(&(x, y))                ; +0x74
+       axs, ays = ax*sx, ay*sy ;  ws, hs = w*sx, h*sy
+
+       x: 0 -> để yên   1 -> o40 + axs
+                         2 -> (pw - w)*0,5 + ax + o50    ; hộp CHƯA co giãn
+                         3 -> pw - (ws - axs) - o44
+       y: 0 -> để yên   1 -> ph - (hs - ays) - o48
+                         2 -> (ph - h)*0,5 + ay + o54    ; hộp CHƯA co giãn
+                         3 -> o4C + ays
+
+   Đọc theo mép thì: kiểu 1 ghim mép **trái** ở `o40` và mép **trên** ở
+   `ph - o48`; kiểu 2 ghim **tâm** hộp ở `pw/2 + o50` / `ph/2 + o54`; kiểu 3 ghim
+   mép **phải** ở `pw - o44` và mép **dưới** ở `o4C`. Cặp trái/trên với phải/dưới
+   đúng như một trình sửa gốc toạ độ góc trên-trái — khớp với chuyện `x,y` trong
+   bản ghi là **giá trị của trình sửa**, không phải kết quả công thức (chỉ ~47%
+   kho khớp công thức, cả hai cách đọc). Ghi chú: bảng giải mã tĩnh ở lượt trước
+   ghi **số hiệu hai nhánh y đổi chỗ cho nhau** (nó gọi `info[+0x2C] + ay*sy` là
+   "y 1"); phép đo dưới đây nói nhánh cộng ấy là **y 3**, còn sáu nhánh kia thì
+   hai bên khớp nhau. Bản đo thắng, vì nó chạy chính file `.so` ấy.
+
+   **Kiểu 1 và 3 dùng hộp ĐÃ co giãn; kiểu 2 dùng hộp CHƯA co giãn.** Bất đối
+   xứng này là chỗ dễ viết sai nhất, và nó bị ghim bằng ba phép đo: `lCUICOGMap`
+   (`scale 0,8`) đo được `(-945,0; -797,5)` ở `960x640` và `(-875,0; -737,5)` ở
+   `1100x760`, tức `(P-2850)/2` và `(P-2235)/2` — cách đọc "kiểu 2 cũng co giãn"
+   lệch **285 điểm**; `g_UpgradeQualityActionMaterialItem` (`x = 250`) cần neo
+   **chưa** nhân (`39,5`, không phải `31,6`); `lHeroInfoUIDetails` (`y = 75` ở
+   `ph = 700`) là `(700-550)/2` chưa nhân, không phải `(700-539)/2 = 80,5`.
 
    Trục nào **không** thuộc 1..3 thì **giữ nguyên**: bộ đệm toạ độ được khởi đầu
    bằng chính `getPosition()` hiện tại (copy ở `0x4AF6B2`) rồi mỗi trục ghi đè
-   phần của mình — nên mode 0 là "không đụng tới", không phải "về 0".
+   phần của mình — nên kiểu 0 là "không đụng tới", không phải "về 0". Đo được:
+   `btnEquipForgeUINavigation2/3` đứng yên ở `x = -777` trong khi `y` được tính
+   lại thành `753,4`.
 
    Đúng chỗ gọi: `SetWHScaleToWinSize` **kéo lớp theo tỉ lệ màn hình**
    (`setContentSize(LogicWinSizeH*realW/realH, LogicWinSizeH)`, hoặc nhánh kia
@@ -1829,19 +1860,48 @@ bình thường — nên phép đo theo kiểu **không** hỏi lại kiểu mà
    phải/giữa trong lớp đó **phải chạy ra mép mới**. `CUITimeHero.lua:49` cũng
    vậy: đặt lại cỡ cho con tag 2 bằng cỡ của `lMainBtnLayer` rồi reflash.
 
-   **Chỗ tắc — 8 số ấy ở đâu ra thì chưa biết.** Bản ghi fix-info có 8 số nguyên
-   (`+0x18` `+0x1C` `+0x20` `+0x24` `+0x28` `+0x2C` `+0x30` `+0x34`), và **không
-   tìm thấy chúng trong `.xgg`**: quét cả **32.463 bản ghi node** của 393 file
-   (mọi offset chia hết cho 4 từ `0xA0` tới cuối bản ghi, đòi hai số đầu thuộc
-   0..3 và sáu số sau trong ±3000) thì chỉ được 3 chỗ ở offset 288 và 2 chỗ ở
-   276 — đều là rác của kho chuỗi (giá trị 36 / 628 / 664 là offset chuỗi), không
-   phải cụm 8 số. Lua cũng **không** tạo nó: `grep FixInfo` trong `sc/` ra đúng
-   3 dòng, cả ba là chỗ **gọi** reflash. Vậy dữ liệu đến từ phía C++, và chỗ nạp
-   chưa lần ra. **Không bịa một luật ở đây** — đúng kiểu sai mà nguyên tắc 1 cấm.
-   Hệ quả đã biết, ghi lại để lần sau đo: trên cửa sổ **rộng hơn thiết kế**
-   (ta dựng cảnh ở 1152×768, thiết kế 960×640), node neo phải trong
+   **Số đã đo được** (mỗi số đọc thẳng từ `.xgg`, không suy ra): `o40 = 25`
+   (`btnEquipForgeUINavigation1`, `x = 25 + 39,5*0,8 = 56,6`); `o44 = 20`
+   (`btnLoginOpenProtocol`, `ttfLoginUISceneVer`) và `28`
+   (`btnHeroEquipUIToRight`, `x = 880 = 880 - (-56 + 28) - 28`); `o48 = 15`
+   (`nav1`, `ttfLoginUISceneVer`), `20` (`btnEquipUpgradeQualityCompoundNav2/3`),
+   `49` (`g_UpgradeQualityActionBeginLayer`); `o4C = 20` (`snsQuickEnter`,
+   `y = 59,5` ở cả hai cỡ cha), `50` (`g_ServerNodesLayer`, `y = 50`), `100`
+   (`btnLoginOpenProtocol`); `o50 = -152` (`snsQuickEnter`, đo ở hai bề rộng
+   cha); `o54 = -25` (`lHeroInfoUI`/`lStarSoulMain`, ba chiều cao) và `+25`
+   (`lQQCoinsGift`, hai chiều cao) — tức `o50`/`o54` là **số cộng có dấu**,
+   không phải độ lệch luôn dương.
+
+   **Cách kiểm lại:** `brave-cross/work/emu_pt.py` là chương trình ĐO (chạy bản
+   gốc trong máy giả lập rồi đọc vị trí ra), `brave-cross/work/fix_info.py` là
+   chương trình KIỂM (không chạy gì, tự tính lại từ log thô `_pt/*.log` cộng
+   chính file `.xgg`). Hai đường tính khác nhau; `fix_info.py --kiem` ra **khớp
+   81, lệch 0**. Chương trình kiểm ấy bắt được **hai lỗi công thức** mà chương
+   trình đo đã ship: nhánh y-1 dùng `h` chưa nhân scale (`487,6` thay vì
+   `503,4`), và nhánh kiểu 2 dùng hộp đã nhân scale (lệch 285 điểm ở
+   `lCUICOGMap`) — nên nó giữ luôn hàm `cong_thuc_scaled()` để in ra cách đọc sai
+   ấy cạnh số đo.
+
+   **Còn đúng một chỗ CHƯA đo được, và không đoán:** số hạng neo của kiểu 2 có
+   nhân scale hay không. Cả kho **296 file `.xgg` / 33.472 node** chỉ có **đúng
+   1 node** phân biệt được hai cách đọc, và node ấy **không tên**, cha cũng không
+   tên, `scaleX = 0` (`fix_info.py --dem` in ra con số ấy). Cách đọc "chưa nhân"
+   được chọn vì ba phép đo ở trên, không vì node ấy.
+
+   **Chính sách co giãn của bản port — chưa chốt.** `project.godot` đặt
+   `viewport 960x640`, `stretch/mode = "canvas_items"` và **không** đặt
+   `stretch/aspect`, nên tỉ lệ mặc định là `keep`: canvas **luôn đúng 960×640**
+   và reflash **không có việc gì làm**. Bản gốc thì lấp kín màn hình — trên 16:9
+   vùng thiết kế nhìn thấy là **1137,8×640**, tức tương đương `expand`. Hệ quả đo
+   được khi port còn để `keep`: dựng cảnh ở 1152×768 thì node neo phải trong
    `lMainBtnLayer` / `lDialogControlPanel` của `Main` **không chạy ra mép** như
-   bản gốc, mà đứng ở chỗ bố cục ghi.
+   bản gốc mà đứng ở chỗ bố cục ghi. Muốn đúng thì phải làm **cả năm** việc:
+   (a) `xgg.py`/`layout.py` xuất thêm 8 cột ấy vào `layout_ref` (thư mục sinh
+   lại được, không nằm trong git); (b) `ui/xgg_layout.gd` giữ chúng làm meta của
+   node; (c) viết một `sngFixInfoReflash` tương đương — **đệ quy, mỗi cấp dùng
+   `contentSize` của cha nó, nhánh kiểu 2 theo dạng KHÔNG co giãn**; (d) gọi nó ở
+   chỗ dựng cảnh, cùng chỗ với `SetWHScaleToWinSize`; (e) đổi `stretch/aspect`
+   sang `expand` — không có (e) thì (a)-(d) là code chết.
 
    Cách đọc bảng "slot vtable → tên": shim của mỗi phương thức là một chuỗi
    `ldr rX,[r0]; ldr rX,[rX,#off]; blx rX`, nên quét 690 tên trong bảng bind

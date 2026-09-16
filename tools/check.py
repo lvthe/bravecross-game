@@ -91,6 +91,15 @@ SUITES = [
     # (`getLimitShowCount` / `getLetterEx` tung tra 0/nil nen moi doan chu nam im
     # o (0,0) thay vi duoc xep cho). Do bang so tren chuoi that co dau.
     ('RichLabel',            'script', 'tools/verify_richlabel.gd', False, []),
+    # O CHU cua nhan: ban goc giu BA truong rieng (o +0x2c4/+0x2c8, cap tra loi
+    # +0x5c/+0x60, co autoFix +0x21c), nen `getContentSize` khong phai kich thuoc
+    # node. Do bang cach chay DUNG chuoi buoc cua `brave-cross/work/emu_nhan.py`
+    # tren ban goc that (may ao Android, bon luot) roi doi chieu LUAT — diem anh
+    # khong so duoc vi font cua ta khac tahoma. Gom ca ba cho tung sai: co "ban"
+    # bi cong theo `gd.size` (nen `setDimensions(w,0)` roi `setString` tra so CU),
+    # `autoFixSize` khi o cao 0 (ban goc ra 0, nhan bien mat), va `setContentSize`
+    # khong xoa co "ban" nen lan doc dau van bo cuc lai.
+    ('o chu / autoFixSize',  'script', 'tools/verify_dimensions.gd', False, []),
 ]
 
 SCORE = re.compile(r'dat (\d+), hong (\d+)')

@@ -27,7 +27,7 @@ từ bản đã dịch ngược. Hai repo, nằm cạnh nhau:
 ## Trước khi làm gì
 
 ```bash
-python tools/check.py          # 31 bộ, phải xanh hết
+python tools/check.py          # 32 bộ, phải xanh hết
 ```
 
 Kéo `brave-cross` mới về thì dựng lại `ui_ref` + `layout_ref` + tag (README,
@@ -326,6 +326,13 @@ Godot không có chế độ tương ứng `(GL_DST_COLOR, GL_ONE_MINUS_SRC_ALPH
 `'multiply'` (`BLEND_MODE_MUL` là `dst*src`, khác hẳn) — gặp thật thì phải viết
 shader riêng. Còn `'screen'` thì khớp sẵn: `CanvasItemMaterial.BLEND_MODE_ADD`
 = `GL_SRC_ALPHA, GL_ONE`.
+
+Ô chữ của nhãn: `getContentSize` **không phải** kích thước node. Bản gốc giữ ba
+trường riêng — ô (`+0x2c4/+0x2c8`, `getDimensions` đọc), cặp trả lời
+(`+0x5c/+0x60`), cờ autoFix (`+0x21c`) — và cờ "bẩn" `+0x20d` bật **vô điều
+kiện** trong `setString` nhưng **không** bị `setContentSize` xoá. Nhãn tạo lúc
+chạy có ô `(0, 0)`. Luật đầy đủ + số đo + hai lỗi im lặng đã bắt được:
+`ROADMAP.md` mục 3, "Ô chữ của nhãn"; khoá bằng `tools/verify_dimensions.gd`.
 
 Lớp offline (thay máy chủ) nằm ở `../brave-cross/work/offline`, test bằng
 `python run_tests.py` ở đó. Sửa nó xong phải chạy lại `tools/import_lua.py`.

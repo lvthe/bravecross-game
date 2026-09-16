@@ -25,7 +25,7 @@ Số trong ngoặc là **đo được**, không phải ước lượng. Cách đ
 | Hàm máy chủ `Client*` đã có bản offline | **13 / 411** | đếm `sc/` vs `offline/handlers` |
 | Lệnh kịch bản `g_DramaSystem` đã có | **60 / 60** | đối chiếu `sc/plot/drama_*.lua` |
 | Định nghĩa hạt đã dịch | **33 / 33** (87 node, 7 định nghĩa được dùng) | `tools/verify_hat.gd` |
-| Bộ kiểm | **31**, xanh hết | `tools/check.py` |
+| Bộ kiểm | **32**, xanh hết | `tools/check.py` |
 
 > Con số màn hình **dao động ±3 giữa các lần chạy** (đo 3 lần trong ngày:
 > 258, 259, 260; hôm sau: 258, 257; hôm nay, **sáu lần chạy cùng một mã**:
@@ -158,6 +158,69 @@ của ải vô tận **không** được tính: chúng đăng ký để client k
       thì node neo phải trong `lMainBtnLayer` / `lDialogControlPanel` đứng ở chỗ
       bố cục thay vì chạy ra mép
 - [ ] Lớp phủ hướng dẫn `g_CGuideLogical`
+
+### Ô chữ của nhãn: ba trường riêng, không phải kích thước node
+
+`Label` của bản gốc giữ **ba thứ khác nhau**, và lẫn chúng là lỗi im lặng — màn
+vẫn mở, chỉ có chữ đứng sai chỗ hoặc nhãn biến mất:
+
+| trường | ai ghi | ai đọc |
+|---|---|---|
+| **ô** `+0x2c4/+0x2c8` (số nguyên; bản float `+0x2bc/+0x2c0`) | `setDimensions` (`0x2caab5` → `0x4f6750`) và bộ nạp `.xgg` | `getDimensions` |
+| **cặp trả lời** `+0x5c/+0x60` | `setContentSize` (`0x49bdcd`, qua slot vtable `+0xb0`) và lần bố cục lại | `getContentSize` |
+| **cờ autoFix** `+0x21c` | chỉ `autoFixSize` | `autoFixSize` lần sau |
+
+Cờ "bẩn" `+0x20d` có **đúng ba** chỗ ghi, đọc từ mã máy (`binder.py` +
+`findstr.dis_all`), và cả ba đều khác nhau:
+
+* `setString` (`0x2cae04` → thợ `0x4f77f4`): `strb.w r3(=1),[r4,#0x20d]` ở
+  `0x4f783a`, **không có so sánh nào trước đó** — bật vô điều kiện.
+* `setDimensions` (thợ `0x4f6750`): thoát sớm (`cmp` + `bx lr`) khi ô **không
+  đổi**; còn lại ghi ô, bản float, `+0x268/+0x26c` rồi mới bật cờ. **Không hề
+  chạm `+0x21c`** — nên cờ autoFix **sống qua** một lần `setDimensions` sau đó.
+* `setContentSize`: **không** bật cờ, và **không** xoá cờ.
+
+Luật đã cài trong `lua/cocos.lua`, đo từ bản gốc chạy trên máy ảo
+(`brave-cross/work/emu_nhan.py`, bốn lượt, đọc qua logcat):
+
+* `x` = **bề rộng ô** khi ô rộng > 0 và chữ không rộng hơn; ngược lại là bề rộng
+  chữ. `y` = **chiều cao ô** khi ô cao > 0 **và chữ khác rỗng**; ngược lại là
+  chiều cao chữ. Chữ **rỗng** trong ô 250×40 → `(250, 0)` (đo: `250,0`).
+* Nhãn **tạo lúc chạy** (`Label:new()` + `createWithTTF`) có **ô = (0, 0)** —
+  `getDimensions` trả `0,0` nhưng `getContentSize` trả `1128,24`. Lấy kích thước
+  node làm ô ở đây là sai (đó là số **cũ**, không phải ô).
+* `autoFixSize`: `scale = min(tỉ lệ ngang, tỉ lệ doc)`, mỗi tỉ lệ = `1.0` khi vừa
+  ô. Ô cao **0** ⇒ tỉ lệ dọc 0 ⇒ `scale = 0` ⇒ **nhãn biến mất** — quirk thật của
+  bản gốc (đo `0` ba lần), không phải lỗi của ta.
+* Chiều cao một dòng của bản gốc = **1,2 × cỡ chữ** (20 → 24; đo cả 12 và 40).
+
+Hai lỗi thật đã bắt được nhờ mô hình này, cả hai đều **im lặng**:
+
+1. Cờ "bẩn" của ta cũng bị gác theo `gd.size`, nên `setDimensions(w, 0)` rồi
+   `setString` trả **số cũ** (nhãn 200×0 đọc ra cao của chữ **trước đó**). Bản
+   gốc bật cờ vô điều kiện trong `setString`, nên bỏ hẳn phép gác.
+2. `setContentSize` của ta xoá cờ "bẩn", nên lần đọc **đầu** trả cặp vừa ghi;
+   bản gốc **không** xoá, nên lần đọc đầu vẫn bố cục lại (`CUIAnniversaryHeaven.lua:277-284`
+   gọi `setString("")` rồi `setContentSize(0, 0)` — đo được `250,0` chứ không
+   phải `0,0`; lần thứ hai, khi đã sạch, mới ra `0,0`).
+
+Chỗ dùng thật đã đối chiếu: `CUIGuildWar.lua:612-617` (đọc `getContentSize` rồi
+lấy bề rộng đó làm ô cho đoạn sau — trả **ô** thì là điểm bất động, trả dòng dài
+nhất thì thắt dần), `CUIToolTips.lua:200-220`, `CUIChatting.lua:798-800`.
+
+**Khác bản gốc, ghi rõ chứ không giả vờ giống:** font của ta không phải tahoma
+(cùng cỡ 20: câu dài của ta **1211×28**, bản gốc **1128×24**; `"ngan"`: ta
+**49**, gốc **44**; 34 chữ `'A'`: ta **450**, gốc **408**), nên chỉ **luật** so
+được, không so điểm ảnh. Và bộ nạp `.xgg` của ta chỉ bật tự xuống dòng khi ô cao
+≥ 45, còn bộ ngắt dòng của bản gốc có thể để một dòng **dài hơn ô 3 %**
+(đo `103` trong ô `100`) — Godot không bao giờ để dòng vượt ô, nên chỗ này ta ra
+`100` và bộ kiểm ghi nhận khác biệt thay vì đòi bằng nhau.
+
+Khoá lại bằng `tools/verify_dimensions.gd` (**25 phép kiểm**, chạy đúng chuỗi
+bước của `emu_nhan.py`, số mong đợi tính **thẳng từ API font của Godot** chứ
+không qua `cocos.lua`). Bộ này đã qua **phép thử phá**: bỏ hai luật rơi-về-chữ
+trong `tinh_o_chu` thì nó báo **10 hỏng** đúng ở các bước liên quan, rồi khôi
+phục mã là xanh lại — nên nó không phải bộ kiểm rỗng.
 
 ## 4. Máy chủ offline — phần dài nhất còn lại
 
@@ -1697,10 +1760,23 @@ không chạy được `CPublic:SetObjGray` ở đó), `scheduleOnce` báo thàn
     của **lớp**" và nó **hỏng** — `getParent()` trả về **nhãn đoạn**; chính phép
     kiểm ấy là thứ xác nhận lại kết luận `parent_h` ở trên.
 
+11. ~~**Ô chữ của nhãn — `setDimensions` / `autoFixSize` / `setContentSize`**~~ —
+    **xong**, và đây là lần nữa cùng loại với việc 7 và việc 10: ba API ấy bị gọi
+    trong im lặng (`quet_show.gd` đếm được **`setDimensions` ×10, `autoFixSize`
+    ×38** ở bảng "API Cocos CHUA LAM") chứ không ném lỗi. Luật đầy đủ, số đo và
+    hai lỗi im lặng bắt được: **mục 3, "Ô chữ của nhãn"**. Tóm lại: bản gốc giữ
+    **ba** trường (ô, cặp trả lời, cờ autoFix), `getContentSize` không phải kích
+    thước node, và cờ "bẩn" `+0x20d` được bật **vô điều kiện** trong `setString`
+    nhưng **không** được `setContentSize` xoá — nên lần đọc đầu sau
+    `setString("")` + `setContentSize(0, 0)` vẫn bố cục lại (`CUIAnniversaryHeaven.lua:277-284`).
+    Khoá bằng `tools/verify_dimensions.gd` (**25 đạt / 0 hỏng**, `check.py` bộ thứ
+    **32**), chạy đúng chuỗi bước của `emu_nhan.py` và đã qua **phép thử phá**
+    (bỏ luật ⇒ 10 hỏng đúng chỗ).
+
 Việc 2(b) rẻ và mở đường cho việc 4. **Việc 7 vừa xong, và nó đổi thứ tự ưu
 tiên**: nó là một lỗi im lặng **trong chính lớp giả lập**, đúng loại đã gặp ở
 `setGray` — nên câu hỏi đúng không phải "còn thiếu API nào" mà là "**còn tên nào
 được gọi mà chưa từng được viết**". Bảng "API CHUA LAM" của `quet_show.gd` trả lời
 được câu đó, và `reorderChild` là ca đầu tiên nó bắt đúng. Sau đó là việc 4 (bỏ
-ĐẶT trong trận); việc 9 và việc 10 nay **đã xong**, nên chỗ còn phải đo bằng máy
-ảo hoặc đọc `libgame.so` chỉ còn **việc 8** (`setPercentage`).
+ĐẶT trong trận); việc 9, việc 10 và việc 11 nay **đã xong**, nên chỗ còn phải đo
+bằng máy ảo hoặc đọc `libgame.so` chỉ còn **việc 8** (`setPercentage`).

@@ -672,10 +672,181 @@ function Node:convertToNodeSpace(x, y)
 	return v.x, v.y
 end
 
+-- O CHU CUA NHAN — do tu ban goc chay trong may ao ------------------------
+--
+-- Ban goc giu BA thu khac nhau cho mot nhan: O (setDimensions ghi vao
+-- +0x2c4/+0x2c8), cap "co chu" (+0x5c/+0x60, tuc cau tra loi cua bo cuc), va co
+-- "da autoFix" (+0x21c, autoFixSize bat). Cach bo cuc doi theo co autoFix, va
+-- day la so DO THAT (`brave-cross/work/emu_nhan.py`, cac dong NHAN|, nhan that
+-- `ttfPopDialogContent` / `ttfPopDialogTitle` cua Pop_Dialog_UI_960_640.xgg va
+-- nhan tao bang `Label:new()` + `createWithTTF`):
+--
+--   * Chua goi autoFixSize — bo cuc CAT CHU theo be rong o:
+--       o 200x0  + chu dai    -> (200, 168)     (chu xuong 7 dong)
+--       o 200x0  + chu ngan   -> (200, 24)
+--       o 200x30 + chu ngan   -> (200, 30)
+--       o 100x40 + chu dai    -> (103, 40)      <- dong dai nhat 103 > o 100
+--       o 400x80, nhan .xgg chua ai dung toi -> (400, 80), dung bang o
+--       o 250x40, `setString("")` -> (250, 0)   <- chu RONG: cao 0, rong van o
+--   * Da goi autoFixSize — KHONG cat, do chu MOT DONG (de no thu nho ca
+--     dong cho vua o):
+--       o 400x40 + chu dai    -> (1128, 40)
+--       o 100x0  + chu dai    -> (1128, 24)
+--       o 0x0    + "ngan"     -> (44, 24)       <- o rong 0: nhan tu co gian
+--
+--   * Nhan TAO LUC CHAY (`Label:new()` + `createWithTTF`) thi o = (0, 0):
+--       getDimensions ngay sau createWithTTF -> (0, 0)
+--       getContentSize                       -> (1128, 24) = be rong CHU
+--       setString("ngan") roi getContentSize -> (44, 24)    = chu MOI
+--     Nho vay ma nhan tao luc chay goi autoFixSize thi scale = 0/o rong = 0:
+--     no BIEN MAT. (Do duoc o ca hai luot: buoc 64 va buoc 86 goc.)
+--
+-- Cong thuc chung cho ca hai (so do o tren):
+--   x = be rong O       khi o rong > 0 va chu khong rong hon o
+--   x = be rong chu     khi o rong = 0, hoac chu rong hon o
+--   y = cao O           khi o cao > 0 VA chu khac rong
+--   y = cao chu         khi o cao = 0, hoac chu rong
+-- Chu y y KHONG lay max: o 100x40 voi chu cao 336 diem VAN tra 40 (do duoc);
+-- con x thi CO the vuot o (103 > 100).
+--
+-- Co "ban" (+0x20d) va ba ham ghi no — doc thang tu ma may:
+--   * `setString`     (0x2cae04 -> 0x4f783a) `strb.w r3(=1), [r4, #0x20d]`
+--     VO DIEU KIEN, khong co phep so nao truoc no.
+--   * `setDimensions` (0x4f6750) chi khi O THAT SU DOI: `cmp` hai chieu roi
+--     `bx lr`, va nhanh ghi khong he cham +0x21c — nen co autoFix SONG QUA
+--     setDimensions (do duoc: o 400x40 + chu dai sau fix -> (1128, 40), buoc 87
+--     → (300, 200) + "ngan" -> (300, 200) va scale DUNG 1).
+--   * `setContentSize` (0x49bdcc) ghi cap float +0x5c/+0x60 (slot +0xb0) va
+--     KHONG xoa co "ban" — do duoc o luot 4 (xem chu thich Node:setContentSize).
+--
+-- Ban goc CHI bo cuc lai khi con "ban" (`getContentSize` 0x2ca6ac, `autoFixSize`
+-- 0x2ca5ec deu hoi co +0x20d). Nen autoFixSize doc so CU neu ai do da do truoc
+-- no — do duoc: o 100x40, chu dai, do roi moi fix -> scale 0,97087377309799 =
+-- 100/103 (dung so CU), va do lai SAU fix van ra (103, 40) chu khong thanh
+-- (1128, 40). O day giu dung the: so da do nam trong meta 'o_chu', chi do lai
+-- khi co gi doi.
+--
+-- Cong thuc chieu cao: `Font.get_multiline_string_size` tra HAI gia tri nhung
+-- chieu cao cua no KHONG gom gian dong, va `Label.get_line_count()` khong dung
+-- duoc (tra 1 ngay lap tuc, va tra 1 ca khi nhan ngoai cay). Do lai voi nhan
+-- Godot that (rong 400/200/100/60 -> 49/101/205/413):
+--     cao = so_dong * cao_dong + (so_dong - 1) * gian_dong
+-- voi so_dong dem tu chinh so do tra ve. Bon tren bon dung.
+local function danh_dau(gd)
+	gd:set_meta('chu_ban', true)
+end
+
+-- Danh dau lai, nhung chi khi nhan DA tung duoc do: nho vay moi nhan con lai
+-- khong bi keo vao duong do (742 cho goi getContentSize, phan lon la nhan
+-- khong doi gi).
+local function danh_dau_lai(gd)
+	if gd:has_meta('o_chu') or gd:has_meta('o_dat') or gd:has_meta('khop_tu_dong') then
+		danh_dau(gd)
+	end
+end
+
+-- O (box) cua nhan, tuc +0x2c4/+0x2c8 cua ban goc — hai con so ma `getDimensions`
+-- doc lai va `autoFixSize` dung lam mau so. Chi hai nguon dat no: `setDimensions`
+-- (meta 'o_dat') va bo cuc `.xgg` luc nap man.
+--
+-- Nhan tao luc chay bang `Label:new()` + `createWithTTF` co o = (0, 0) — DO DUOC
+-- (`work/emu_nhan.py`, luot 3): `getDimensions` ngay sau createWithTTF tra
+-- (0, 0) trong khi `getContentSize` tra (1128, 24) = be rong CHU. Tuc be rong
+-- cua no lay theo chu, khong theo o. Nen o day:
+--   * co 'o_dat'  -> o do (setDimensions ghi);
+--   * nhan trong bo cuc .xgg -> kich thuoc bo cuc (meta 'type_name' do
+--     ui/xgg_layout.gd:329 dat cho MOI node trong file);
+--   * con lai (tao luc chay) -> (0, 0).
+-- Hoa ra dieu nay cung dung cho quirk cua ban goc: nhan tao luc chay ma goi
+-- autoFixSize thi o = 0 nen scale = 0/be rong = 0 (do duoc: luot 2 buoc 64).
+local function o_cua(gd)
+	if gd:has_meta('o_dat') then
+		local d = gd:get_meta('o_dat')
+		return d.x, d.y
+	end
+	if gd:has_meta('type_name') then
+		return gd.size.x, gd.size.y
+	end
+	return 0, 0
+end
+
+-- (be rong, cao) cua chu theo bo cuc hien tai. `khop_tu_dong` = da qua
+-- autoFixSize, tuc do MOT DONG.
+local function do_chu(gd)
+	if gd.text == nil then return 0, 0 end
+	local s = tostring(gd.text)
+	if s == '' then return 0, 0 end
+	local co = gd:get_theme_font_size('font_size')
+	local f = gd:get_theme_font('font')
+	-- `f == null` la phep so voi bien toan cuc `null` cua ban goc; o lop gia lap
+	-- no la nil nen phep so nay vo hai, con neu cau noi co tra ve doi tuong null
+	-- that thi no bat duoc.
+	if co <= 0 or f == nil or f == null then return 0, 0 end
+	local cat = 0
+	if not gd:has_meta('khop_tu_dong') then
+		cat = o_cua(gd)
+	end
+	-- get_multiline_string_size(chuoi, can le, be rong, co chu): be rong -1 la
+	-- KHONG cat (tra ve be rong tu nhien cua ca chuoi).
+	local ms = f:get_multiline_string_size(s, 0, cat > 0 and cat or -1, co)
+	local lh = f:get_height(co)
+	local n = 1
+	if lh > 0 then n = math.max(1, math.floor(ms.y / lh + 0.5)) end
+	return ms.x, n * lh + (n - 1) * gd:get_theme_constant('line_spacing')
+end
+
+local function tinh_o_chu(gd)
+	local ox, oy = o_cua(gd)
+	local cx, cy = do_chu(gd)
+	local w, h = ox, oy
+	if ox <= 0 or cx > ox then w = cx end
+	-- Chieu cao: o cao > 0 thi lay o cao — TRU khi chu RONG, luc do ban goc tra
+	-- 0 chu khong tra o cao. Do duoc: nhan .xgg 250x40, `setString("")` roi doc
+	-- -> (250, 0). (Chieu rong thi van la o: 250.)
+	if oy <= 0 or (cx <= 0 and cy <= 0) then h = cy end
+	gd:set_meta('o_chu', Vector2(w, h))
+	gd:remove_meta('chu_ban')
+	return w, h
+end
+
+-- So da do, do lai chi khi co gi doi (xem dau muc).
+local function o_chu(gd)
+	if gd:has_meta('chu_ban') or not gd:has_meta('o_chu') then
+		return tinh_o_chu(gd)
+	end
+	local v = gd:get_meta('o_chu')
+	return v.x, v.y
+end
+
+-- Tam phong to / xoay phai theo kich thuoc MOI (xem Node:setAnchorPoint va
+-- ui/xgg_layout.gd:304 — Cocos giu diem neo dung yen khi phong to).
+local function dat_lai_pivot(gd)
+	if not gd:has_meta('cocos') then return end
+	local v = gd:get_meta('cocos')
+	gd.pivot_offset = Vector2(v.z * gd.size.x, (1.0 - v.w) * gd.size.y)
+end
+
+-- Chot o GOC (o ma ban goc nap tu .xgg, hoac 0 voi nhan tao luc chay) truoc khi
+-- ta doi kich thuoc node, de getDimensions tra dung so setDimensions ghi.
+local function chot_o(gd)
+	if not gd:has_meta('o_dat') then
+		local x, y = o_cua(gd)
+		gd:set_meta('o_dat', Vector2(x, y))
+	end
+end
+
 -- Tra HAI gia tri, khong phai mot bang. Da dem tren ca ma goc: 742 cho viet
 -- 'local w, h = node:getContentSize()', 0 cho dung '.width'.
+--
+-- Nhan ma Lua CHUA dung toi (khong setString/setDimensions/autoFixSize) tra
+-- thang size nhu truoc — do la o .xgg, va ban goc cung tra dung no (do duoc:
+-- 400x80 -> (400, 80)). Chi nhan da bi dung toi moi phai do (xem dau muc).
 function Node:getContentSize()
-	local s = raw(self).size
+	local gd = raw(self)
+	if gd:has_meta('o_chu') or gd:has_meta('chu_ban') then
+		return o_chu(gd)
+	end
+	local s = gd.size
 	return s.x, s.y
 end
 
@@ -683,7 +854,27 @@ function Node:setContentSize(w, h)
 	if h == nil then
 		w, h = w.width, w.height
 	end
-	raw(self).size = Vector2(w, h)
+	local gd = raw(self)
+	if gd.text ~= nil then
+		chot_o(gd)                    -- o .xgg khong doi theo setContentSize
+	end
+	gd.size = Vector2(w, h)
+	-- Ban goc GHI THANG cap float +0x5c/+0x60 — dung cap ma getContentSize tra
+	-- ve (ma may 0x49bdcc: `vstr s14,[sp]` / `vstr s14,[sp,#4]` roi goi slot
+	-- +0xb0 voi cap do). No KHONG dung toi o +0x2c4 va KHONG xoa co "ban".
+	-- Do duoc (`work/emu_nhan.py`, luot 4) tren nhan .xgg 250x40:
+	--     setString("")          -> con "ban"
+	--     setContentSize(0,0)    -> doc ra (250, 0)   (con "ban" nen bo cuc lai)
+	--     setContentSize(0,0)    -> doc ra (0, 0)     (da sach: dung cap vua ghi)
+	--     setContentSize(123,45) -> doc ra (123, 45)
+	--     getDimensions          -> (250, 40) suot ca bon lan
+	-- Nho vay `CUIAnniversaryHeaven.lua:277-284` (setString("") roi
+	-- setContentSize(0,0) de nhan trong khong chiem cho) moi chay dung.
+	if gd:has_meta('o_chu') or gd:has_meta('chu_ban') or gd:has_meta('o_dat')
+			or gd:has_meta('khop_tu_dong') then
+		gd:set_meta('o_chu', Vector2(w, h))
+	end
+	dat_lai_pivot(gd)
 end
 
 -- Tra HAI gia tri, giong getContentSize. Thieu no thi CUIHelper:920 lam
@@ -957,6 +1148,16 @@ function Node:setString(s)
 	local gd = raw(self)
 	if gd.text ~= nil then
 		gd.text = tostring(s)
+		-- Danh dau "ban" VO DIEU KIEN — dung nhu ban goc. Ma may: setString cua
+		-- Label (0x2cae04) goi xuong 0x4f77f4, va ngay trong do
+		--    0x4f783a  strb.w r3(=1), [r4, #0x20d]
+		-- khong co phep so nao truoc no. (Nguoc lai `setDimensions` CHI danh
+		-- dau khi o that su doi — 0x4f6754..0x4f675e so roi `bx lr`.)
+		-- Gia phai tra khong dang ke: phep do nam trong meta 'o_chu' va chi
+		-- chay khi CO AI doc (getContentSize / autoFixSize). Vong lap nao vua
+		-- setString vua doc moi khung hinh thi do moi khung hinh — nhung ban
+		-- goc cung bo cuc lai y nhu vay (xem dau muc "O CHU CUA NHAN").
+		danh_dau(gd)
 	end
 end
 
@@ -966,6 +1167,109 @@ function Node:getString()
 		return gd.text
 	end
 	return ''
+end
+
+-- O chu: ban goc goi `setDimensions` 10 cho. Hai cho dung that:
+--
+--   * `CUIToolTips.lua:200-220` — chu gợi ý dai hon 900 thi dat o 900x0 de
+--     cat doan van, roi lay `getContentSize()` lam be rong NEN cua khung.
+--   * `CUIGuildWar.lua:612-617` — dat be rong o cho tung doan luat, roi doc
+--     lai chinh be rong do (`fRuleTextSizeX, fRuleTextSizeY =
+--     pRuleText:getContentSize()`) va lay no lam o cho doan ke tiep. Do duoc
+--     o tren may ao cho thay x = be rong O, nen day la DIEM BAT DONG: cac
+--     doan sau khong he bi that dan (neu x la dong dai nhat thi moi doan sau
+--     lai hep hon doan truoc).
+--
+-- Ban goc cat ve so nguyen duong: `vcvt.u32.f64` ghi vao +0x2c4/+0x2c8.
+function Node:setDimensions(w, h)
+	local gd = raw(self)
+	if gd.text == nil then return end
+	w = math.max(0, math.floor(tonumber(w) or 0))
+	h = math.max(0, math.floor(tonumber(h) or 0))
+	-- O KHONG DOI thi khong lam gi ca — cung nhu ban goc: 0x4f6750 mo dau bang
+	-- `ldr r3,[r0,#0x2c8]; cmp r2,r3; bne` roi `ldr r3,[r0,#0x2c4]; cmp r1,r3;
+	-- beq 0x4f6792` = `bx lr`. Nghia la o cu thi ca co "ban" lan so da do deu
+	-- giu nguyen. (`CUIGuildWar.lua:612-617` goi trong vong lap voi be rong
+	-- KHAC nhau tung doan, con `CUIToolTips.lua:200-220` goi mot lan.)
+	if gd:has_meta('o_dat') then
+		local d = gd:get_meta('o_dat')
+		if d.x == w and d.y == h then return end
+	end
+	chot_o(gd)
+	gd:set_meta('o_dat', Vector2(w, h))
+	-- Co autoFix (+0x21c cua ban goc) KHONG bi xoa o day: nhanh ghi cua
+	-- setDimensions (0x4f6760..0x4f678e) chi dung toi +0x2c4, +0x2c8, +0x2b8,
+	-- +0x2bc, +0x2c0, +0x268, +0x26c va co "ban" +0x20d — khong he cham
+	-- +0x21c. Do la ly do `meta 'khop_tu_dong'` o day chi duoc DAT trong
+	-- autoFixSize va khong bao gio bi go: nhan da autoFix roi ma doi o thi van
+	-- do chu MOT DONG. Khop so do: o 400x40 + chu dai sau fix -> (1128, 40)
+	-- = be rong chu, chu khong phai 400.
+	-- Be rong o la be rong CAT CHU cua Godot (autowrap) — ban goc cat moi khi
+	-- o rong > 0 (do duoc o 100x40: dong dai nhat 103 > o 100).
+	if w > 0 then
+		gd.autowrap_mode = 3          -- AUTOWRAP_WORD_SMART, so y ui/xgg_layout.gd
+	end
+	danh_dau(gd)
+	local cw, ch = tinh_o_chu(gd)
+	gd.size = Vector2(cw, ch)
+	dat_lai_pivot(gd)
+end
+
+-- Ban goc doc lai dung hai so setDimensions ghi. Do duoc: nhan .xgg -> (400,80)
+-- (chinh o trong bo cuc, nhan chua ai dung toi); sau setDimensions(200,0) ->
+-- (200,0); sau (0,0) -> (0,0) — tuc tra O, khong phai so da do. Ma goc goi 0
+-- cho, nen day chi de hai ham di cung nhau cho dung cap.
+function Node:getDimensions()
+	local gd = raw(self)
+	local w, h = o_cua(gd)
+	return w, h
+end
+
+-- Thu nho nhan cho vua o. Ban goc goi 38 cho, gan het theo khuon
+-- `nhan:setString(ten); nhan:autoFixSize()` (`CUIGameFinish.lua:1379`,
+-- `CUIArenaSummary.lua:183`, `CUILoginServerList.lua:371`...).
+--
+-- Ma may `0x2ca5ec..0x2ca66a`:
+--     [+0x21c] = 1                      -- bat co: bo cuc KHONG cat chu
+--     bo cuc lai neu con "ban" (+0x20e / +0x20d)
+--     s14 = (rong chu > o rong) and o rong / rong chu or 1
+--     s15 = (cao chu  > o cao)  and o cao  / cao chu  or 1   -- KHONG co chot
+--     setScale(min(s14, s15))
+-- (Chu y cho doc ma: lenh `it le` o 0x2ca640 KHONG co `vmrs` truoc no, nen no
+-- con doc co cua phep so NGANG — doc theo kieu thu tu lenh se ra mot cong thuc
+-- khac, va no khong khop so do. Xem them dau muc "O CHU CUA NHAN".)
+--
+-- Do tren may ao (`work/emu_nhan.py`):
+--     o 100x40 + chu dai   -> 0,97087377309799 = 100/103   (so CU da do)
+--     o 400x40 + chu dai   -> 0,35460993647575 = 400/1128
+--     o 100x40 + mot tu dai-> 0,24509803950787 = 100/408
+--     o 300x200 + chu ngan -> 1 (dung 1, khong nho hon)
+--     o 400x0 / 100x0 / 0x0 -> 0
+-- Ba ca cuoi la quirk THAT cua ban goc: o cao 0 thi `o cao / cao chu` = 0 nen
+-- nhan BIEN MAT. Ma may khong co chot nao cho o cao 0. O cao > 0 moi co nghia.
+-- Da kiem cac cho goi that: nhan the bai (`getChildByTag(11)` trong
+-- UI_Battle_Deploy_960_640.xgg) la 90x28, khong dinh ca nay.
+--
+-- Mot khac biet cua Godot: no KHONG giu duoc dung so 0. Do rieng: dat
+-- `scale = Vector2(0, 0)` roi doc lai ra 0,00001 — ca tren Control lan Node2D,
+-- ca khi chi mot truc bang 0 (`(0, 0.5)` -> `(0,00001, 0.5)`). Nhin thi y het
+-- (1e-5 la vo hinh), nhung phep kiem phai doi `<= 1e-4` chu dung doi `== 0`.
+function Node:autoFixSize()
+	local gd = raw(self)
+	if gd.text == nil then return end
+	-- Bo cat chu TRUOC khi doc: cac cho goi deu `setString(ten)` roi fix ngay,
+	-- tuc con "ban", nen ban goc bo cuc lai voi co nay BAT — va no do ra chu
+	-- MOT DONG (do duoc: 1128 cho o 400). Ca dong do duoc thu nho cho vua o.
+	gd.autowrap_mode = 0              -- AUTOWRAP_OFF
+	gd:set_meta('khop_tu_dong', true)
+	chot_o(gd)
+	local ox, oy = o_chu(gd)          -- so CU neu khong con "ban" (xem dau muc)
+	local bx, by = o_cua(gd)
+	local sx = (ox > bx) and bx / ox or 1.0
+	local sy = (oy > by) and by / oy or 1.0
+	self:setScale(math.min(sx, sy))
+	gd.size = Vector2(ox, oy)
+	dat_lai_pivot(gd)
 end
 
 -- Anh ----------------------------------------------------------------------
@@ -985,12 +1289,16 @@ end
 function Node:createWithTTF(txt, _font, size)
 	local gd = raw(self)
 	if gd.text ~= nil then
+		-- Chot o TRUOC khi doi size: o cua nhan trong bo cuc la kich thuoc ghi
+		-- trong .xgg, khong phai kich thuoc chu (xem o_cua).
+		chot_o(gd)
 		gd.text = tostring(txt)
 		if type(size) == 'number' and size > 0 then
 			gd:add_theme_font_size_override('font_size', size)
 		end
 		gd.size = gd:get_minimum_size()
 	end
+	danh_dau_lai(gd)
 	return self
 end
 
@@ -1000,6 +1308,7 @@ Node.setFontSize = function(self, size)
 	if type(size) == 'number' and size > 0 then
 		gd:add_theme_font_size_override('font_size', size)
 	end
+	danh_dau_lai(gd)
 end
 
 -- Co chu dang dung. Mot cho goi (`CUINewHandPrivilege.lua:184`): lay co chu cua

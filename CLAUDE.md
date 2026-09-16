@@ -74,7 +74,10 @@ chạy trọn và `g_MainUIScene` lên màn hình,
 `godot --path . --script tools/vao_main.gd -- --chup=main.png`; mở cửa sổ
 để bấm tay: `... -- --xem` (bấm tới trận được — khoá bằng `tools/bam_that.gd`;
 lớp phủ nào nuốt cú bấm thì bộ đó chỉ ra node và vết gọi),
-(7) **còn thiếu ở Main**: `sngFixInfoReflash`; kéo cuộn lớp thành phố —
+(7) **còn thiếu ở Main**: `sngFixInfoReflash` — **đọc được luật nhưng chưa lần
+ra 8 số nó đọc** (nên vẫn để là bóng; chỗ tắc và hệ quả ghi ở `ROADMAP.md`,
+mục 9 của "Bảng hàm thiếu": tên lớp `cocos2d::sngCCNodeFixInfo`, sáu công thức
+theo trục, `setPosition` ở slot `+0x74`); kéo cuộn lớp thành phố —
 **xong** (`lua/cuon.lua`, lớp `CCScrollLayer` của engine: 315 node trong 296
 bố cục, đo bằng `tools/verify_cuon.gd`); (hiệu ứng
 sáng vẽ thành đốm xanh — **xong**, xem mục "Đốm xanh ở Main"),

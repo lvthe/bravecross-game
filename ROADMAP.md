@@ -152,7 +152,10 @@ của ải vô tận **không** được tính: chúng đăng ký để client k
 - [ ] **94 màn chưa mở được** — 71 hỏng (xem mục 4), 23 đòi tham số
 - [x] Kéo cuộn lớp thành phố ở `Main` (`lua/cuon.lua` — lớp `CCScrollLayer` của
       engine; số đo ở mục 8) — nhờ đó với tới được `btnMainEvilCastle` (ải vô tận)
-- [ ] Còn thiếu ở `Main`: `sngFixInfoReflash`
+- [ ] Còn thiếu ở `Main`: `sngFixInfoReflash` — **đã đọc ra luật, chưa lần ra
+      số** (mục 4, mục 9 của "Bảng hàm thiếu"); trên cửa sổ rộng hơn thiết kế
+      thì node neo phải trong `lMainBtnLayer` / `lDialogControlPanel` đứng ở chỗ
+      bố cục thay vì chạy ra mép
 - [ ] Lớp phủ hướng dẫn `g_CGuideLogical`
 
 ## 4. Máy chủ offline — phần dài nhất còn lại
@@ -1111,8 +1114,67 @@ Ba thứ **cố ý KHÔNG làm**, ghi rõ để lần sau không đoán:
    `getPosition()` đọc lại lệch đúng bằng chiều cao ấy (640) dù node nằm đúng
    chỗ — đường `addChild` thường cũng đặt lại `parent_h`, nhưng nó chỉ làm khi
    cha **mới** là `Control`, còn ở đây cha là `Marker2D`.
-   Còn lại của nhóm: `sngFixInfoReflash` (27, nằm trong danh sách thiếu của **cảnh
-   `Main`** từ lâu — CLAUDE.md, mục "(7) còn thiếu ở Main").
+   Còn lại của nhóm: `sngFixInfoReflash` (27 lúc quét, nằm trong danh sách thiếu
+   của **cảnh `Main`** từ lâu) — **đã đọc ra nó làm gì, nhưng chưa lần ra số của
+   nó**, nên vẫn để là bóng; chi tiết và hệ quả ở mục sau.
+
+   **`sngFixInfoReflash` — đọc được luật, không đọc được dữ liệu.** Tên lớp lấy
+   từ chính `.so`: typeinfo `N7cocos2d16sngCCNodeFixInfoE` (chuỗi @ `.rodata`
+   `0x7D2B37`, typeinfo @ `0x8793B0`, vtable @ `0x879370`). Hàm bind Lua là một
+   shim **10 byte** @ `0x49C07E` → `0x4AEF96`, **duy nhất trong `.text`**, và cả
+   **45 bảng lớp** đều trỏ vào cùng shim ấy — nên đây là phương thức của lớp node
+   cơ sở, không phải của riêng lớp nào.
+
+   Nó **đi khắp cây con** (bản thân `self` rồi mọi con cháu, qua `getChildren`)
+   và với **mỗi node có bản ghi fix-info** (`+0x1C` khác 0) **và có cha** thì
+   tính lại vị trí rồi `setPosition`:
+
+       pw, ph = cha->getContentSize()            ; slot vtable +0xB4
+       nw, nh = node->getContentSize()           ; +0xB4
+       sx, sy = node->getScaleX() / getScaleY()  ; +0x60 / +0x68
+       ax, ay = node->getAnchorPointInPoints()   ; +0xAC
+       mx = info[+0x1C] (trục x), my = info[+0x18] (trục y) — nhận 1, 2, 3
+       x: 1 -> info[+0x20] + ax*sx
+          2 -> (pw - nw)*0,5 + ax + info[+0x30]
+          3 -> pw - (nw - ax)*sx - info[+0x24]
+       y: 1 -> info[+0x2C] + ay*sy
+          2 -> (ph - nh)*0,5 + ay + info[+0x34]
+          3 -> ph - (nh - ay)*sy - info[+0x28]
+       node->setPosition(&(x, y))                ; +0x74
+
+   Trục nào **không** thuộc 1..3 thì **giữ nguyên**: bộ đệm toạ độ được khởi đầu
+   bằng chính `getPosition()` hiện tại (copy ở `0x4AF6B2`) rồi mỗi trục ghi đè
+   phần của mình — nên mode 0 là "không đụng tới", không phải "về 0".
+
+   Đúng chỗ gọi: `SetWHScaleToWinSize` **kéo lớp theo tỉ lệ màn hình**
+   (`setContentSize(LogicWinSizeH*realW/realH, LogicWinSizeH)`, hoặc nhánh kia
+   `(LogicWinSizeW, LogicWinSizeW*realH/realW)`) rồi reflash — tức các node neo
+   phải/giữa trong lớp đó **phải chạy ra mép mới**. `CUITimeHero.lua:49` cũng
+   vậy: đặt lại cỡ cho con tag 2 bằng cỡ của `lMainBtnLayer` rồi reflash.
+
+   **Chỗ tắc — 8 số ấy ở đâu ra thì chưa biết.** Bản ghi fix-info có 8 số nguyên
+   (`+0x18` `+0x1C` `+0x20` `+0x24` `+0x28` `+0x2C` `+0x30` `+0x34`), và **không
+   tìm thấy chúng trong `.xgg`**: quét cả **32.463 bản ghi node** của 393 file
+   (mọi offset chia hết cho 4 từ `0xA0` tới cuối bản ghi, đòi hai số đầu thuộc
+   0..3 và sáu số sau trong ±3000) thì chỉ được 3 chỗ ở offset 288 và 2 chỗ ở
+   276 — đều là rác của kho chuỗi (giá trị 36 / 628 / 664 là offset chuỗi), không
+   phải cụm 8 số. Lua cũng **không** tạo nó: `grep FixInfo` trong `sc/` ra đúng
+   3 dòng, cả ba là chỗ **gọi** reflash. Vậy dữ liệu đến từ phía C++, và chỗ nạp
+   chưa lần ra. **Không bịa một luật ở đây** — đúng kiểu sai mà nguyên tắc 1 cấm.
+   Hệ quả đã biết, ghi lại để lần sau đo: trên cửa sổ **rộng hơn thiết kế**
+   (ta dựng cảnh ở 1152×768, thiết kế 960×640), node neo phải trong
+   `lMainBtnLayer` / `lDialogControlPanel` của `Main` **không chạy ra mép** như
+   bản gốc, mà đứng ở chỗ bố cục ghi.
+
+   Cách đọc bảng "slot vtable → tên": shim của mỗi phương thức là một chuỗi
+   `ldr rX,[r0]; ldr rX,[rX,#off]; blx rX`, nên quét 690 tên trong bảng bind
+   (`.data` `0x92C000`.., bản ghi 12 byte `{trỏ tên, trỏ hàm, 0}`) là dựng được
+   **bảng đối chiếu offset ↔ tên** cho từng lớp — 65 slot đọc ra tên. Đó là cách
+   biết `+0x100` là `getChildren`, `+0x108` là `getParent`, `+0xB4` là
+   `getContentSize`. Riêng `+0xAC` không tên nào ánh xạ tới; đọc nó là
+   `getAnchorPointInPoints()` vì (a) bảng lớp ấy ánh xạ `getAnchorPoint` sang
+   **`+0xA8`**, khác slot, và (b) công thức mode 3 chỉ đúng đơn vị nếu `+0xAC`
+   là toạ độ **điểm ảnh**, không phải tỉ lệ 0..1.
 10. **`RichLabel` tách từng chữ** — `getLimitShowCount` (48) và `getLetterEx`.
     Nằm trong lớp C++ `Label` của engine (`RichLabel.lua:550-554` tạo bằng
     `Label:new()` rồi `createWithTTF`). Trả một con số đoán ra ở đây là đổi cách

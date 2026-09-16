@@ -21,10 +21,10 @@ Số trong ngoặc là **đo được**, không phải ước lượng. Cách đ
 | | số | đo bằng |
 |---|---|---|
 | Module Lua của bản gốc nạp được | **875 / 876** | `boot_goc()` |
-| Màn hình mở được | **264–265 / 353** | `tools/quet_show.gd` |
+| Màn hình mở được | **268–270 / 353** | `tools/quet_show.gd` |
 | Hàm máy chủ `Client*` đã có bản offline | **13 / 411** | đếm `sc/` vs `offline/handlers` |
 | Lệnh kịch bản `g_DramaSystem` đã có | **60 / 60** | đối chiếu `sc/plot/drama_*.lua` |
-| Bộ kiểm | **25**, xanh hết | `tools/check.py` |
+| Bộ kiểm | **27**, xanh hết | `tools/check.py` |
 
 > Con số màn hình **dao động ±3 giữa các lần chạy** (đo 3 lần trong ngày:
 > 258, 259, 260; hôm sau: 258, 257; hôm nay, **sáu lần chạy cùng một mã**:
@@ -49,6 +49,18 @@ Số trong ngoặc là **đo được**, không phải ước lượng. Cách đ
 > 1 màn (258→259), nhưng **danh sách tên** đổi 5 chỗ — và **hai lần chạy cùng bản
 > đã sửa đã khác nhau 2 màn**, cho thấy 4 trong 5 chỗ đó chỉ là dao động. Nếu chỉ
 > nhìn tổng thì đã không phân biệt nổi cái nào là công của mình.
+>
+> Lần đo gần nhất (2026-09-16), **ba lần chạy cùng một bản**: mở được **269, 270,
+> 268** — im **23** ở cả ba (con số này đòi tham số nên không dao động), hỏng
+> **61, 60, 62**. So danh sách TÊN thì ba lượt chỉ khác nhau đúng ba màn
+> (`CUICharacterDress`, `MoreGoldDialog`, `EquipmentInfoDialog`) — đều là màn đã
+> biết dao động, `MoreGoldDialog` đã ghi ở trên. Nên đọc là **268–270 / 23 /
+> 60–62**, và dải này **vượt hẳn** 264–265 ghi trước đó. Không dám nhận trọn
+> phần chênh là công của lượt nào: giữa hai lần đo có nhiều thay đổi, và lần đo
+> cũ **không chạy lại được** trên bản hiện tại để đối chiếu.
+>
+> Cùng ngày, `quet_show.gd` đã **chết hẳn bằng signal 11** (segfault) ở một lượt
+> chạy — xem mục 6, chỗ `AmThanh._thu_lai`. Nay cùng lệnh đó chạy trọn, exit 0.
 
 Con số 13/411 là thước đo thật của phần còn lại: **giao diện gần xong, máy
 chủ mới làm được phần đi chiến dịch.** Đếm theo "có hành vi thật", nên 10 RPC
@@ -598,9 +610,47 @@ dao động đã ghi. `check.py` 24/24 xanh (gồm `verify.gd` 3.142 đạt / 0 
 
 ## 6. Âm thanh
 
-- [ ] **Chưa làm gì.** Bản gốc gọi 93 lần `PlaySoundEffect`, 12 lần
-      `PlayBackgroundMusic`; hiện `G_SoundManager` vẫn là bóng.
-- [ ] Âm thanh nằm trong bank FMOD (`assets/banks`) — cần bộ đọc riêng
+- [x] **Có tiếng.** `game/am_thanh.gd` (`AmThanh`) nối `playSoundEffect` /
+      `playBackgroundMusic` / `loadEffectBank` của engine C++ vào
+      `AudioStreamPlayer`. Dữ liệu: **1498 file `.ogg` bóc từ 361 bank** của bản
+      gốc, bảng tra `event:/…` → file ở `data_ref/event_ref.json`, tra tiếp theo
+      TÊN ở `bank_ref.json` cho những tên client tự ghép lúc chạy
+      (`string.format("event:/Vo-Usual/Vo_%s_Usual", heroSprite)`).
+- [x] **Hai bảng tiếng động chỉ engine C++ đọc** — `sound_config.xml` (276
+      armature, 685 tiếng, 7 `loop="1"`) và `hit_config.xml` (83 armature
+      `danh`, 226 đòn, 131 `reuseArmatures`, 38 sự kiện). Không file Lua nào
+      trong 973 đọc chúng; bóc ra `data_ref/trigger_ref.json`, lớp giả lập ở
+      `game/tieng_dong.gd`.
+- [ ] **Ba thứ của FMOD KHÔNG khôi phục được, và đã ghi rõ trong mã** (xem đầu
+      `game/am_thanh.gd`): chọn biến thể (`_01`..`_04`) — nay chọn ngẫu nhiên;
+      cờ loop của nhạc nền — `MasterBank` không có mẫu âm thanh nào nên không
+      đọc ra, nên ĐẶT `loop = true`; trộn 3D / bus / hiệu ứng.
+- [ ] **Quy tắc nạp bank theo armature** nằm trong `bank_config.xml` và do
+      engine C++ làm lúc tạo sprite — không đo được trên bản gốc, nên không
+      chặn tiếng theo bank (chặn thì mọi tiếng của tướng câm hết). Chỉ **ghi
+      lại** để biết phủ được bao nhiêu (`ghi_chu_bank`).
+- [ ] Đã đo phần **im lặng còn lại** của một trận có hình: 145 đòn / 51 có
+      tiếng / **94 im, TẤT CẢ đều `khong-co-danh`** — `Archer_VampirE` 89 +
+      `Player000W03W` 5. Không phải lỗi của ta: `giap` có 40 tên biến thể
+      (`*_VampirE`, `*_Dong`, `*_Boss`, `*_Skeleton`) và **0/40** có mặt trong
+      `sound_config` lẫn `danh` (tên GỐC thì có: 36/40 và 20/40). Muốn có tiếng
+      thì phải bịa một luật đổi tên mà engine C++ chưa lộ ra.
+- [ ] **Nhạc nền chưa phát lại được đúng chỗ FMOD phát lại** — ta đặt
+      `loop = true` cho MỌI bài (lý do ở trên), nên bài nào bản gốc để chạy một
+      lần rồi thôi thì ở đây lặp mãi.
+- [x] Bộ đo: `tools/verify_am.gd` — **88 đạt / 0 hỏng**, đi đúng đường Lua như
+      `SoundManager.lua` đi. Bảng chia im theo nguyên nhân:
+      `tools/do_chien_dich.gd -- --kiem` in ra `tieng trung don`.
+- [x] **Lỗi đã sửa, đáng nhớ: `AmThanh._thu_lai` từng làm Godot segfault.**
+      Tiếng xin lúc `_init` phải hẹn tới khung đầu (chưa có cây), và kênh là con
+      của `_cha` — một màn hình vừa đóng là kênh bị giải phóng. Bản cũ **xếp lại
+      hàng vô hạn** những kênh đã chết, nên chuỗi `call_deferred` quay mãi; thêm
+      nữa `var p: AudioStreamPlayer = m[0]` gán một instance đã giải phóng vào
+      biến CÓ KIỂU, tự nó là một lỗi. `tools/quet_show.gd` (mở 353 màn liên
+      tiếp) chết bằng `CrashHandlerException: Program crashed with signal 11`,
+      vết GDScript trỏ đúng vào dòng đó. Nay: đọc `m[0]` bằng biến KHÔNG kiểu,
+      bỏ kênh không còn hợp lệ, và chặn trên `SO_LAN_THU = 3`. Cùng lệnh đó chạy
+      trọn, exit 0, ba lượt ra 269/270/268.
 
 ## 7. Đóng gói
 

@@ -82,10 +82,16 @@ var _am_luong_nhac := 1.0
 var _am_luong_tieng := 1.0
 
 ## Tieng doi den khung dau roi moi phat duoc (xem `_thu_lai`).
+##
+## Moi muc la `[kenh, so_lan_da_thu]`. Kenh la con cua `_cha` (khong phai cua ta)
+## nen no co the bi giai phong giua luc xin va luc khung dau chay — do la nguon
+## cua mot cu SEGFAULT that: `quet_show.gd` chet vi song song do (xem `_thu_lai`).
 var _cho: Array = []
 var _hen := false
 ## Dem rieng: dang CHO khung dau, chua thuc su phat.
 var so_cho := 0
+## Dem rieng: kenh bi giai phong truoc khi kip phat, nen bo luon (xem `_thu_lai`).
+var so_bo_cho := 0
 ## Dem rieng: khong co node nao de gan kenh vao (xem `_chuan_bi`).
 var so_khong_co_cha := 0
 
@@ -212,7 +218,7 @@ func _chay(p: AudioStreamPlayer, st: AudioStream) -> bool:
 		p.play()
 		so_phat += 1
 		return true
-	_cho.append([p])
+	_cho.append([p, 0])
 	so_cho += 1
 	if not _hen:
 		_hen = true
@@ -220,19 +226,42 @@ func _chay(p: AudioStreamPlayer, st: AudioStream) -> bool:
 	return false
 
 
+## So lan thu lai toi da. Mot lan la du cho ca that su (xin luc `_init` thi khung
+## dau da co cay), nhung de du phong cho truong hop cay len cham.
+const SO_LAN_THU := 3
+
+
 ## Thu lai cac tieng da hen, goi luc khung dau (va goi tay duoc tu bo kiem).
+##
+## HAI CHOT, ca hai deu la sua loi do duoc chu khong phai cho dep:
+##
+##   * Kenh KHONG CON HOP LE thi BO, khong xep lai hang. Kenh nam duoi `_cha`,
+##     ma `_cha` co the la node cua mot man hinh vua bi dong — luc do doi tiep la
+##     doi mai. Ban cu xep lai nen vong `call_deferred` quay vo tan, va
+##     `quet_show.gd` (mo 353 man lien tiep) **chet bang signal 11** voi vet
+##     GDScript tro dung vao day. Doc `m[0]` bang bien KHONG kieu: gan mot
+##     instance da giai phong vao bien co kieu (`AudioStreamPlayer`) tu no da la
+##     mot loi.
+##   * Thu qua `SO_LAN_THU` lan thi BO. Khong co cay thi khong bao gio co tieng,
+##     va hen mai chi lam vong lap chay den luc tat may.
 func _thu_lai() -> void:
 	_hen = false
 	if _cho.is_empty():
 		return
 	var con: Array = []
 	for m in _cho:
-		var p: AudioStreamPlayer = m[0]
-		if is_instance_valid(p) and p.is_inside_tree():
+		var p = m[0]
+		m[1] = int(m[1]) + 1
+		if not is_instance_valid(p):
+			so_bo_cho += 1
+			continue
+		if p.is_inside_tree():
 			p.play()
 			so_phat += 1
-		else:
+		elif int(m[1]) < SO_LAN_THU:
 			con.append(m)
+		else:
+			so_bo_cho += 1
 	_cho = con
 	if not _cho.is_empty() and not _hen:
 		_hen = true

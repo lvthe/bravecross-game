@@ -469,6 +469,29 @@ func _duong_lua() -> void:
 			am.so_het_kenh == m_kenh, "%d" % (am.so_het_kenh - m_kenh))
 	t("kenh nao cung gan duoc vao san khau", am.so_khong_co_cha == m_cha,
 			"%d" % (am.so_khong_co_cha - m_cha))
+
+	# KENH BI GIAI PHONG TRUOC KHUNG DAU: phai BO, khong duoc xep lai hang.
+	# Kenh la con cua `_cha` (khong phai cua `AmThanh`), ma `_cha` co the la node
+	# cua mot man hinh vua dong. Ban cu xep lai nen vong `call_deferred` quay vo
+	# tan, va `quet_show.gd` chet bang signal 11 voi vet GDScript tro dung vao
+	# `_thu_lai`. Dung mot `AmThanh` rieng voi `_cha` NGOAI cay de dung lai dung
+	# tinh huong: kenh tao ra duoc nhung chua vao cay, roi cha bi giai phong.
+	# `AmThanh` la RefCounted chu khong phai Node (kenh moi la node, va chung nam
+	# duoi `_cha`) — nen o day chi can mot `_cha` ngoai cay.
+	var am2 := AmThanh.new()
+	var cha_tam := Node.new()
+	cha_tam.name = "ChaTam"
+	am2.dat_cha(cha_tam)
+	var bo_truoc := am2.so_bo_cho
+	am2.phat("event:/UI/UI_Click")
+	t("kenh ngoai cay thi vao hang doi", am2.dang_hen() == 1,
+			"hen %d" % am2.dang_hen())
+	cha_tam.free()
+	await process_frame
+	await process_frame
+	t("cha bi giai phong thi bo kenh, khong xep lai hang",
+			am2.dang_hen() == 0 and am2.so_bo_cho - bo_truoc == 1,
+			"con hen %d, bo %d" % [am2.dang_hen(), am2.so_bo_cho - bo_truoc])
 	# Hai ten co y sai trong _BAM_THU (mot goi thang, mot qua SoundManager).
 	t("chi ten co y sai moi khong tra duoc", am.so_khong_tra_duoc - m_khong_tra == 2,
 			"%d" % (am.so_khong_tra_duoc - m_khong_tra))

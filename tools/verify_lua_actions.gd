@@ -43,6 +43,7 @@ func _init() -> void:
 
 	_kiem_action(lua, n)
 	_kiem_tam_dung(lua, n)
+	_kiem_tien_do_action(lua, n)
 	_kiem_anh(lua, n)
 
 	for e in lua.errors:
@@ -269,6 +270,111 @@ func _kiem_tam_dung(lua: LuaRuntime, n: Control) -> void:
 	t("chay lai: du gio thi hen chay", int(lua.run("return _dem.so", "dem hen 3")) == 1,
 			"so=%s" % lua.run("return _dem.so", "dem hen 3b"))
 	n3.free()
+
+
+func _kiem_tien_do_action(lua: LuaRuntime, n: Control) -> void:
+	print("=== action len thanh tien do (CCProgressTo / CCProgressFromTo) ===")
+
+	# Ban goc goi 63 cho (dem bang grep tren sc/): S_CCProgressTo:create 49
+	# (CPublic 8, CUIGameFinishAction 8, CUIHeroUpgradeLevel 6, CUIGameFinish 6,
+	# CUILoad 5, CUIQuestRewardGet 4, CUIGame 3, CUIHeroInfoUseExpUI 3, FBCog 2,
+	# FBContest 2, FBNewGuildWar 2, ...) va S_CCProgressFromTo:create 14
+	# (CUIDamageStatistic 2, CUIGuildCopyFinish 2, CUIDownload 2,
+	# CUIJFZYBattleFinish 2, CUISeaBossFinish 1, CUIArmyGroupCampsite 1,
+	# CUIArmyGroupCampsiteChatting 1, CUIChatting 1, CUIFriendsChatting 1,
+	# CUISBAnimRefine 1); moi cai con mot `release` nua.
+	#
+	# Truoc khi lam, hai thuc the nay la BONG: system/engine.lua:82-83 chi tao
+	# `CCProgressTo:new()` tu mot lop khong ton tai, nen `S_CCProgressTo:create`
+	# tra ve mot bang khong co `tien`, va `runAction` (lua/actions.lua:307) bo
+	# qua no KHONG mot loi nao — thanh dung yen o moi phan tram.
+	#
+	# Con so thoi luong o day la do MINH dat ra cho phep kiem. Cai duoc kiem la
+	# NGU NGHIA: To di tu cho DANG CO toi dich, FromTo dat luon ve `from` roi
+	# chay toi `to`, va ca hai ep trong 0..100.
+
+	var td := TienDo.new()
+	td.size = Vector2(360, 15)
+	td.kieu = TienDo.LR
+	td.pct = 100.0
+	td.set_meta("xgg_name", "td")
+	# `wrap` chon __index theo meta 'type_name' (cocos.lua:84), nen phai dat
+	# dung ten lop cua engine thi `td:setPercentage` moi di vao lua/tien_do.lua
+	# chu khong roi vao bang Node. XggLayout dat meta nay cho moi node
+	# (ui/xgg_layout.gd:346) — o day dat tay vi node dung ngoai bo cuc.
+	td.set_meta("type_name", "CCProgressTimer")
+	td.set_meta("cocos", Vector4(0, 0, 0, 0))
+	td.set_meta("parent_h", 640.0)
+	lua.state.globals["_td"] = td
+	lua.run("td = require('cocos').wrap(_td)", "boc thanh tien do")
+	t("wrap() chon lop tien do theo meta type_name",
+			int(lua.run("return td:setType('lr') and 1 or 0", "co setType")) == 1)
+
+	# FromTo: hai dau cho san.
+	lua.run("td:runAction(S_CCProgressFromTo:create(1.0, 20, 80))", "fromto")
+	lua.tick(0.5)
+	t("FromTo: nua duong ra giua hai dau", absf(td.pct - 50.0) < 1.5,
+			"pct=%.1f" % td.pct)
+	lua.tick(0.5)
+	t("FromTo: xong thi toi dich", absf(td.pct - 80.0) < 0.5, "pct=%.1f" % td.pct)
+	t("FromTo: xong thi khong con chay", lua.tick(0.1) == 0)
+
+	# To: chi cho san dich, diem dau lay tu chinh node.
+	lua.run("td:runAction(S_CCProgressTo:create(1.0, 0))", "to")
+	lua.tick(0.5)
+	t("To: di tu phan tram DANG CO", absf(td.pct - 40.0) < 1.5, "pct=%.1f" % td.pct)
+	lua.tick(0.6)
+	t("To: toi dich", absf(td.pct) < 0.5, "pct=%.1f" % td.pct)
+
+	# Ep trong 0..100 — CCProgressTimer::setPercentage cua ban goc cung ep.
+	# Dat 10 truoc de phep kiem khong dung san o 100 ma dung: neu duong Lua
+	# khong chay thi pct van 100 va phep kiem dau tien da hong.
+	lua.run("td:setPercentage(10)", "dat 10")
+	t("duong Lua: setPercentage dat duoc so khac", absf(td.pct - 10.0) < 0.01,
+			"pct=%.1f" % td.pct)
+	lua.run("td:runAction(S_CCProgressTo:create(0.1, 150))", "qua 100")
+	lua.tick(0.2)
+	t("To: phan tram vuot 100 bi ep lai", absf(td.pct - 100.0) < 0.01,
+			"pct=%.1f" % td.pct)
+
+	# Node KHONG phai thanh tien do: phai chay het ma khong lam gi va khong nem
+	# loi. Ban goc doc thang `getPercentage` tren dich (se sai neu khong phai
+	# thanh); o day im lang di tiep, va do la lua chon co y thuc.
+	lua.run("""
+		thu:stopAllActions(); thu:setPosition(0, 0)
+		thu:runAction(S_CCProgressTo:create(0.3, 50))
+	""", "node thuong")
+	lua.tick(0.5)
+	t("node khong phai thanh tien do: chay het, khong lam gi, khong loi",
+			lua.tick(0.1) == 0 and absf(n.position.x) < 0.01)
+
+	# Dung Y nhu CUIDownload.lua:62-70 — vong nap game quet 0 -> 100, doi kieu
+	# sang 'cw', roi 100 -> 0, doi kieu sang 'ccw'. Kiem ca bon chang: phan tram
+	# toi dau, CallFunc chay, va kieu doi THAT (day cung la cho duy nhat trong
+	# toan bo ma goc goi setType).
+	lua.run("""
+		td:setPercentage(100)
+		td:runAction(S_CCRepeatForever:create(S_CCSequence:create(
+			S_CCProgressFromTo:create(0.5, 0, 100),
+			S_CCCallFunc:create(td, "setType", "cw"),
+			S_CCProgressFromTo:create(0.5, 100, 0),
+			S_CCCallFunc:create(td, "setType", "ccw"))))
+	""", "vong nap game")
+	lua.tick(0.5)
+	t("vong nap game: nua vong dau toi 100", absf(td.pct - 100.0) < 0.5,
+			"pct=%.1f" % td.pct)
+	t("vong nap game: CallFunc doi kieu sang 'cw'", td.kieu == TienDo.CW,
+			"kieu=%d" % td.kieu)
+	lua.tick(0.5)
+	t("vong nap game: nua vong sau lui ve 0", absf(td.pct) < 0.5, "pct=%.1f" % td.pct)
+	t("vong nap game: CallFunc doi kieu sang 'ccw'", td.kieu == TienDo.CCW,
+			"kieu=%d" % td.kieu)
+	lua.tick(1.0)
+	var con: int = lua.tick(0.1)
+	t("vong nap game: RepeatForever khong bao gio xong", con > 0, "con %d" % con)
+	lua.run("td:stopAllActions()", "dung vong")
+	t("dung vong thi het", lua.tick(0.1) == 0)
+	td.free()
 
 
 func _kiem_anh(lua: LuaRuntime, n: Control) -> void:

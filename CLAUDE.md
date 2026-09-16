@@ -114,6 +114,9 @@ bật bằng `rules['harm_real']`, chỉ trận có hình). Mô hình đối chi
 (9) **thanh / vòng tiến độ** (`CCProgressTimer`) — **xong**, xem mục "Thanh
 tiến độ" bên dưới. Trước đó **cả 325 node** bị coi là sprite và **vẽ đầy đặc ở
 mọi phần trăm**: thanh máu HUD luôn đầy, thanh nạp game không bao giờ chạy.
+Vẽ được rồi vẫn chưa chạy: **hai action** đẩy phần trăm (`S_CCProgressTo` 49
+chỗ gọi, `S_CCProgressFromTo` 14) là **bóng** cho tới lượt này — xem mục
+"Thanh tiến độ", đoạn cuối.
 
 Kịch bản trận (`sc/plot/drama_*.lua`) chạy bằng `lua/kich_ban.lua`
 (`DFDramaScriptSystem` giả, chạy coroutine + điều kiện đi tiếp). Bật bằng cờ
@@ -370,6 +373,29 @@ node — không đọc `+0xE4` thì node ấy ra sprite trắng. Ba điều dễ
 * **`C.raw(self)` chứ không phải lớp bọc** — `C.wrap` chốt `__index` về bảng
   `Node`, nên gọi `node:dat_pct(...)` trên lớp bọc **im lặng không làm gì**
   (đo được: không lỗi, `pct` vẫn 100). `lua/tien_do.lua` đi qua `C.raw`.
+
+**Vẽ được rồi vẫn CHƯA CHẠY: hai action đẩy phần trăm là BÓNG.** Bản gốc gọi
+`S_CCProgressTo:create` **49 chỗ** (`CPublic` 8, `CUIGameFinishAction` 8,
+`CUIHeroUpgradeLevel` 6, `CUIGameFinish` 6, `CUILoad` 5, `CUIQuestRewardGet` 4,
+`CUIGame` 3, `CUIHeroInfoUseExpUI` 3, `FBCog`/`FBContest`/`FBNewGuildWar` 2 …)
+và `S_CCProgressFromTo:create` **14** (`CUIDamageStatistic` 2,
+`CUIGuildCopyFinish` 2, `CUIDownload` 2, `CUIJFZYBattleFinish` 2,
+`CUISeaBossFinish`/`CUIArmyGroupCampsite`/`CUIArmyGroupCampsiteChatting`/
+`CUIChatting`/`CUIFriendsChatting`/`CUISBAnimRefine` 1 …), tổng **63** chỗ —
+đếm bằng `grep` trên `sc/`, không phải ước lượng. Cả 63 chỗ đều **im lặng
+không làm gì** vì `system/engine.lua:82-83` chỉ tạo
+`CCProgressTo:new()` từ một lớp **không tồn tại**, nên `create` trả về bảng
+không có `tien` và `M.runAction` bỏ qua nó **không một lỗi nào**. Nghĩa của hai
+action lấy từ chính mã gốc: `CCProgressTo::startWithTarget` lấy `m_fFrom` =
+phần trăm **đang có** rồi `update(p)` đặt `m_fFrom + (m_fTo − m_fFrom)·p`;
+`CCProgressFromTo::startWithTarget` đặt luôn phần trăm về `m_fFrom` **trước**
+khi chạy — khác nhau đúng ở chỗ lấy điểm đầu. Đặt qua node Godot chứ **không**
+qua lớp bọc (cùng lý do `C.raw` ở trên). `CUIDownload.lua:62-70` là chỗ **duy
+nhất** trong toàn bộ mã gốc gọi `setType`, và nó chạy
+`ProgressFromTo(0.8, 0, 100)` + `setType "cw"` rồi `ProgressFromTo(0.8, 100, 0)`
++ `setType "ccw"` trong một `RepeatForever` — nên vòng nạp game đổi **chiều
+quét** mỗi nửa vòng. Đo trước/sau bằng chính bộ kiểm: **44 đạt / 8 hỏng** →
+**54 đạt / 0 hỏng** (`tools/verify_lua_actions.gd`).
 
 **Chiều dài đầy KHÔNG tỉ lệ với phần trăm, và cơ chế thật CHƯA tìm ra** — hai
 thanh cho hai luật khác nhau (`L = 1,508p − 23,7`, bằng 0 ở 15,7% trên HUD;

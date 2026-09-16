@@ -130,6 +130,51 @@ return function(C)
 			end)
 	end
 
+	-- Thanh tien do (CCProgressTimer) ---------------------------------------
+	-- Ban goc goi 63 cho (dem bang grep tren sc/): S_CCProgressTo:create 49,
+	-- S_CCProgressFromTo:create 14 (moi cai con mot `release` nua).
+	-- Truoc day hai thuc the nay khong ai dinh nghia: system/engine.lua:82-83
+	-- chi tao `CCProgressTo:new()` tu mot lop khong co, nen `create` tra ve mot
+	-- bang khong co `tien`, va M.runAction bo qua no KHONG mot loi nao — moi
+	-- thanh tien do dung yen.
+	--
+	-- Ngu nghia cua Cocos, doc tu chinh ma goc: CCProgressTo::startWithTarget
+	-- lay `m_fFrom` = phan tram DANG CO roi update(p) dat
+	-- `m_fFrom + (m_fTo - m_fFrom) * p`; CCProgressFromTo::startWithTarget dat
+	-- luon phan tram ve `m_fFrom` TRUOC khi chay. Khac nhau dung o cho lay
+	-- diem dau.
+	--
+	-- Dat qua node Godot (ui/tien_do.gd) chu KHONG qua lop boc: lop boc da
+	-- chot __index ve bang Node (cocos.lua:86), nen o day goi
+	-- `n:setPercentage(...)` se roi vao bo dem M.missing va im lang khong lam
+	-- gi — da do duoc, xem lua/tien_do.lua.
+	local function pct_dang_co(n)
+		local gd = raw(n)
+		if gd ~= nil and gd.pct ~= nil then return gd.pct end
+		return nil
+	end
+
+	local function dat_pct(n, p)
+		local gd = raw(n)
+		if gd == nil or gd.pct == nil then return end
+		gd:dat_pct(p)          -- ep trong 0..100 tai chinh node
+	end
+
+	local function progressTo(d, den)
+		return lam(d,
+			function(self, n) self.tu = pct_dang_co(n) end,
+			function(self, n, p)
+				if self.tu == nil then return end
+				dat_pct(n, self.tu + (den - self.tu) * p)
+			end)
+	end
+
+	local function progressFromTo(d, tu, den)
+		return lam(d,
+			function(self, n) dat_pct(n, tu) end,
+			function(self, n, p) dat_pct(n, tu + (den - tu) * p) end)
+	end
+
 	-- Ghep ------------------------------------------------------------------
 
 	local function sequence(ds)
@@ -272,6 +317,8 @@ return function(C)
 		S_CCFadeIn      = thuc_the(function(d) return fadeTo(d, 255) end)
 		S_CCFadeOut     = thuc_the(function(d) return fadeTo(d, 0) end)
 		S_CCWhiteFadeTo = thuc_the(fadeTo)
+		S_CCProgressTo     = thuc_the(progressTo)
+		S_CCProgressFromTo = thuc_the(progressFromTo)
 		S_CCShow        = thuc_the(function()
 			return lam(0, nil, function(_, n) C.Node.setIsVisible(n, true) end)
 		end)

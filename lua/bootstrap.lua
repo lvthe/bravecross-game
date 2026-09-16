@@ -212,6 +212,11 @@ function M.install_cocos()
 	-- dau tien — wrap() chot __index ngay lan boc node dau.
 	c.cuon = require('cuon')(c)
 	c.lop_theo_loai['CCScrollLayer'] = c.cuon
+	-- He HAT cua engine (typeName 'CCParticleSystemQuad', 87 node trong 296 bo
+	-- cuc). Ba ham cua no — stopSystem 13 cho goi, resetSystem 9 — deu la bong
+	-- neu thieu. Phan ve nam trong ui/hat.gd; lop nay chi noi ba ham do.
+	c.hat = require('hat')(c)
+	c.lop_theo_loai['CCParticleSystemQuad'] = c.hat
 	-- BANG danh sach cua engine (CCTableView / CCTableViewCell). Ban goc de
 	-- engine C++ dang ky hai ham `LuaTableView_create` / `LuaTableViewCell_create`
 	-- (khong file Lua nao dinh nghia chung, ca 973 file), nen thieu thi

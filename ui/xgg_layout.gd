@@ -49,6 +49,7 @@ const _DEBUG_COLORS := {
 	"sprite": Color(0.90, 0.45, 0.25, 0.55),
 	"scale9": Color(0.25, 0.55, 0.85, 0.55),
 	"label": Color(0.35, 0.75, 0.45, 0.55),
+	"particle": Color(0.75, 0.35, 0.95, 0.55),
 	"layer": Color(1, 1, 1, 0.06),
 }
 
@@ -68,6 +69,9 @@ const KIND_OF_TYPE := {
 	"CCLabelBMFont": "label",
 	"CCRichLabel": "label",
 	"CCEditBox": "label",
+	# He hat. Ca 87 node hat trong 296 bo cuc deu mang typeName nay; dinh nghia
+	# hat (plist) nam o truong 'res', khong phai 'img' — xem ui/hat.gd.
+	"CCParticleSystemQuad": "particle",
 }
 
 
@@ -251,6 +255,12 @@ static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 			tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 			tr.stretch_mode = TextureRect.STRETCH_SCALE
 			node = tr
+		"particle":
+			# He hat: con ve that nam trong chinh HatNode (ui/hat.gd), lop nay
+			# chi giu CHO va kich thuoc cua node trong bo cuc. Khong dich duoc
+			# dinh nghia thi de Control rong — node rong van dung hon node ve sai.
+			var hn := HatNode.tao(String(nd.get("res", "")))
+			node = hn if hn != null else Control.new()
 		_:
 			# CCLayerColorRoundRect co MAU rieng (bon byte R,G,B,A trong ban
 			# ghi). Phan lon la A=0 nen khong ve gi — nhung may lop CHE thi

@@ -588,6 +588,11 @@ function M.install_cocos()
 			return true, t
 		end,
 	}
+	-- Am thanh: tam ten toan cuc ma engine C++ dang ky (playSoundEffect,
+	-- playBackgroundMusic, loadEffectBank, SimpleAudioEngine...). Truoc file
+	-- nay chung la BONG — goi duoc ma im — nen 76 cho bam nut / mo cua so cua
+	-- ban goc khong co tieng nao. Xem lua/am_thanh.lua.
+	require('am_thanh').install()
 	return c
 end
 
@@ -737,9 +742,10 @@ end
 -- XGEvent:Init (d.227) la noi DUY NHAT dat XGEvent.m_GameParams, va thieu no
 -- thi CUILogin:OnServerEnterGame chet o xg_event.lua:375.
 --
--- BO QUA, co y: am thanh (d.238, 340-347 — engine), bo tai (242-247 — mang),
--- sngPatch va kiem phien ban (252-314 — xoa file roi khoi dong lai game),
--- sngHttMgr (488 — HTTP), va canh Logo (498 tro di).
+-- BO QUA, co y: bo tai (242-247 — mang), sngPatch va kiem phien ban
+-- (252-314 — xoa file roi khoi dong lai game), sngHttMgr (488 — HTTP), va canh
+-- Logo (498 tro di). Rieng phan am thanh (d.238, 340-347) thi da LAM lai: xem
+-- buoc 'am thanh khoi dong' duoi day.
 --
 -- Tra ve (so buoc chay duoc, bang {nhan -> loi} cua buoc hong).
 function M.khoi_dong_game()
@@ -759,6 +765,22 @@ function M.khoi_dong_game()
 			end
 		end },
 		{ 'math.randomseed (d.337)', function() math.randomseed(os.time()) end },
+		-- Am thanh khoi dong (game.lua:340-345), dung thu tu cua ban goc: bon
+		-- bank NHAC NEN roi hai bank tieng giao dien, cuoi cung lai `pushBankStack()`
+		-- (d.347 — ham do o day khong co gi de lam: engine cua ta khong co ngan
+		-- xep bank, va khong file Lua nao khac goi no).
+		--
+		-- Hai ham load nay khong tra ve gi; o day chung GHI LAI de biet client
+		-- nap nhung bank nao, chu khong chan tieng theo so do — ly do o
+		-- `ghi_chu_bank` trong game/am_thanh.gd.
+		{ 'am thanh khoi dong (d.340-345)', function()
+			loadBackgroundBank('BG', 'banks/BGM.bank')
+			loadBackgroundBank('BG', 'banks/BGM_NewYear.bank')
+			loadBackgroundBank('BG', 'banks/BGM_Anniversary.bank')
+			loadBackgroundBank('BG', 'banks/BGM_TwoYear.bank')
+			loadEffectBank('UI', 'banks/UI.bank')
+			loadEffectBank('UI', 'banks/UI_EVENT.bank')
+		end },
 		{ 'g_CUIOptions:InitGameInfo (d.352)', function() g_CUIOptions:InitGameInfo() end },
 		{ 'RECONNECT_COUNT (d.355)', function() USER_GLOBAL.RECONNECT_COUNT = 3 end },
 		-- Co thu nghiem cua ban goc: chi bat khi set.xgg ghi DebugTestMode.

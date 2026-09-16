@@ -39,6 +39,11 @@ var errors: Array[String] = []
 ## theo diem goc cua no. Khong co du lieu thi tra hop rong va ghi ten lai.
 var rig_thieu: Dictionary = {}
 
+## Am thanh (xem game/am_thanh.gd va lua/am_thanh.lua). Tao ngay o day chu
+## khong doi den lan phat dau tien: ben kiem doc thang `am.so_phat` de biet
+## duong noi co chay khong, va doi thi khong con gi de doc.
+var am := AmThanh.new()
+
 func _tao_rig(ten: String) -> Control:
 	var hop := _new_node("node")
 	hop.set_meta("kind", "rig")
@@ -67,6 +72,48 @@ func _tao_rig(ten: String) -> Control:
 	return hop
 
 
+## Cau noi mong sang game/am_thanh.gd. Moi ham o day chi de dua qua Lua duoc
+## (phai la Callable dang ky trong `state.globals`) — khong them gi vao do.
+func _phat_tieng(ten: String) -> int:
+	return am.phat(ten)
+
+
+func _dung_tieng(id: int) -> void:
+	am.dung(id)
+
+
+func _phat_nhac(ten: String) -> bool:
+	return am.nhac(ten)
+
+
+func _dung_nhac() -> void:
+	am.dung_nhac()
+
+
+func _tam_dung_nhac(dung_lai: bool) -> void:
+	am.tam_dung_nhac(dung_lai)
+
+
+func _nhac_dang_chay() -> bool:
+	return am.nhac_dang_chay()
+
+
+func _am_luong(loai_nhac: bool) -> float:
+	return am.am_luong(loai_nhac)
+
+
+func _dat_am_luong(loai_nhac: bool, v: float) -> void:
+	am.dat_am_luong(loai_nhac, v)
+
+
+func _ghi_chu_bank(ten: String, duong: String) -> void:
+	am.ghi_chu_bank(ten, duong)
+
+
+func _bo_bank(ten: String) -> void:
+	am.bo_bank(ten)
+
+
 func open() -> bool:
 	if not ClassDB.class_exists("LuaState"):
 		errors.append("khong co LuaState — chay: python tools/fetch_addons.py")
@@ -90,6 +137,19 @@ func open() -> bool:
 	state.globals["_godot_bo_xgg"] = _bo_xgg
 	state.globals["_godot_danh_tran"] = _danh_tran
 	state.globals["_godot_tao_tran"] = _tao_tran
+	# Am thanh: bay ten toan cuc cua engine goc (lua/am_thanh.lua) de len tren
+	# lop am thanh nay. Xem game/am_thanh.gd. Node cha cua cac kenh do
+	# `set_stage` dat (no chay SAU open), khong dat o day.
+	state.globals["_godot_phat_tieng"] = _phat_tieng
+	state.globals["_godot_dung_tieng"] = _dung_tieng
+	state.globals["_godot_phat_nhac"] = _phat_nhac
+	state.globals["_godot_dung_nhac"] = _dung_nhac
+	state.globals["_godot_tam_dung_nhac"] = _tam_dung_nhac
+	state.globals["_godot_nhac_dang_chay"] = _nhac_dang_chay
+	state.globals["_godot_am_luong"] = _am_luong
+	state.globals["_godot_dat_am_luong"] = _dat_am_luong
+	state.globals["_godot_ghi_chu_bank"] = _ghi_chu_bank
+	state.globals["_godot_bo_bank"] = _bo_bank
 	# LGG_GetSetFilePath (lua/bootstrap.lua): thu muc ghi duoc, dang duong dan
 	# that de io.open cua Lua mo duoc.
 	var ghi := ProjectSettings.globalize_path("user://")
@@ -218,6 +278,9 @@ var _san: Node = null
 
 func set_stage(n: Node) -> void:
 	_san = n
+	# Kenh am thanh nam trong cay thi moi phat duoc, va nen nam cung cho voi
+	# canh (khong phai goc cua so) de doi canh khong dung toi chung.
+	am.dat_cha(n)
 
 
 func _replace_scene(canh: Node) -> void:

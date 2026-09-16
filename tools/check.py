@@ -54,9 +54,18 @@ SUITES = [
     # may chu da xu khong. Can may chu that.
     ('phat lai dung tran',   'scene',  'battle/battle.tscn',      True,
      ['--replaycheck']),
+    # Am thanh boc tu .bank cua ban goc: tung file .ogg phai nap duoc bang
+    # AudioStreamOggVorbis va do dai phai BANG so_mau/rate cua FSB5 — do dai
+    # dung moi chung minh khoi setup, so kenh va granule trang cuoi deu dung.
+    # Kem theo: bang tra event:/... -> file phai tra ra file that cho bay
+    # tieng ma chinh SoundManager.lua cua ban goc dung, VA phan cuoi di dung
+    # duong Lua (khung suon -> G_SoundManager -> kenh phat) — truoc day cac
+    # ten do la BONG nen moi tieng bam nut deu cam.
+    ('am thanh',             'script', 'tools/verify_am.gd',     False, []),
 ]
 
 SCORE = re.compile(r'dat (\d+), hong (\d+)')
+SKIP = re.compile(r'^BO QUA: *(.+)$', re.M)
 
 
 def find_godot():
@@ -149,6 +158,12 @@ def run(godot, kind, path, extra, url, needs_server):
     err = first_script_error(out)
     if err and not SCORE.search(out):
         return 'LOI SCRIPT: %s' % err, True
+    # BO QUA khac HONG: bo am thanh can am thanh cua ban goc, ma thu muc do
+    # khong commit duoc (xem .gitignore). Tren may khong co APK thi no phai la
+    # "bo qua", khong phai "do".
+    m_skip = SKIP.search(out)
+    if m_skip:
+        return 'BO QUA (%s)' % m_skip.group(1).strip(), False
     m = SCORE.search(out)
     if m:
         ok, bad = int(m.group(1)), int(m.group(2))
@@ -181,6 +196,22 @@ def main():
         print('  ... sinh %s' % os.path.relpath(eq_ref, ROOT), flush=True)
         subprocess.run([sys.executable, os.path.join(ROOT, 'sim', 'equipment.py'),
                         '--export'], capture_output=True, text=True, timeout=120)
+
+    # Am thanh thi KHAC: no la du lieu cua ban goc, khong sinh ra duoc — chi
+    # boc lai duoc tu APK. Khong co APK thi bo do am thanh tu bao BO QUA (xem
+    # tren), con co thi boc luon cho tien: 1498 file .ogg, vai chuc giay.
+    bank_py = os.path.join(os.path.dirname(ROOT), 'brave-cross', 'work', 'bank.py')
+    apk_banks = os.path.join(os.path.dirname(ROOT), 'brave-cross', 'work', 'vn',
+                             'apk', 'assets', 'banks')
+    am_kem = os.path.join(ROOT, 'assets_ref', 'audio', 'bank_ref.json')
+    if not os.path.isfile(am_kem) and os.path.isdir(apk_banks):
+        print('  ... boc am thanh (bank.py --all)', flush=True)
+        subprocess.run([sys.executable, bank_py, '--all', '--out',
+                        os.path.join(ROOT, 'assets_ref', 'audio')],
+                       capture_output=True, text=True, timeout=600)
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(bank_py),
+                                                     'event_ref.py')],
+                       capture_output=True, text=True, timeout=600)
 
     rows = []
     failed = 0

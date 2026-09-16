@@ -176,6 +176,16 @@ static func set_frame(node: Control, name: String) -> bool:
 	var tex := get_frame(name)
 	if tex == null:
 		return false
+	# Thanh tien do (CCProgressTimer) la NGOAI LE cua luat "anh quyet dinh o":
+	# o cua no lay theo ban ghi (do duoc: getContentSize() cua ban goc tra ve
+	# 178 cho node 178x28), con anh cua ho thanh nao cung lech vai diem so voi
+	# o (ui_blood_23.png 362x14 cho o 360x15). Lay anh lam o thi thanh ngan di
+	# dung vai diem anh do — va voi o 77x13 ma anh 13x13 thi ngan di 64 diem.
+	# Xem ui/tien_do.gd.
+	if node is TienDo:
+		(node as TienDo).anh = tex
+		(node as TienDo).queue_redraw()
+		return true
 	if node is NinePatchRect:
 		(node as NinePatchRect).texture = tex
 	elif node is TextureRect:

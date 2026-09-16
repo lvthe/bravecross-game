@@ -50,6 +50,7 @@ const _DEBUG_COLORS := {
 	"scale9": Color(0.25, 0.55, 0.85, 0.55),
 	"label": Color(0.35, 0.75, 0.45, 0.55),
 	"particle": Color(0.75, 0.35, 0.95, 0.55),
+	"progress": Color(0.95, 0.85, 0.20, 0.55),
 	"layer": Color(1, 1, 1, 0.06),
 }
 
@@ -72,6 +73,11 @@ const KIND_OF_TYPE := {
 	# He hat. Ca 87 node hat trong 296 bo cuc deu mang typeName nay; dinh nghia
 	# hat (plist) nam o truong 'res', khong phai 'img' — xem ui/hat.gd.
 	"CCParticleSystemQuad": "particle",
+	# Thanh / vong tien do. 325 node trong 73 bo cuc. Truoc day khong co dong
+	# nay thi chung roi vao 'layer', roi vao nhanh "layer ma co anh thi thanh
+	# sprite" ben duoi — nen thanh kinh nghiem cua HUD hien ra DAY DAC dung
+	# bang o cua no o MOI phan tram. Xem ui/tien_do.gd.
+	"CCProgressTimer": "progress",
 }
 
 
@@ -261,6 +267,17 @@ static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 			# dinh nghia thi de Control rong — node rong van dung hon node ve sai.
 			var hn := HatNode.tao(String(nd.get("res", "")))
 			node = hn if hn != null else Control.new()
+		"progress":
+			# O cua node lay theo BAN GHI (w/h), khong theo kich thuoc anh:
+			# `getContentSize()` cua ban goc chay trong may ao tra ve 178 cho
+			# node 178x28 — dung bang o trong ban ghi. Anh cua cac thanh nay
+			# lech vai diem anh so voi o (ui_blood_23.png la 362x14 trong khi
+			# o la 360x15, ui_blood_12.png 13x13 cho o 77x13), nen lay anh lam
+			# o se lam thanh ngan di.
+			var td := TienDo.new()
+			td.kieu = int(nd.get("ptType", TienDo.LR))
+			td.dat_pct(float(nd.get("pct", 100.0)))
+			node = td
 		_:
 			# CCLayerColorRoundRect co MAU rieng (bon byte R,G,B,A trong ban
 			# ghi). Phan lon la A=0 nen khong ve gi — nhung may lop CHE thi
@@ -353,8 +370,15 @@ static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 	# "size" = khop voi danh sach ANH ROI cua chinh man do theo kich thuoc,
 	# va chi nhan khi khop DUY NHAT. Day la cach duy nhat lay duoc may tam
 	# nen to: chung khong ghi ten anh trong ban ghi node.
+	#
+	# Rieng thanh tien do thi nhan CA 'guess', va day khong phai noi long do
+	# tin cay: ten anh cua no KHONG phai do khop kich thuoc ma doc THANG tu
+	# ban ghi (324/325 node co ten o truong do), con ly do truot phep kiem
+	# kich thuoc thi do duoc: anh cua ho thanh nao cung lech vai diem so voi
+	# o ma nguoi thiet ke go — 362x14 vs 360x15, 13x13 vs 77x13, 27x9 vs
+	# 222x10. Khong nhan thi 314/325 thanh khong co anh nao.
 	if img != "" and (from == "verified" or from == "size"
-			or (from == "guess" and use_guessed_images)):
+			or (from == "guess" and (use_guessed_images or kind == "progress"))):
 		node.set_meta("img", img)
 		node.set_meta("img_from", from)
 		if UiFrames.set_frame(node, img):

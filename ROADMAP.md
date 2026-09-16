@@ -25,7 +25,7 @@ Số trong ngoặc là **đo được**, không phải ước lượng. Cách đ
 | Hàm máy chủ `Client*` đã có bản offline | **13 / 411** | đếm `sc/` vs `offline/handlers` |
 | Lệnh kịch bản `g_DramaSystem` đã có | **60 / 60** | đối chiếu `sc/plot/drama_*.lua` |
 | Định nghĩa hạt đã dịch | **33 / 33** (87 node, 7 định nghĩa được dùng) | `tools/verify_hat.gd` |
-| Bộ kiểm | **32**, xanh hết | `tools/check.py` |
+| Bộ kiểm | **33**, xanh hết | `tools/check.py` |
 
 > Con số màn hình **dao động ±3 giữa các lần chạy** (đo 3 lần trong ngày:
 > 258, 259, 260; hôm sau: 258, 257; hôm nay, **sáu lần chạy cùng một mã**:
@@ -777,6 +777,15 @@ CUIExpShop.lua:148). Nên ở **đúng ca này** phép thử của bản gốc c
 lớp giả lập trùng với bản gốc. Đó là một sự trùng hợp, nhưng là trùng hợp **đã
 đo**; cái bẫy `if node.method then` vẫn còn nguyên với mọi tên khác.
 
+Đếm lại theo **lượt gọi** (không phải theo chỗ): **12 lượt, 6 chỗ**, và **cả 6
+chỗ đều là một cặp `true` rồi `false`** quanh một đoạn — `CUIGameFinish.lua:1431`
+và `:1433`, `CUIPublic.lua:527`/`:529`, `CUIHeroInfoMainUI.lua:1515`/`:1517`,
+`CUIHeroListEx.lua:1314`/`:1316`, `CUIMain.lua:1524`/`:1526`,
+`CUIExpShop.lua:150`/`:152`. Tức nó là **một trạng thái bật rồi tắt**, không phải
+một phép đổi màu lâu dài — nên nếu sau này có làm thì phải làm **đúng một cờ**
+chứ không phải hai lần gọi rời. `setOrange ×5` ở trên là số của **một bộ quét
+theo màn**, không phải số chỗ gọi; hai con số không mâu thuẫn, chỉ khác thước.
+
 ### Lớp giả lập: những gì đã làm thêm trong lượt này
 
 | API | chỗ gọi | làm gì | cơ sở |
@@ -792,19 +801,22 @@ lớp giả lập trùng với bản gốc. Đó là một sự trùng hợp, nh
 | `_lua_addChildToPlugIn` / `_lua_clearPlugIn` / `_lua_getPlugInPositionInNode` | 33 / 10 / 5 | treo một node Lua lên **điểm gắn** trong bộ xương | số trong tên plug là **số chứ**, đo trên 418 file `.xml` / 587 biến thể, và khoá bằng một ca không thể trùng (`Gashapon` có đúng `PlugIn_4_Hero`/`_5_Word`/`_6_Light`/`_7_HeroName`, còn `CUIUnlockHeroAnimation.lua:166-169` gọi `_lua_clearPlugIn` đúng bốn số 4, 5, 6, 7); `tools/verify_plug.gd` — 12 đạt / 0 hỏng |
 | `pauseActions` / `resumeActions` | 2 (`CPublic`) | tạm dừng / chạy lại action **và** hẹn giờ của node | `CCNode::pauseActions` của bản gốc gọi `pauseSchedulerAndActions`, tức **cả hai** bộ. Đo trong `libgame.so` (`work/binder.py --nut`): `+0xdc` là bộ quản lý action (5 hàm action đều đọc đúng ô này), `+0xd8` là bộ thứ hai mà **không hàm action nào** đọc, `+0xe0` là `m_bRunning` — nhận ra nhờ `eor r3,r3,#1` (= `!m_bRunning`) nằm đúng chỗ đối số, đúng chữ ký `CCNode::runAction`/`schedule`; `pauseActions` (`0x4aeb88`) và `resumeActions` (`0x4aeacc`) đọc **cả `+0xd8` lẫn `+0xdc`**. Quét cả 132 bảng lớp **không** có hàm nào riêng cho bộ hẹn giờ (`pause`/`resume` 2 lớp; `schedule`/`scheduleOnce`/`scheduleUpdate` chỉ ở lớp `CCSchedule`), nên đây là đường **duy nhất**. Khung hình tạm dừng **không** cộng dồn thời gian, nên chạy lại không nhảy một bước; `tools/verify_lua_actions.gd` — 39 đạt / 0 hỏng |
 
-Ba thứ **cố ý KHÔNG làm**, ghi rõ để lần sau không đoán:
+Hai thứ **cố ý KHÔNG làm**, ghi rõ để lần sau không đoán:
 
-* **`setPercentage` (139 lượt, 325 node, 83 file)** — đo rồi mới quyết: quét cả
-  325 bản ghi `CCProgressTimer` ở **mọi** offset 4 byte **không** tìm ra cặp float
-  nào khớp midpoint `(0.5,0.5)` hay barChangeRate `(1.0,0.0)` ngoài hai trường đã
-  biết (scale/rot ở `+0x88`, neo ở `+0x90`). Nay xác nhận lại bằng **đường thứ
-  hai**: đọc thẳng `layout_ref/*.json` thì **cả 325** node `CCProgressTimer` chỉ
-  mang **đúng bộ trường chung** của mọi node (`type`, `name`, `zOrder`, `res`,
-  `x`, `y`, `scaleX/Y`, `rot`, `anchorX/Y`, `w`, `h`, `img`, `visible`, `tag`) —
-  không có trường riêng nào cho kiểu thanh hay chiều chạy. Nên kiểu thanh hay
-  vòng là **mặc định C++ của engine**, chưa giải được. Chốt bằng máy ảo
-  (`work/emu_dom.py`) hoặc đọc thêm `libgame.so`. **Đoán là sai kiểu
-  `AchieveType`.**
+* **`setPercentage`** — ~~cố ý không làm~~ **đã làm xong ở lượt sau**, xem mục 8
+  việc 8. Giữ lại đoạn này vì nó là **bản ghi của một kết luận SAI**, và sai ở
+  chỗ nào thì đáng nhớ hơn cả kết luận đúng: ghi cũ ở đây nói "quét cả 325 bản
+  ghi ở **mọi** offset 4 byte **không** tìm ra cặp float nào khớp midpoint
+  `(0.5,0.5)` hay barChangeRate `(1.0,0.0)" — phép quét ấy **đúng**, nhưng nó
+  chỉ đi tìm **hai trường của Cocos2d-x gốc**, mà lớp `CCProgressTimer` của
+  engine này **không dùng** hai trường ấy: nó có ba trường của riêng nó ở
+  `+0xF4`/`+0xF8`/`+0xFC` (kiểu, phần trăm, cờ), và kiểu thì **chỉ có một số
+  nguyên**, không có cặp float nào để tìm. Đường thứ hai ghi ở đây — "đọc thẳng
+  `layout_ref/*.json` thì cả 325 node chỉ mang đúng bộ trường chung" — cũng
+  **đúng khi đọc, và sai khi suy**: `layout.py` khi ấy **chưa được bảo mang ba
+  trường ấy ra** (`KEEP_TIMER`), nên cái không thấy là do **bộ trích của ta**,
+  không phải do bản ghi. Bài học: **"tôi quét mà không thấy" chỉ mạnh bằng danh
+  sách những thứ tôi đã bảo bộ quét đi tìm.**
 
   **Câu cũ ngay trên đây — "bản gốc không hề gọi `setType` (0 chỗ)" — đã SAI, nay
   sửa.** Bản gốc CÓ gọi, **đúng một chỗ**: `sc/user/UI/CUIDownload.lua:65` và
@@ -1612,18 +1624,96 @@ không chạy được `CPublic:SetObjGray` ở đó), `scheduleOnce` báo thàn
    (1.200 lượt gọi, đứng đầu bảng "API chưa làm" và **không phải một API thiếu**
    mà là dấu vết của một hàm chưa viết). Chi tiết và cái bẫy `if node.method then`
    của chính bộ đếm: mục 4.
-8. **`setPercentage`** — 139 lượt gọi, 325 node, 83 file, và là thứ **duy nhất
-   trong bảng còn phải đo bằng máy ảo hoặc `libgame.so`**. Đã đo phần chắc chắn
-   đo được: bản ghi `CCProgressTimer` **không** chứa midpoint/barChangeRate ở bất
-   kỳ offset 4 byte nào (quét cả 325 bản ghi), và **cả 325** node ấy trong
-   `layout_ref/*.json` cũng chỉ mang bộ trường chung — không có trường riêng cho
-   kiểu thanh hay chiều chạy. Nên kiểu thanh hay vòng là mặc định C++ chưa giải.
-   **Không đoán.**
-   Đã chốt thêm **từ vựng** của `setType` — sáu tên `ccw`/`cw`/`lr`/`rl`/`bt`/`tb`
-   cùng sáu cặp hằng số của chúng — và chỗ gọi **duy nhất** trong mã gốc. Xem mục
-   4, đoạn "câu cũ đã SAI": ghi cũ ở đây rằng bản gốc **không hề gọi** `setType`
-   là **sai**, do phép grep `:setType(` bỏ sót lối gọi theo **chuỗi** qua
-   `CCCallFunc` (`CUIDownload.lua:65/67`).
+8. ~~**`setPercentage`**~~ — **xong, và câu trả lời khoá được bằng SỐ trong
+   chính bản ghi `.xgg`, không cần máy ảo.** Ghi cũ ở đây nói "bản ghi
+   `CCProgressTimer` **không** chứa trường riêng cho kiểu thanh hay chiều chạy,
+   nên kiểu là mặc định C++ chưa giải" — **sai**, và sai vì phép quét cũ chỉ tìm
+   *midpoint* / *barChangeRate* (hai trường của Cocos2d-x bản gốc) chứ không đọc
+   **ba trường mà lớp `CCProgressTimer` của engine này thật sự có**. Đọc lại bản
+   ghi theo từng byte thì chúng nằm ngay đó.
+
+   **Bản ghi LUÔN đúng 256 byte** — đo trên **cả 325 node của 73 file bố cục,
+   không một ngoại lệ** — và mang sẵn ba trường:
+
+   | offset | kiểu | nghĩa | đo được |
+   |---|---|---|---|
+   | `+0xF4` | uint32 | **kiểu** thanh/vòng | 2 → 262, 3 → 49, 0 → 12, 4 → 2; **không** có 1 và 5 |
+   | `+0xF8` | float | **phần trăm** đang đặt | 100 → 309, 0 → 10, 30 → 3, 50 → 3 |
+   | `+0xFC` | byte | cờ 0/1 rồi `cd cd cd` (rác gỡ lỗi MSVC) | 1 → 307, 0 → 18 — **nghĩa chưa rõ**, chỉ ghi lại, **không dùng để vẽ** |
+
+   Tên ảnh trong cùng bản ghi nằm ở **hai** chỗ, và thứ tự ưu tiên đo được chứ
+   không đoán: `+0xE4` (cặp `str_off`/`str_len`) **chỉ khác rỗng ở ĐÚNG MỘT
+   node** — `ptLoadingGamePercent` của `UI_LoadingGame` — còn `+0xEC` khác rỗng ở
+   **323** node; **1 node không có tên ảnh ở cả hai chỗ** (`CCProgressTimer`
+   40×40, hệ số `CD`). Không đọc `+0xE4` thì node ấy ra sprite trắng.
+
+   **Đối chiếu với từ vựng `setType` đã chốt ở mục 4** — sáu tên theo đúng thứ tự
+   trong bảng phương thức của engine — thì mã đọc ra là: **0 `cw`, 1 `ccw`,
+   2 `lr`, 3 `rl`, 4 `bt`, 5 `tb`**. Hai đường **độc lập** xác nhận cách đọc ấy:
+
+   * **Neo đo trên bản gốc chạy trong máy ảo:** `pMainUIHeroExp` (`+0xF4` = **2**)
+     đầy dần sang phải, **mép trái đứng yên**; `g_ptWarSoulTBar` (`+0xF4` = **4**)
+     đầy từ **dưới lên** (`+181` đáy → `+0`). Tức 2 phải là `lr` và 4 phải là
+     `bt` — đúng như bảng.
+   * **Hình dạng node, một chữ ký hoàn toàn khác:** **12 node kiểu 0 đều là hình
+     VUÔNG** (28×28 `ptShapeChangeTimer` ×4, 22×23 `ptLeaderShipTimer`, 95×95 ×3,
+     45×45 ×4, 81×81 `ptLoadingGamePercent`), còn node kiểu 2 **đều dài** (78×13
+     ×114, 120×28 ×17, 350×13 ×16…). Vòng thì vuông, thanh thì dài — nên **0/1 là
+     vòng, 2..5 là thanh**, và không node vòng nào bị vẽ thành thanh.
+
+   **Vẽ là CẮT, không phải PHÓNG TO** — đo bằng cách so từng điểm ảnh giữa hai lượt
+   chạy chỉ khác nhau ở `setPercentage`: mép neo đứng yên ở mọi mức, mép kia chạy,
+   và vùng ảnh lấy ra **ngắn lại** theo phần trăm (phóng to thì vùng ảnh luôn là cả
+   tấm). Nên `TienDo.o_thanh` cắt **cả hai phía** theo cùng một tỉ lệ: `src` là
+   `t` phần của **ảnh**, `dst` là `t` phần của **ô**.
+
+   **Và đây là chỗ KHÔNG khôi phục được, ghi thẳng ra thay vì lấp:** chiều dài
+   đầy **không** tỉ lệ với phần trăm. Đo trên thanh máu HUD (ô 126×21 trên màn):
+
+   | p | 10 | 15 | 20 | 25 | 30 | 50 | 75 | 90 | 100 |
+   |---|---|---|---|---|---|---|---|---|---|
+   | px đầy | 0 | 0 | 7 | 14 | 22 | 52 | 90 | 112 | 126 |
+
+   Bình phương nhỏ nhất ra `L = 1,508p − 23,7` — **bằng 0 ở 15,7%**, tức tỉ lệ
+   thuận bị **bác bỏ**. Thanh thống soái (ô 54×251) thì gần tỉ lệ thuận
+   (`H = 2,617p − 8,35`: p = 10 → 16, 30 → 70, 60 → 153, 100 → 251). **Hai thanh
+   cho hai luật khác nhau**, nên cơ chế thật **chưa tìm ra** — nghi ở chỗ chia
+   theo `barChangeRate`/`midpoint` mà engine giữ trong C++, nhưng chưa có đường
+   đọc. Bản dựng vẽ **tỉ lệ thuận** (đúng ở 0% và 100%, thấp hơn tối đa ~11 px ở
+   khoảng giữa của thanh HUD) và **ghi lại khoảng lệch ấy** thay vì chỉnh số cho
+   vừa mắt.
+
+   Cùng chỗ ấy lộ ra **vì sao 314/325 tên ảnh của node thanh là `guess`**: ảnh nền
+   mà hoạ sĩ dùng **lệch 1–2 px** so với ô trong bố cục — `v6/ui_blood_23.png`
+   **362×14** cho ô **360×15**, `v6/ui_blood_26.png` 27×9 cho ô 222×10,
+   `v6/ui_blood_12.png` 13×13 cho ô 77×13. Tức tên ảnh là **trường ghi thẳng
+   trong bản ghi**, không phải suy từ kích thước — nên chấp nhận `guess` cho
+   riêng loại node này là **có đo**, không phải nới lỏng. Và ô của node thanh lấy
+   theo **bản ghi**, không theo ảnh: `getContentSize()` của bản gốc chạy trong máy
+   ảo trả về **178** cho node 178×28 (hệ số phóng của các tổ tiên bằng đúng 1,0;
+   riêng `ptLoadingGamePercent` có một tổ tiên 0,66). Lấy ảnh làm ô thì thanh HUD
+   ngắn đi đúng 2 px, còn ô 77×13 với ảnh 13×13 thì ngắn đi **64 px**.
+
+   **Đã làm trong bản dựng:** `xgg.py` đọc ba trường + tên ảnh `+0xE4`, `layout.py`
+   mang chúng vào `layout_ref` (`KEEP_TIMER`), `ui/xgg_layout.gd` xếp
+   `CCProgressTimer` vào kind **`progress`** (trước đó nó rơi vào `layer`, mà
+   `layer` có ảnh thì thành `sprite` — nên **cả 325 node bị vẽ đầy đặc ở mọi phần
+   trăm**: thanh máu HUD luôn đầy, thanh nạp game không bao giờ chạy),
+   `ui/tien_do.gd` vẽ thanh và vòng, `ui/ui_frames.gd` **không** đổi ô của node
+   thanh theo ảnh, `lua/tien_do.lua` mở `setPercentage`/`getPercentage`/`setType`/
+   `getType` qua **`C.raw(self)`** (lớp bọc chốt `__index` về bảng `Node`, nên gọi
+   `node:dat_pct(...)` trên lớp bọc **im lặng không làm gì** — đã đo), và
+   `tools/verify_tien_do.gd` khoá lại: **113 đạt / 0 hỏng**, đã vào `check.py`.
+
+   **Còn lại, KHÔNG đoán:** (a) công thức chiều dài đầy ở trên; (b) **góc bắt đầu
+   và chiều của vòng** — cả kho chỉ có **đúng một** node vòng chạy thật
+   (`ptLoadingGamePercent`, tự nó đảo `cw` ↔ `ccw` trong `CUIDownload.lua:57-69`),
+   nên chiều sai thì không lộ ra; ta đặt 0° = 12 giờ, chiều dương = kim đồng hồ;
+   (c) `setOrange` (12 chỗ gọi, luôn `true` rồi `false` quanh một đoạn) — đo trên
+   bảng phương thức thì nó **chỉ có ở đúng lớp này**, nhưng **làm gì thì chưa
+   đo được**, nên cố ý **không** đặt tên nó trong lớp giả lập: nó vẫn rơi vào bộ
+   đếm `M.missing` để còn thấy là chưa làm, và bộ kiểm có một phép kiểm riêng đòi
+   đúng như vậy.
 9. ~~**Nhóm armature: ba hàm điểm gắn**~~ — **xong.** `_lua_addChildToPlugIn`
    (2 lúc quét, **33 chỗ gọi** trong mã), `_lua_clearPlugIn` (6 lúc quét / 10),
    `_lua_getPlugInPositionInNode` (5) **chưa từng tồn tại** ở lớp giả lập: tên
@@ -1791,3 +1881,13 @@ tiên**: nó là một lỗi im lặng **trong chính lớp giả lập**, đún
 được câu đó, và `reorderChild` là ca đầu tiên nó bắt đúng. Sau đó là việc 4 (bỏ
 ĐẶT trong trận); việc 9, việc 10 và việc 11 nay **đã xong**, nên chỗ còn phải đo
 bằng máy ảo hoặc đọc `libgame.so` chỉ còn **việc 8** (`setPercentage`).
+
+**Việc 8 nay cũng xong** — và nó xong **mà không cần máy ảo**: ba trường cần thiết
+nằm ngay trong bản ghi `.xgg` (`+0xF4` kiểu, `+0xF8` phần trăm, `+0xEC`/`+0xE4`
+tên ảnh). Xem mục 8 việc 8 cho số đo đầy đủ và cho **hai chỗ còn lại đã ghi rõ là
+chưa khôi phục được**: công thức chiều dài đầy (hai thanh cho hai luật khác nhau,
+nên cơ chế thật chưa tìm ra) và góc/chiều của vòng (cả kho chỉ có một node vòng
+chạy thật). Đây là lần thứ hai trong dự án một việc bị xếp vào loại "phải có máy
+ảo" hoá ra **đo được bằng dữ liệu đã có** — lần trước là `setGray`. Nên trước khi
+kết luận "phải chạy bản gốc", hãy đọc lại bản ghi theo **từng byte** và tự hỏi bộ
+trích của mình có đang mang trường ấy ra không.

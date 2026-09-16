@@ -265,6 +265,12 @@ function M.install_cocos()
 	-- neu thieu. Phan ve nam trong ui/hat.gd; lop nay chi noi ba ham do.
 	c.hat = require('hat')(c)
 	c.lop_theo_loai['CCParticleSystemQuad'] = c.hat
+	-- Thanh / vong tien do cua engine (typeName 'CCProgressTimer', 325 node
+	-- trong 73 bo cuc). `setPercentage` duoc goi 160 lan trong ma Lua goc;
+	-- thieu lop nay thi tat ca deu la bong va thanh dung yen. Cung phai dang ky
+	-- TRUOC khi nap canh dau tien: wrap() chot __index ngay lan boc node dau.
+	c.tien_do = require('tien_do')(c)
+	c.lop_theo_loai['CCProgressTimer'] = c.tien_do
 	-- BANG danh sach cua engine (CCTableView / CCTableViewCell). Ban goc de
 	-- engine C++ dang ky hai ham `LuaTableView_create` / `LuaTableViewCell_create`
 	-- (khong file Lua nao dinh nghia chung, ca 973 file), nen thieu thi

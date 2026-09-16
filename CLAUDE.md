@@ -27,11 +27,20 @@ từ bản đã dịch ngược. Hai repo, nằm cạnh nhau:
 ## Trước khi làm gì
 
 ```bash
-python tools/check.py          # 32 bộ, phải xanh hết
+python tools/check.py          # 33 bộ, phải xanh hết
 ```
 
 Kéo `brave-cross` mới về thì dựng lại `ui_ref` + `layout_ref` + tag (README,
 bước 2 và 2b) trước khi tin kết quả kiểm: dữ liệu cũ hỏng **lặng lẽ**.
+
+**Bẫy đã mắc một lần, ghi lại vì nó im lặng:** `layout.py` **ghi đè** và **xoá
+hết tag** đã đo — chạy nó xong mà quên `emu_join.py --ghi` thì `layout_ref` về
+**0/33.472 tag** (đo được), và triệu chứng không phải một bộ kiểm đỏ mà là
+**9 bộ đỏ cùng lúc**, tất cả ở những suite đi qua chuỗi Login → `Main`:
+`CUIBuyDialog.lua:199: attempt to index local 'lLaodingBG' (a nil value)` —
+mã gốc trỏ node bằng tag, thiếu tag thì node ra `nil`. Chạy lại `--ghi` thì về
+đúng **27.887/33.472 (83,3%)** như cũ và cả 9 bộ xanh lại. Sửa `layout.py`
+(cần cho việc mới) thì **luôn** chạy lại bước 2b ngay sau đó.
 
 Sau khi `git pull` mà thấy `class_name` báo "not declared":
 
@@ -101,6 +110,10 @@ bật bằng `rules['harm_real']`, chỉ trận có hình). Mô hình đối chi
 (`combat.gd` mặc định / `sim` / `server`) GIỮ NGUYÊN. Ánh xạ trường sang bên
 đánh/chịu ĐÃ ĐO, không còn ĐẶT — xem mục riêng bên dưới. Chưa có:
 Đo và khoá: `tools/do_chien_dich.gd`
+
+(9) **thanh / vòng tiến độ** (`CCProgressTimer`) — **xong**, xem mục "Thanh
+tiến độ" bên dưới. Trước đó **cả 325 node** bị coi là sprite và **vẽ đầy đặc ở
+mọi phần trăm**: thanh máu HUD luôn đầy, thanh nạp game không bao giờ chạy.
 
 Kịch bản trận (`sc/plot/drama_*.lua`) chạy bằng `lua/kich_ban.lua`
 (`DFDramaScriptSystem` giả, chạy coroutine + điều kiện đi tiếp). Bật bằng cờ
@@ -336,6 +349,36 @@ chạy có ô `(0, 0)`. Luật đầy đủ + số đo + hai lỗi im lặng đ�
 
 Lớp offline (thay máy chủ) nằm ở `../brave-cross/work/offline`, test bằng
 `python run_tests.py` ở đó. Sửa nó xong phải chạy lại `tools/import_lua.py`.
+
+Thanh tiến độ: kiểu thanh/vòng **KHÔNG phải mặc định của engine** — nó nằm
+trong bản ghi `.xgg`, ở ba trường mà ghi chép cũ ở `ROADMAP` §8 từng nói là
+không có (phép quét cũ chỉ tìm `midpoint`/`barChangeRate` của Cocos2d-x gốc).
+Bản ghi `CCProgressTimer` **luôn đúng 256 byte** (đo cả 325 node / 73 bố cục):
+`+0xF4` uint32 = kiểu (`0 cw`, `1 ccw`, `2 lr`, `3 rl`, `4 bt`, `5 tb` — thứ tự
+lấy từ bảng phương thức `setType` của engine), `+0xF8` float = phần trăm,
+`+0xFC` byte 0/1 **chưa rõ nghĩa** (ghi lại, không dùng để vẽ). Tên ảnh nằm ở
+`+0xE4` **chỉ với đúng 1 node** (`ptLoadingGamePercent`), còn `+0xEC` với 323
+node — không đọc `+0xE4` thì node ấy ra sprite trắng. Ba điều dễ sai:
+
+* **Vẽ là CẮT, không phải PHÓNG TO** — đo bằng so từng điểm ảnh giữa hai lượt
+  chạy chỉ khác `setPercentage`: mép neo đứng yên, **vùng ảnh lấy ra ngắn lại**
+  theo phần trăm. Nên `TienDo.o_thanh` cắt **cả hai phía** theo cùng một tỉ lệ.
+* **Ô của node lấy theo BẢN GHI, không theo ảnh** — ảnh của hoạ sĩ lệch 1–2 px
+  (`v6/ui_blood_23.png` 362×14 cho ô 360×15; 13×13 cho ô 77×13), đó cũng là vì
+  sao 314/325 tên ảnh là `guess`. `UiFrames.set_frame` vì thế **không** đổi ô
+  của `TienDo`.
+* **`C.raw(self)` chứ không phải lớp bọc** — `C.wrap` chốt `__index` về bảng
+  `Node`, nên gọi `node:dat_pct(...)` trên lớp bọc **im lặng không làm gì**
+  (đo được: không lỗi, `pct` vẫn 100). `lua/tien_do.lua` đi qua `C.raw`.
+
+**Chiều dài đầy KHÔNG tỉ lệ với phần trăm, và cơ chế thật CHƯA tìm ra** — hai
+thanh cho hai luật khác nhau (`L = 1,508p − 23,7`, bằng 0 ở 15,7% trên HUD;
+`H = 2,617p − 8,35` trên thanh thống soái). Bản dựng vẽ tỉ lệ thuận và **ghi
+lại khoảng lệch** (tối đa ~11 px ở khoảng giữa thanh HUD) thay vì chỉnh số cho
+vừa mắt. Cùng loại: `setOrange` (12 chỗ gọi) **cố ý không đặt tên** trong lớp
+giả lập để nó còn rơi vào bộ đếm `M.missing` — chưa đo được nó làm gì thì đừng
+làm cho nó im. Số đo đầy đủ: `ROADMAP.md` §8 việc 8; khoá bằng
+`tools/verify_tien_do.gd` (113 đạt / 0 hỏng).
 
 Bấm được: `lua/cocos.lua` (`M.cham`) + `LuaRuntime.touch_at`, kiểm bằng
 `tools/verify_cham.gd`. Số màn mở được: xem bảng đầu `ROADMAP.md` (đo bằng

@@ -100,6 +100,14 @@ SUITES = [
     # `autoFixSize` khi o cao 0 (ban goc ra 0, nhan bien mat), va `setContentSize`
     # khong xoa co "ban" nen lan doc dau van bo cuc lai.
     ('o chu / autoFixSize',  'script', 'tools/verify_dimensions.gd', False, []),
+    # Thanh / vong tien do cua ban goc (ui/tien_do.gd + lua/tien_do.lua, 325
+    # node trong 73 bo cuc). Truoc day chung la node 'layer' co anh nen bi coi
+    # la SPRITE va ve day dac o moi phan tram. Bo kiem chay bon tang: neo va
+    # tinh CAT cua thanh, hinh hoc quat (nam gon trong o, dung chieu, khong vat
+    # bon goc), noi day tu bo cuc THAT (o lay theo BAN GHI chu khong theo anh —
+    # g_ptWarSoulTBar o 71x297 ma anh 102x324), va duong Lua (setPercentage /
+    # setType phai doi dung node, con setOrange phai CON dem duoc la thieu).
+    ('tien do',              'script', 'tools/verify_tien_do.gd', False, []),
 ]
 
 SCORE = re.compile(r'dat (\d+), hong (\d+)')

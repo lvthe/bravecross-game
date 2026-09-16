@@ -103,10 +103,22 @@ const BUOC := [
 		g_CUIGame:TouchArrmy(1)
 		g_CUIGame:TouchArrmy(1)
 		local q1 = nut:so_quan()
-		local l1, lm = bf:_thong_soai()
+		local l1, lm, hoi = bf:_thong_soai()
 		nk.dua = { q0, q1, l0, l1, lm }
+		-- Thong soai vao tran: do ca BA dau, de phep kiem khong chi hoi "engine
+		-- giu so may" ma hoi "so do o dau ra".
+		--   lm    — so engine dang giu la toi da (doc tu `Chapter.LeaderShip`
+		--           trong chinh chuoi JSON ma MA GOC gui xuong, lua/san_tran.lua)
+		--   nguoi — cong thuc cua ban goc tren ban ghi nguoi choi
+		--           (`UserLogic:GetLeaderShip` = LeaderShip + Level - 1)
+		--   ch.*  — hai truong thong soai trong chuoi JSON ay
+		local okn, nguoi = G_UserLogic:GetLeaderShip()
+		local ch = g_CUIGame.tArmysData.Sprite.Chapter
+		nk.ts = { tostring(lm), tostring(hoi), tostring(okn and nguoi or 'loi'),
+			tostring(ch.LeaderShip), tostring(ch.LeaderShipResume) }
 		return 'quan ' .. q0 .. ' -> ' .. q1 .. ', thong soai ' .. tostring(l0) .. ' -> '
-			.. tostring(l1) .. ' / ' .. tostring(lm)""", 1],
+			.. tostring(l1) .. ' / ' .. tostring(lm) .. ', vao tran: '
+			.. table.concat(nk.ts, '/')""", 1],
 	# Canh Battle: g_BattleField la node CCLayer trong BattleField_<canh>
 	# _960_640.xgg (nap vao g_BattleFieldLayer); tran thi engine C++ danh.
 	["trong canh Battle",
@@ -452,6 +464,7 @@ var _san: Control = null
 var _dem := 0
 var _bam_nut := ""
 var _bam_tt := ""
+var _nhip_hoi := ""            ## nhip hoi thong soai do duoc — xem _bam_nut_linh
 
 
 ## Cho tuong ta DAY NO, bam that vao tam nut thuc tinh dau tien, roi cho don ky
@@ -503,11 +516,39 @@ func _bam_thuc_tinh(lua: LuaRuntime) -> String:
 
 ## Bam that vao tam nut binh chung dau tien. Tra "quan X->Y thong soai A->B".
 ## Diem cham theo cung he voi LuaRuntime._bien_doi — xem verify_cham.gd.
+##
+## Tien the DO LUON NHIP HOI thong soai: hai toan vua tieu het 6 diem, nen vong
+## lap nay von phai cho hoi lai du 3 diem moi bam duoc — tuc no di qua dung ba
+## nhip hoi ma khong ton them khung nao. Ban goc hoi 1 diem sau moi
+## `Chapter.LeaderShipResume` giay (5 voi L_N_01_01), nen nhip phai la
+## 5 giay = 150 khung. Do duoc: "ld1@85 ld2@236 ld3@387 | cach 151,151" — tuc
+## 151 khung moi nhip (5,033 giay), khong phai dung 150: `hoi_thong_soai` cong
+## don tung khung (`T.ld_dem = T.ld_dem + dt`) ma 1/30 khong bieu dien duoc
+## chinh xac bang so thuc, nen 150 lan cong van hoi thieu so voi 5,0 va khung
+## thu 151 moi vuot nguong. Ket qua o `_nhip_hoi`, `_kiem` doi chieu (±2 khung).
 func _bam_nut_linh(lua: LuaRuntime) -> String:
+	var nhip: Array = []
+	var truoc := -1
 	for i in 600:
-		if int(lua.run("return (g_BattleField:_thong_soai())", "thong soai")) >= 3:
+		var ld := int(lua.run("return (g_BattleField:_thong_soai())", "thong soai"))
+		if ld != truoc:
+			if truoc >= 0:
+				nhip.append([i, ld])
+			truoc = ld
+		if ld >= 3:
 			break
 		lua.tick(KHUNG)
+	_nhip_hoi = ""
+	var phan := []
+	var gap := []
+	for j in nhip.size():
+		phan.append("ld%s@%d" % [nhip[j][1], nhip[j][0]])
+		if j > 0:
+			gap.append(int(nhip[j][0]) - int(nhip[j - 1][0]))
+	_nhip_hoi = " ".join(phan)
+	if not gap.is_empty():
+		_nhip_hoi += " | cach " + ",".join(gap.map(func(g): return str(g)))
+	print("  nhip hoi thong soai: %s" % _nhip_hoi)
 	var nut = lua.run("return require('cocos').raw(g_CUIGame.tArmyIcons[1])", "nut linh")
 	if not (nut is Control):
 		return "khong co nut"
@@ -664,6 +705,31 @@ func _kiem(lua: LuaRuntime, may_chu: String, offline: String, canh: String,
 			var ll := bn[4].split("->")
 			bam_ok = int(qq[1]) - int(qq[0]) == 4 and int(ll[0]) - int(ll[1]) == 3
 		ds.append(["bam that vao nut binh chung: them 4 quan, tru 3 thong soai", bam_ok, _bam_nut])
+		# Thong soai vao tran = toi da, va "toi da" ay den tu DAU: so engine dang giu
+		# (`ld_max`, doc tu `Chapter.LeaderShip` trong chuoi JSON ma chinh ma goc gui
+		# xuong) phai BANG cong thuc cua ban goc tren ban ghi nguoi choi
+		# (`UserLogic:GetLeaderShip` = LeaderShip + Level - 1), va bang luon truong
+		# trong JSON ay. Ba so nay khop nhau moi chung minh duoc "vao tran thi day"
+		# khong phai mot con so DAT san.
+		var ts := str(cuoi["ts vao tran"]).split("/")
+		var ts_ok := ts.size() == 5
+		if ts_ok:
+			ts_ok = ts[0] == ts[2] and ts[0] == ts[3] and ts[0] != "0" and ts[4] == "5"
+		ds.append(["thong soai vao tran: day bang toi da, va toi da dung cong thuc cua ban goc"
+				+ " (ld_max = GetLeaderShip = Chapter.LeaderShip cua chuoi JSON; LeaderShipResume = 5)",
+				ts_ok, str(cuoi["ts vao tran"]).replace("/", " / ")])
+		# Nhip hoi: 1 diem sau moi `LeaderShipResume` giay. Do duoc bang CHINH vong
+		# lap cho hoi du 3 diem de bam nut — ba nhip lien tiep, moi nhip 5 giay =
+		# 150 khung (do duoc 151: cong don 1/30 lam khung thu 151 moi vuot 5,0;
+		# xem _bam_nut_linh), cho phep lech 2 khung. Kiem CA HAI khoang, khong chi
+		# kiem tong thoi gian: mot nhip sai le se lo ra ngay.
+		var nhp := _nhip_hoi.split(" | cach ")
+		var nhp_ok := nhp.size() == 2 and nhp[0].count("@") == 3
+		if nhp_ok:
+			for g in nhp[1].split(","):
+				nhp_ok = nhp_ok and absi(int(g) - 150) <= 2
+		ds.append(["hoi thong soai: 3 nhip lien tiep, moi nhip LeaderShipResume = 5 giay (150 khung)",
+				nhp_ok, _nhip_hoi])
 		# "day A tung B->C"
 		var tt := _bam_tt.split(" ")
 		var tt_ok := tt.size() == 4 and tt[0] == "day" and int(tt[1]) >= 0
@@ -796,6 +862,8 @@ const _TRANG_THAI_CUOI := """
 	local d = nk.dua or {}
 	out['dua q'] = (tonumber(d[2]) or 0) - (tonumber(d[1]) or 0)
 	out['dua ld'] = tostring(d[3]) .. '/' .. tostring(d[4]) .. '/' .. tostring(d[5])
+	-- Thong soai vao tran: toi-da/nhip-hoi/cong-thuc-ban-goc/JSON/JSON.
+	out['ts vao tran'] = table.concat(nk.ts or {}, '/')
 	local nut = require('cocos').tran_nut
 	local okq, sq = pcall(function() return nut:so_quan() end)
 	out['so quan'] = okq and sq or 0

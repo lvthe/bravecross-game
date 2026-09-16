@@ -109,12 +109,44 @@ return function(C)
 
 	-- Thong soai (dua linh ra tran). ENGINE giu con so: tru khi dua linh, hoi
 	-- theo thoi gian, bao lai qua updateLeaderShip / updateMaxLeaderShip /
-	-- runLeaderShipTimer / NoticeDispatch (ten do trong libgame.so). So lay tu
-	-- du lieu ban goc gui vao: Chapter.LeaderShip (toi da; L_N_01_01 = 6),
-	-- Chapter.LeaderShipResume (5), Troop_<n>.BaseInfo.LeaderShipForBuild
-	-- (Troop_1 = 3). DAT, chua do: vao tran thi day thong soai; hoi 1 diem sau
-	-- moi LeaderShipResume giay (dong ho runLeaderShipTimer dem nguoc dung
-	-- khoang do).
+	-- runLeaderShipTimer / NoticeDispatch (ten do trong libgame.so). Ba so lay
+	-- nguyen tu chuoi JSON ma chinh ma goc gui xuong (`setSendTroops`):
+	--   Chapter.LeaderShip       toi da (6) — ma goc TU dat vao, khong co trong
+	--                            bang chuong; xem bang chung 1 duoi day
+	--   Chapter.LeaderShipResume giay cho moi 1 diem hoi (5)
+	--   Troop_<n>.BaseInfo.LeaderShipForBuild  gia khi dua toan do ra (Troop_1 = 3)
+	--
+	-- "VAO TRAN THI DAY" — do xong, khong con la DAT. Ba bang chung doc tu chinh
+	-- du lieu ship va tu ma goc:
+	--   1. `Chapter.LeaderShip` do CHINH ma goc dat: `FightLogic.lua:225` (va
+	--      `ClientLogic.lua:127`) gan `Chapter.LeaderShip =
+	--      G_UserLogic:GetLeaderShip()`, tuc `GameUserBaseInfoReset.LeaderShip +
+	--      (Level - 1)`; ban ghi ay ghi `LeaderShip: 6, Level: 1` -> 6. Vay "toi
+	--      da" la mot CONG THUC, khong phai hang so 6.
+	--      Va day la cho chat nhat: **bang chuong `KDBGameChapterConfig` KHONG co
+	--      khoa `LeaderShip` nao ca** — do 461/461 ban ghi: `LeaderShipResume` co
+	--      du 461, `LeaderShip` **0**. Nen con so toi da chi co DUNG MOT nguon:
+	--      ban ghi nguoi choi, qua cong thuc tren. Khong co so nao trong cau hinh
+	--      de ma "chep cho dung" — ban goc cung khong chep.
+	--   2. Ca ban ghi nguoi choi (`GameUserBaseInfoReset`, ~30 truong) co DUNG
+	--      MOT truong thong soai va KHONG co moc thoi gian nao cho no — trong khi
+	--      tai nguyen tieu hao that su thi co: `FatigueValue: 120` di kem
+	--      `FatigueUpdateTime`. Tuc thong soai khong phai con so tieu hao duoc
+	--      luu lai: con so "hien co" chi ton tai TRONG tran.
+	--   3. Khong cho nao ghi nguoc: quet ca `sc/`, moi lan `LeaderShip` dung ben
+	--      trai dau `=` deu la `Chapter.LeaderShip = GetLeaderShip()` (chieu doc
+	--      ra); khong co cho nao ghi vao ban ghi nguoi choi.
+	-- Nen vao tran la day, va "day" = `ld_max` suy tu cap + cong thuc tren.
+	--
+	-- Nhip hoi: 1 diem sau moi `LeaderShipResume` giay (`runLeaderShipTimer` dem
+	-- nguoc dung khoang do, `S_CCProgressTo:create(fTime, 0)` tu 99,9%). Do phan
+	-- bo trong bang chuong: `KDBGameChapterConfig` co 461 chuong, **458 chuong
+	-- = 5 giay**, 3 chuong = 3 — nen no la thuoc tinh cua TUNG chuong, khong
+	-- phai hang so.
+	--
+	-- `MaxLeaderShipForBuild` (cot co trong `KDBGameArmyConfig` va trong
+	-- `CUIBarracksArmyInfo.lua:38`) KHONG he co trong libgame.so (quet chuoi:
+	-- 0 lan) — engine khong bao gio doc no, nen dung di tim luat cho no.
 	local function bat_dau_thong_soai()
 		local ok, t = pcall(cjson.decode, T.ta)
 		local ch = ok and type(t) == 'table' and type(t.Sprite) == 'table' and t.Sprite.Chapter or {}
@@ -200,8 +232,10 @@ return function(C)
 	end
 	C.lop_rieng['btnBattlefieldArmy'] = Nut
 
-	-- Cho cong cu do doc thong soai (khong phai ham cua ban goc).
-	function S:_thong_soai() return T.ld, T.ld_max end
+	-- Cho cong cu do doc thong soai (khong phai ham cua ban goc). Tra ca `ld_hoi`
+	-- = `Chapter.LeaderShipResume` (giay cho moi 1 diem) de phep do kiem duoc
+	-- NHIP hoi chu khong chi kiem con so dau va con so cuoi.
+	function S:_thong_soai() return T.ld, T.ld_max, T.ld_hoi end
 
 	-- Thuc tinh. Nut: spBattleFieldHeroItem nhan ban, tag 1..5
 	-- (CUIGame:SetSkillIcons). ENGINE goi InitSkillButton cho tung tuong, doi

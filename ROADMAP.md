@@ -1308,8 +1308,32 @@ bình thường — nên phép đo theo kiểu **không** hỏi lại kiểu mà
       (`sc/share/SkillLogic.lua:579`, chú thích *"领导力恢复速度*2"*) làm
       `addtionPerSec = 1/LeaderShipResume`, cộng thêm rồi ghi ngược
       `LeaderShipResume = 1/addtionPerSec`. Ta đang hồi đúng như vậy.
-      **ĐẶT còn lại**: vào trận thì đầy thống soái (engine C++ giữ con số này,
-      client chỉ nhận qua `updateLeaderShip`)
+      **"Vào trận thì đầy" không còn là ĐẶT** (đo xong 2026-09-17). Bốn bằng
+      chứng, đọc từ dữ liệu ship và từ mã gốc:
+      (a) `Chapter.LeaderShip` do **chính mã gốc** đặt: `FightLogic.lua:225` và
+      `ClientLogic.lua:127` đều gán `Chapter.LeaderShip =
+      G_UserLogic:GetLeaderShip()`, tức `GameUserBaseInfoReset.LeaderShip + (Level
+      - 1)`; bản ghi ấy ghi `LeaderShip: 6, Level: 1` → 6.
+      (b) **Bảng chương không có số ấy để mà chép**: `KDBGameChapterConfig`
+      461/461 bản ghi đều có `LeaderShipResume`, và **0/461 có khoá
+      `LeaderShip`**. Nên con số tối đa chỉ có **đúng một** nguồn: bản ghi người
+      chơi, qua công thức trên — không có gì để bịa.
+      (c) Bản ghi người chơi (`GameUserBaseInfoReset`, ~30 trường) có **đúng
+      một** trường thống soái và **không có mốc thời gian** nào cho nó — trong
+      khi tài nguyên tiêu hao thật thì có (`FatigueValue: 120` đi kèm
+      `FatigueUpdateTime`). Tức đây không phải con số tiêu hao được lưu lại.
+      (d) Quét cả `sc/`: mọi lần `LeaderShip` đứng bên trái dấu `=` đều là
+      `Chapter.LeaderShip = GetLeaderShip()` (chiều đọc ra), **không chỗ nào
+      ghi ngược** vào bản ghi người chơi.
+      Khoá bằng 2 phép kiểm trong `do_chien_dich --kiem`: lúc ĐẶT vào trận,
+      `ld_max` (đọc từ chuỗi JSON mà chính mã gốc gửi xuống) **bằng**
+      `GetLeaderShip()` **và** bằng trường `Chapter.LeaderShip` trong chuỗi ấy
+      (đo được `6 / 5 / 6 / 6 / 5` = ld_max / ld_hoi / công thức / JSON / JSON),
+      rồi **nhịp hồi** đo được bằng chính vòng lặp chờ hồi đủ 3 điểm để bấm nút:
+      ba nhịp liên tiếp cách nhau **151, 151 khung** (`ld1@85 ld2@236 ld3@387`).
+      151 chứ không phải 150 vì `hoi_thong_soai` cộng dồn từng khung mà 1/30
+      không biểu diễn được chính xác bằng số thực — lệch 0,03 giây mỗi nhịp,
+      phép kiểm cho phép ±2 khung.
 - [x] **`SetCameraScale`** — giải hết bằng hàm engine `0x366c7c` (tìm qua bảng
       bind Lua ở `.data:0x939704` → `0x467fb4`). Chữ ký thật
       `(giây, tham2, tỉ lệ, x, y, tham6)`:
@@ -1582,6 +1606,14 @@ bình thường — nên phép đo theo kiểu **không** hỏi lại kiểu mà
    **88 đạt / 0 hỏng**, và ba việc không khôi phục được của FMOD đã ghi rõ trong mã.
 4. **Bỏ mấy chỗ ĐẶT trong trận** — chỗ đứng, tốc độ, hồi thống soái — bằng
    cách đọc tiếp `libgame.so` hoặc đo trong máy ảo.
+   **(c) hồi thống soái đã XONG** (2026-09-17): "vào trận thì đầy" nay có bằng
+   chứng chứ không còn là ĐẶT — bốn bằng chứng và hai phép kiểm ở §5 mục
+   "Cách hồi thống soái" (đo được `ld_max / ld_hoi / công thức / JSON / JSON` =
+   `6 / 5 / 6 / 6 / 5`, và nhịp hồi ba lần liên tiếp cách nhau `151, 151` khung).
+   Còn lại **(a) chỗ đứng** (chỗ đặt toán lính đầu tiên ở mép trái ô 0, và đơn
+   vị của `fLaneWidth` / `fLaneOffset`) và **(b) tốc độ** (mới có tốc độ ĐI;
+   tốc độ CHẠY — bộ binh 300, cung 250, kỵ binh 350 — và bộ "não" C++ chọn
+   đi hay chạy thì chưa nối).
 5. ~~**Làm binding engine `LuaTableView_create`**~~ — **xong**
    (`lua/bang.lua`, gắn ở `bootstrap.lua:228`), cùng lượt ấy làm luôn
    `LuaTableViewCell_create`. Trước đó `tv` là bong nên màn nào chạm vào nó thì

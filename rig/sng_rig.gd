@@ -160,6 +160,37 @@ func play(anim_name: String) -> bool:
 	return true
 
 
+## Thoi luong mot dong tac, tinh bang GIAY. Ma goc hoi cai nay 97 lan
+## (`_lua_getAnimationTime`) roi lay do lam do tre: no phai cho dong tac dien
+## xong moi chay buoc ke tiep (man ket thuc tran, chuong trinh mo cong trinh).
+## Thieu thi tra 0,0: cho 0 giay = di tiep ngay, va do cung la gia tri vo hai
+## nhat — khong do duoc ban goc tra gi khi dong tac khong ton tai, ma moi gia
+## tri <= 0,001 thi Cocos deu coi la "khong cho".
+func thoi_luong(anim_name: String) -> float:
+	if player == null:
+		return 0.0
+	if not player.has_animation(anim_name):
+		return 0.0
+	return player.get_animation(anim_name).length
+
+
+## Dung dong tac dang chay, GIU nguyen tu the dang dung. Cocos
+## `stopAnimation` khong dua ve khung 0 — ma vai cho goi no roi doi node im
+## nguyen o tu the vua chay (`spBuilding:_lua_stop()`, 24 cho).
+func dung() -> void:
+	if player != null:
+		player.stop(true)
+
+
+## He so chay nhanh/cham. Ma goc goi 26 cho (`_lua_setAnimationRate`).
+## `speed_scale` cua Godot chay muot theo khung, khac Cocos o cho toc do doi
+## ngay lap tuc — nhung do lech chi thay trong vai khung dau, va khong co so do
+## nao noi ban goc doi luc nao, nen lay duong muot.
+func dat_toc_do(he_so: float) -> void:
+	if player != null:
+		player.speed_scale = he_so
+
+
 # ------------------------------------------------------------------ noi bo
 
 func _richest_variant() -> String:

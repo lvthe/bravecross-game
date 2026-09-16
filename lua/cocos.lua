@@ -24,6 +24,12 @@ M.missing = {}        -- API bi goi ma chua lam -> so lan
 M.tag_lookups = 0
 M.tag_misses = 0
 M.tag_miss_log = {}
+-- Hut theo TUNG TAG, khong theo tung man. Can vi mot phan lon hut KHONG phai
+-- loi: ma goc dung getChildByTag lam phep THU CO MAT ("if item:getChildByTag(tag)
+-- then removeChildByTag(tag) end" — CUIPublic.lua:569, CUIHeroListEx.lua:858),
+-- lan goi dau tien truot la dung y do. Dem theo tag moi tach duoc nhom do ra
+-- khoi hut that; so do tren toan bo luot quet ghi o ROADMAP.
+M.tag_miss_theo_tag = {}
 M.cell_errors = {}   -- o danh sach dung hong -> de doc ra
 -- Lop RIENG theo ten node trong .xgg: node mang ten nay tra ham o bang nay
 -- truoc (bang do tu __index ve Node). g_BattleField: lua/san_tran.lua.
@@ -176,7 +182,20 @@ end
 -- Node khong co tag la node engine khong tra ve: getChildByTag chi tra ve cai
 -- DAU TIEN mang tag do, nen anh em trung tag thi nhung cai sau bi khuat — va
 -- ma goc cung khong voi toi chung.
+--
+-- TAG LE: ma goc co cho truyen vao mot so KHONG NGUYEN, va tren ban goc no VAN
+-- TIM RA. CUIStar.lua:236-249 — 'local nOffsetStar = delta/2' roi
+-- 'idx = i + nOffsetStar' — phep chia cua Lua 5.1 LUON ra so thuc, nen
+-- getChildByTag nhan 3.5 / 4.5 / 2.5. Binding C++ cua Cocos khai tham so la
+-- 'int' va tolua ep bang '(int)tolua_tonumber(...)', tuc CAT VE PHIA 0, nen
+-- 3.5 tra ve node tag 3. Do duoc: tag le chiem 228/2132 luot hut (3,5 x72,
+-- 4,5 x72, 2,5 x42, 5,5 x42) — va do la hut SAI, khong phai thieu tag: neu
+-- that su truot thi 'pOneStar:setIsVisible(true)' khong bao gio chay, tuc ban
+-- goc khong bao gio hien ngoi sao nao. Nay cat ve phia 0 y nhu tolua.
 function Node:getChildByTag(tag)
+	if type(tag) == 'number' and tag % 1 ~= 0 then
+		tag = tag > 0 and math.floor(tag) or math.ceil(tag)
+	end
 	local gd = raw(self)
 	M.tag_lookups = M.tag_lookups + 1
 	for i = 0, gd:get_child_count() - 1 do
@@ -186,6 +205,13 @@ function Node:getChildByTag(tag)
 		end
 	end
 	M.tag_misses = M.tag_misses + 1
+	-- `tag` co the la nil: ma goc co vai cho goi getChildByTag() tran (Cocos se
+	-- bao loi tolua, con o day thi bo dem theo tag se vo vi khoa nil — da dinh
+	-- that: 'cocos.lua:208: table index is nil' lam hong 4 bo kiem). Khong dem
+	-- thi van ghi nhat ky nhu thuong.
+	if tag ~= nil then
+		M.tag_miss_theo_tag[tag] = (M.tag_miss_theo_tag[tag] or 0) + 1
+	end
 	-- Ghi lai cho truot, kem ten node cha va cac tag no THAT SU co. Khong co
 	-- cai nay thi chi biet "co cho hut" chu khong biet hut o dau.
 	--
@@ -215,6 +241,9 @@ function Node:getChildByTag(tag)
 end
 
 function Node:getChildByTagInAllChildren(tag)
+	if type(tag) == 'number' and tag % 1 ~= 0 then
+		tag = tag > 0 and math.floor(tag) or math.ceil(tag)
+	end
 	local goc = raw(self)
 	local hang = { goc }
 	while #hang > 0 do
@@ -445,6 +474,52 @@ function Node:getChildren()
 	return out
 end
 
+-- Xep lai anh em theo zOrder cua Cocos.
+--
+-- Ham nay TRUOC DAY KHONG HE TON TAI. `_godot_zsort` duoc goi o hai cho nhung
+-- khong dinh nghia o dau, nen no roi vao `_G` gia lap -> tra ve mot BONG, va
+-- bong thi goi duoc (tra bong) — tuc `setZOrder` va `addChild(c, z)` **ghi meta
+-- roi thoi**, khong xep lai gi ca. Dung kieu loi im lang da gap o `setGray`:
+-- khong bo dem nao bat duoc, vi khong co loi nao duoc nem ra.
+--
+-- Cocos ve anh em theo zOrder TANG DAN, cung zOrder thi theo thu tu them. Godot
+-- ve theo THU TU MANG CON, nen xep lai mang y het vay. Khong dung `z_index`:
+-- ban goc truyen toi 99999 (`CUISubtitle:AddToParent`) con Godot chi nhan
+-- +-4096 (xem chu thich o addChild).
+--
+-- Xep bang `move_child` theo mot luot TANG DAN: khi buoc k thi k-1 phan tu dau
+-- da dung cho, nen day phan tu k ve vi tri k-1 chi lam dich cac phan tu CHUA
+-- xep — tien to giu nguyen. Node chua tung dat zOrder tinh la 0.
+local function _godot_zsort(cha)
+	local n = cha:get_child_count()
+	if n < 2 then return end
+	local ds = {}
+	for i = 0, n - 1 do
+		local c = cha:get_child(i)
+		local z = 0
+		if c:has_meta('zorder') then
+			local v = c:get_meta('zorder')
+			if type(v) == 'number' then z = v end
+		end
+		ds[#ds + 1] = { c = c, z = z, i = i }
+	end
+	table.sort(ds, function(a, b)
+		if a.z ~= b.z then return a.z < b.z end
+		return a.i < b.i
+	end)
+	local doi = false
+	for k = 1, n do
+		if ds[k].i ~= k - 1 then
+			doi = true
+			break
+		end
+	end
+	if not doi then return end
+	for k = 1, n do
+		cha:move_child(ds[k].c, k - 1)
+	end
+end
+
 function Node:addChild(child, z, tag)
 	local c = unwrap(child)
 	local p = c:get_parent()
@@ -492,6 +567,37 @@ function Node:removeAllChildrenWithCleanup(_)
 		local c = gd:get_child(i)
 		gd:remove_child(c)
 		c:queue_free()
+	end
+end
+
+-- Ten khac cua cung mot viec: `removeAllChildrenAndArray` la ban mo rong cua
+-- engine nay (lop cuon), y nghia y nguyen — bo het con va don cai mang con.
+-- 37 cho goi, deu la "don sach roi dung lai danh sach" (CUICOGRule.lua:64,
+-- CUIContestRewards.lua:381, hai man anniversary). Khac `removeChildByTag`:
+-- o day khong co be chua nao nhan lai node da go, nen huy han la dung.
+Node.removeAllChildrenAndArray = Node.removeAllChildrenWithCleanup
+
+-- Cocos: CCNode::removeChildByTag(tag, cleanup) — tim con DAU TIEN mang tag do
+-- roi go no ra khoi cha. 100 cho goi trong sc/.
+--
+-- KHONG queue_free, va day la cho DE SAI NHAT. Cocos KHONG huy doi tuong o day:
+-- 'cleanup' chi dung hanh dong va bo hen gio, con doi tuong song tiep neu con ai
+-- giu. Ma CElementPond (sc/user/Public/CElementPond.lua:282-284) go ra roi
+-- addChild lai chinh node do sau — do la mot BE CHUA cho cac o danh sach. Goi
+-- queue_free o day thi lan addChild lai se cham vao node da bi huy.
+--
+-- Khong dem vao tag_lookups/tag_misses: ban goc cung khong dem, va o day phep
+-- hoi chi la buoc trung gian cua viec xoa, khong phai mot lan ma goc HOI TRUOT.
+function Node:removeChildByTag(tag, cleanup)
+	local gd = raw(self)
+	for i = 0, gd:get_child_count() - 1 do
+		local c = gd:get_child(i)
+		if c:has_meta('tag') and c:get_meta('tag') == tag then
+			gd:remove_child(c)
+			-- Mac dinh cua Cocos la cleanup = true; va ta KHONG lam gi voi co do
+			-- vi khong co hanh dong hay hen gio nao de dung o day.
+			return
+		end
 	end
 end
 
@@ -689,7 +795,63 @@ function Node:getZOrder()
 	if gd:has_meta('zorder') then return gd:get_meta('zorder') end
 	return 0
 end
-function Node:setGray(_) end          -- lam mo: chua lam, khong hong gi
+
+-- Cocos: CCNode::reorderChild(child, zOrder) — doi zOrder cua MOT con roi xep
+-- lai day anh em. Khac setZOrder o cho no nham vao CON chu khong phai chinh no.
+-- Ban goc goi 1 cho trong ma (`CUIArmyGroupCampsite.lua:3583`) nhung nam trong
+-- vong lap qua toan bo con, nen do ra **1.200 luot** — cho hut lon nhat trong
+-- ca bang "API chua lam" cua luot quet 353 man.
+function Node:reorderChild(child, z)
+	local gd = raw(self)
+	local c = unwrap(child)
+	if type(c) ~= 'userdata' and type(c) ~= 'Object' then return end
+	if c == nil or c:get_parent() ~= gd then return end
+	if z ~= nil then c:set_meta('zorder', z) end
+	_godot_zsort(gd)
+end
+-- To XAM nut (nut bi khoa / khong du dieu kien). Ban goc goi 683 cho, va DOC
+-- lai trang thai ay 214 cho bang isGray().
+--
+-- Nay moi lam phan TRANG THAI, chua lam phan HINH: setGray ghi co, isGray doc
+-- co. Truoc day ca hai deu khong lam gi, nen 'isGray()' ra nil — ma nil trong
+-- Lua khong bang false lan bang true, nen moi nhanh re theo no deu di sai
+-- huong trong im lang ('if btn:isGray() == false then' va 'if not btn:isGray()'
+-- nguoc nhau). Phan hinh — lam mo thanh xam the nao — CHUA DO DUOC, xem ROADMAP
+-- muc "setGray": do bang cach doc ham binding trong libgame.so.
+function Node:setGray(b)
+	raw(self):set_meta('gray', b and true or false)
+end
+
+function Node:isGray()
+	local gd = raw(self)
+	return gd:has_meta('gray') and gd:get_meta('gray') or false
+end
+
+-- Ban goc goi 56 cho, luon luon truyen true. Cocos: BAT thi do mo cua node cha
+-- nhan xuong con (mac dinh TAT). Godot thi 'modulate' LUON nhan xuong cay, tuc
+-- lop gia lap cua ta da lam san dung cai ma 56 cho kia xin — nen khong lam gi
+-- la dung, khong phai la bo qua.
+function Node:setCascadeOpacityEnabled(_) end
+
+-- Dung lai MANG CON sau khi doi thu tu / go nham. Ban goc goi 45 cho
+-- (CUIHelper:674/720/774). O day khong co mang con nao de dung lai: moi lan
+-- getChildByTag deu quet thang con cua node Godot, nen ham nay la no-op DUNG
+-- nghia — khong phai chua lam.
+function Node:refreshChildArray(_) end
+
+-- Can chu cua nhan. Ban goc goi 8 cho.
+--
+-- Thu tu enum y nhu truong alignH cua .xgg: 0 trai, 1 giua, 2 phai — va Godot
+-- dung dung ba so do cho HORIZONTAL_ALIGNMENT_* (xem ui/xgg_layout.gd:229-233,
+-- cho do doc cung bang nay). Nen ghi thang so, khong can ten enum ben Godot.
+-- Ngoai 0..1..2 thi lay trai: Cocos cung chi co ba gia tri.
+function Node:setHorizontalAlignment(n)
+	local gd = raw(self)
+	if gd.text == nil or type(n) ~= 'number' then return end
+	local k = math.floor(n)
+	if k < 0 or k > 2 then k = 0 end
+	gd.horizontal_alignment = k
+end
 
 -- Chu ----------------------------------------------------------------------
 
@@ -742,6 +904,16 @@ Node.setFontSize = function(self, size)
 	end
 end
 
+-- Co chu dang dung. Mot cho goi (`CUINewHandPrivilege.lua:184`): lay co chu cua
+-- nhan co san roi truyen xuong `RichLabel:create` de chu con khop chu cha. Tra
+-- 0 khi khong phai nhan — chu KHONG doan mot co chu nao, vi 0 la gia tri ma
+-- `RichLabel` tu thay bang co chu mac dinh cua no.
+function Node:getFontSize()
+	local gd = raw(self)
+	if gd.text == nil then return 0 end
+	return gd:get_theme_font_size('font_size')
+end
+
 -- Bong do va vien chu: Godot lam duoc ca hai qua theme override.
 function Node:enableShadow(r, g, b, a, ox, oy)
 	local gd = raw(self)
@@ -759,6 +931,56 @@ function Node:enableOutline(r, g, b, a, day)
 	gd:add_theme_color_override('font_outline_color',
 		Color((r or 0) / 255, (g or 0) / 255, (b or 0) / 255, (a or 255) / 255))
 	gd:add_theme_constant_override('outline_size', math.floor((day or 1) * 2))
+end
+
+-- Ma goc DOC lai mau chu va mau vien roi dat lai — hai duong khac nhau, cung
+-- mot muc dich:
+--   * CUIPublic:SetLableGray (sc/user/Public/CUIPublic.lua:397-426) luu
+--     getColor() + getEffectColor() lam gia tri GOC, roi to xam roi tra lai.
+--   * CUIAssist.lua:2062-2063 lam y het.
+-- Thieu ca ba ham thi khong bao loi: getColor() ra nil, nen
+-- 'btnText:setColor(c.r or 255, ...)' ghi 255 (transparent-ish) va
+-- 'setEffectColor(nil,nil,nil,nil)' bi setColor chan lai — tuc nut xam KHONG
+-- he xam, va lan sau tra lai cung khong biet gia tri goc la gi. Do duoc tren
+-- mot man: getColor / setEffectColor / getEffectColor moi thu bi cham 1281 lan.
+--
+-- getColor tra dung mau ma setColor ghi: lop mau mang mau o 'color', con lai o
+-- 'modulate' (xem setColor ngay tren). Mac dinh cua Cocos la trang.
+function Node:getColor()
+	local gd = raw(self)
+	local c = la_lop_mau(gd) and gd.color or gd.modulate
+	return math.floor(c.r * 255.0 + 0.5), math.floor(c.g * 255.0 + 0.5),
+		math.floor(c.b * 255.0 + 0.5)
+end
+
+-- 描边 (vien chu). Ban goc goi ham nay o 9 file, va khong bao giu do day vien
+-- o dau ca — no chi la mau. Nen: chi doi MAU vien, con do day giu nguyen neu da
+-- co, chua co thi lay dung mac dinh ma enableOutline dang dung (day = 1).
+-- Ghi lai mau vao meta de getEffectColor doc lai duoc — do la ca ly do ham do
+-- ton tai (luu gia tri goc roi tra lai).
+function Node:setEffectColor(r, g, b, a)
+	local gd = raw(self)
+	if gd.text == nil then return end
+	if type(r) ~= 'number' or type(g) ~= 'number' or type(b) ~= 'number' then return end
+	local mau = Color(r / 255.0, g / 255.0, b / 255.0, (a or 255) / 255.0)
+	gd:set_meta('effect_color', mau)
+	gd:add_theme_color_override('font_outline_color', mau)
+	if not gd:has_theme_constant_override('outline_size') then
+		gd:add_theme_constant_override('outline_size', 2)
+	end
+end
+
+function Node:getEffectColor()
+	local gd = raw(self)
+	if gd:has_meta('effect_color') then
+		local c = gd:get_meta('effect_color')
+		return math.floor(c.r * 255.0 + 0.5), math.floor(c.g * 255.0 + 0.5),
+			math.floor(c.b * 255.0 + 0.5), math.floor(c.a * 255.0 + 0.5)
+	end
+	-- Chua tung dat: Cocos tra ve mau vien dang ap. Chua co vien nao thi tra
+	-- (0,0,0,0) — trong suot, tuc "khong vien" — de lan tra lai khong dung ra
+	-- mot duong vien khong he co.
+	return 0, 0, 0, 0
 end
 
 -- CHUA LAM: ban goc lay TUNG CHU cua mot label ra lam mot sprite rieng roi
@@ -826,6 +1048,49 @@ function Node:_Lua_playAnimation(ten)
 		end
 	end
 	return false
+end
+
+-- Bon ham armature ma ban goc goi nhieu nhat sau _Lua_playAnimation. Ca bon deu
+-- hoi node RIG (SngRig) dang nam duoi node nay, va deu phai chiu duoc truong
+-- hop node khong phai rig: bo cuc nao cung co the tro nham, va o day tra ve
+-- gia tri vo hai con hon nem loi giua mot man 3000 dong.
+local function _rig_cua(gd)
+	for i = 0, gd:get_child_count() - 1 do
+		local r = gd:get_child(i)
+		if r:has_method('animations') and r:has_method('play') then
+			return r
+		end
+	end
+	return nil
+end
+
+-- Thoi luong dong tac (giay) — ma goc hoi 97 lan de biet cho bao lau.
+function Node:_lua_getAnimationTime(ten)
+	local r = _rig_cua(raw(self))
+	if r == nil or not r:has_method('thoi_luong') then return 0.0 end
+	return r:thoi_luong(tostring(ten))
+end
+
+-- Dung dong tac, giu tu the dang dung (24 cho).
+function Node:_lua_stop()
+	local r = _rig_cua(raw(self))
+	if r ~= nil and r:has_method('dung') then r:dung() end
+end
+
+-- He so toc do dong tac (26 cho).
+function Node:_lua_setAnimationRate(he_so)
+	local r = _rig_cua(raw(self))
+	if r ~= nil and r:has_method('dat_toc_do') and type(he_so) == 'number' then
+		r:dat_toc_do(he_so)
+	end
+end
+
+-- Do mo cua armature (2 cho): ban goc dat thang tren node rig.
+function Node:_lua_setOpacity(o)
+	local r = _rig_cua(raw(self))
+	if r ~= nil and type(o) == 'number' then
+		r.modulate.a = o / 255.0
+	end
 end
 
 -- Gan anh theo TEN KHUNG (giong setDisplayFrame(spriteFrameByName(ten))). Ma

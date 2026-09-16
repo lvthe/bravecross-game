@@ -77,6 +77,14 @@ SUITES = [
     # Phan HINH do bang `tools/do_xam.gd`, chay CO trinh ve that nen khong nam
     # trong bang nay.
     ('to xam (Lua)',         'script', 'tools/verify_xam.gd',    False, []),
+    # He HAT cua ban goc (ui/hat.gd + lua/hat.lua). Du lieu: 33 dinh nghia
+    # .plist boc bang brave-cross/work/hatref.py; bo cuc dung 87 node, 7 dinh
+    # nghia. Bo kiem tinh LAI tung tham so tu file JSON roi doi chieu voi vat
+    # lieu ma ui/hat.gd dat ra — hai duong khac nhau phai ra cung so, va bon
+    # khang dinh trong chu thich (duration am ca 33, rotationEnd == rotationStart
+    # ca 33, L+v > 0 ca 33, khong kenh mau nao 0 kem phuong sai) thanh phep kiem
+    # chu khong con la cau chu.
+    ('he hat',               'script', 'tools/verify_hat.gd',    False, []),
 ]
 
 SCORE = re.compile(r'dat (\d+), hong (\d+)')

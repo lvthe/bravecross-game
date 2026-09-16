@@ -616,6 +616,17 @@ thành 353, và 105 màn mở được thành 244.
   được: trong lớp giả lập này, **một tên được gọi mà chưa từng được viết thì
   không ồn ào — nó im lặng**, nên phải đọc bảng "API CHUA LAM" của
   `quet_show.gd` chứ đừng chờ lỗi.
+* **`VERTEX` đọc trong `fragment()` của shader `canvas_item` là toạ độ KHUNG VẼ,
+  không phải toạ độ node.** Gặp thật khi làm chuyển sắc chữ: shader chia
+  `VERTEX.y` cho chiều cao nhãn để ra vị trí trong dải, và phép đo điểm ảnh bắt
+  được rằng nó chia **cả vị trí của node** — nhãn cao 55 điểm ảnh đặt ở `y = 8`
+  cho kênh đỏ đúng bằng `y_khung / 55` (lệch nhất 1,1807 trên hàng 47) thay vì
+  `(y_khung − 8) / 55`. Muốn toạ độ cục bộ thì phải lấy `VERTEX.y` **trong
+  `vertex()`** rồi mang sang bằng một biến `varying`; sửa xong thì **29/29 hàng**
+  khớp công thức với **lệch 0,0000**, và dời node đi 16 điểm ảnh ra nét chữ dời
+  đúng 16 còn màu thì y nguyên. Đây là loại lỗi **im lặng**: dải vẫn ra, chỉ ra
+  lệch theo chỗ node đứng, nên chỉ hiện ở màn hình thật chứ không ở phép kiểm
+  nào đọc tham số. Bộ đo: `tools/do_chuyen_sac.gd` (cần trình vẽ thật).
 * **Tag thật không nằm trong `.xgg`** — engine sinh lúc nạp. Đo từ chính bản
   gốc chạy trong máy ảo Android (`work/emu_tags.py`), ghép vào bằng
   `emu_join.py --ghi`. Hai đường ghép **chạy nối tiếp, đường sau đè đường trước**:

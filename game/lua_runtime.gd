@@ -127,6 +127,8 @@ func open() -> bool:
 	state.globals["_godot_frame"] = _frame
 	state.globals["_godot_dat_xam"] = _dat_xam
 	state.globals["_godot_dat_sang"] = _dat_sang
+	state.globals["_godot_dat_chuyen_sac"] = _dat_chuyen_sac
+	state.globals["_godot_go_chuyen_sac"] = _go_chuyen_sac
 	state.globals["_godot_zsort"] = _zsort
 	state.globals["_godot_reflash"] = _reflash
 	state.globals["_godot_load_xgg"] = _load_xgg
@@ -518,6 +520,28 @@ func _dat_xam(node: Control, bat: bool) -> void:
 ## lua/cocos.lua:setGlow de biet vi sao no dung chung duong voi `_dat_xam`.
 func _dat_sang(node: Control, bat: bool) -> void:
 	UiSang.dat(node, bat)
+
+
+## Chuyen sac chu cua mot nhan (chuong trinh shader so 8 cua ban goc). Khac
+## `_dat_xam`/`_dat_sang`: vat lieu o day gan theo TUNG node vi hai mau la tham
+## so — xem ui/chuyen_sac.gd.
+func _dat_chuyen_sac(node: Control, r1: float, g1: float, b1: float,
+		r2: float, g2: float, b2: float) -> void:
+	UiChuyenSac.dat(node, _mau255(r1, g1, b1), _mau255(r2, g2, b2))
+
+
+## `disableGradual` cua ban goc: tat co roi tra chuong trinh THUONG
+## (`vfunc_0x2e8`) — o day la go vat lieu cua ta.
+func _go_chuyen_sac(node: Control) -> void:
+	UiChuyenSac.go(node)
+
+
+## Sau so Lua (0..255) thanh mot mau. Ban goc chia ngay trong ham boc
+## `enableGradual` (0x2cab6c: `vdiv.f32` ba lan cho mot bo ba, chia cho hang
+## 255,0 nam trong pool hang so), va bon o alpha cua hai vec4 duoc dien san bang
+## 1,0 — nen KHONG co tham so alpha nao di qua day.
+func _mau255(r: float, g: float, b: float) -> Color:
+	return Color(r / 255.0, g / 255.0, b / 255.0)
 
 
 ## Bang chu tieng Viet cua ban goc (data_ref/text_vi.json, 16.894 khoa).

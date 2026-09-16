@@ -1530,6 +1530,134 @@ function Node:getEffectColor()
 	return 0, 0, 0, 0
 end
 
+-- Chuyen sac chu (gradient cua nhan) ----------------------------------------
+--
+-- Ban goc lo BON ham nay, va bang bind cho ra chung CHI o lop 12 `Label`: quet
+-- ca 132 lop tim 'radual' duoc dung bon ban ghi, ca bon deu thuoc lop 12
+-- (`brave-cross/work/binder.py`):
+--     enableGradual          MA 0x002cab6d
+--     disableGradual         MA 0x002ca8f3
+--     getEnableGradualColor  MA 0x002ca6e5
+--     IsEnableGradualColor   MA 0x002ca5c1
+-- `CCLabelTTF` (89 ban ghi) va `CCLabelBMFont` (101 ban ghi) KHONG co ban ghi
+-- nao trong so ay — cung khong co `setDimensions` / `autoFixSize`, hai API kia
+-- cung chi lop 12 moi co.
+--
+-- NHUNG: nhan trong bo cuc .xgg van LA lop 12 luc chay. `work/emu_nhan.py` goi
+-- duoc `setDimensions` / `getDimensions` / `autoFixSize` len node
+-- `ttfPopDialogContent` cua `conf/Pop_Dialog_UI_960_640.xgg` — ba API chi lop 12
+-- moi co — trong khi `typeName` ghi trong chinh file do la "CCLabelTTF". Nen
+-- phep kiem "node nay co phai nhan khong" o day KHONG duoc la
+-- `type_name == 'Label'`: ban dung lai khong ghi kieu do bao gio (dem ca 33.472
+-- node trong layout_ref: khong co node nao ten "Label"). Phai la "node nao LA
+-- nhan", tru dung ba loai ma ban goc khong cho API nay.
+local function la_nhan_chuyen_sac(gd)
+	if gd.text == nil then return false end
+	if not gd:has_meta('type_name') then return true end
+	local tn = tostring(gd:get_meta('type_name'))
+	return tn ~= 'CCLabelBMFont' and tn ~= 'CCRichLabel' and tn ~= 'CCEditBox'
+end
+
+-- Trang thai theo TUNG node.
+--
+-- Khoa la `get_instance_id()` chu KHONG phai chinh userdata, va day la cho de
+-- lam sai: `boxed` o dau file giu userdata bang __mode = 'v', nen userdata cua
+-- mot node co the bi thu gom giua hai lan goi (lan `wrap` sau tao userdata MOI
+-- cho cung node do) — khoa theo userdata thi co "dang bat" se mat sau mot vong
+-- thu gom, IM LANG, va `SetEnableGradualLableGray` se thay
+-- `IsEnableGradualColor()` tra false roi bo qua moi nhan. Id cua Godot tang don
+-- dieu va khong dung lai, nen khoa nay khong lam lan sang node khac.
+--
+-- O nho lai: mot bang nho cho moi nhan TUNG bat chuyen sac — ma goc goi quanh
+-- 10 cho — chu khong phai cho moi node, va `disableGradual` xoa ngay.
+--
+-- Khong nho vao meta cua node nhu `setGray` vi o day phai giu SAU con so (hai bo
+-- ba mau) va `getEnableGradualColor` phai tra lai dung chung; thu ma vat lieu
+-- Godot giu chi la mau 0..1 da chia 255.
+local chuyen_sac = {}
+
+local function khoa_cua(gd)
+	if gd == nil then return nil end
+	return gd:get_instance_id()
+end
+
+-- enableGradual(r1,g1,b1, r2,g2,b2): hai mau, moi mau ba kenh 0..255.
+--
+-- Ban goc doi DUNG sau tham so: ham boc 0x2cab6c dem tham so (`bl 0x23bf40` roi
+-- `cmp r0,#6; bne`) va thieu thi in "enableGradual Error!" roi thoat, KHONG lam
+-- gi. Sau do no chia tung tham so cho 255 (`vdiv.f32`), ghi bo ba 1 vao
+-- +0x380..+0x388 va bo ba 2 vao +0x390..+0x398, con bon o alpha cua hai vec4
+-- da duoc dien san bang 1,0 — tuc khong co tham so alpha.
+--
+-- Hai phep kiem trong than ham that (0x4f7ff0) CHI GHI LOG roi chay tiep chu
+-- khong tu choi: `+0x218` khac 0 -> "enableGradual LabelType error", `+0x2ec`
+-- khac 0 hoac 2 -> "enableGradual LabelEffect  error". Nen o day cung khong tu
+-- choi vi ly do nao khac.
+--
+-- Mot quy cua ma goc duoc tai hien mien phi: `CUIPublic:SetEnableGradualLableGray`
+-- luc tra lai goi `enableGradual(c.r2, c.g2, c.b2, c.r2, c.g2, c.b2)`
+-- (sc/user/Public/CUIPublic.lua:474) — tuc no LAM PHANG dai chu khong tra lai
+-- gradient goc. O day cung vay, va khong phai viet gi them: do la chinh loi goi
+-- cua ma goc.
+--
+-- `disableGradual` (than 0x4f8136: ghi co +0x3a0 = 0 roi `vfunc_0x2e8` tra
+-- chuong trinh thuong) ma goc KHONG goi lan nao — `grep -c disableGradual` tren
+-- toan bo sc/ ra 0. Van lam, vi bang bind co no: thieu thi no roi vao `__index`
+-- va tra ve mot ham dem lai roi tra nil, dung kieu "bong" ma `M.missing` sinh ra
+-- de phoi ra.
+function Node:enableGradual(r1, g1, b1, r2, g2, b2)
+	local gd = raw(self)
+	if not la_nhan_chuyen_sac(gd) then return end
+	if type(r1) ~= 'number' or type(g1) ~= 'number' or type(b1) ~= 'number'
+			or type(r2) ~= 'number' or type(g2) ~= 'number'
+			or type(b2) ~= 'number' then
+		return
+	end
+	chuyen_sac[khoa_cua(gd)] = {r1 = r1, g1 = g1, b1 = b1, r2 = r2, g2 = g2, b2 = b2}
+	_godot_dat_chuyen_sac(gd, r1, g1, b1, r2, g2, b2)
+end
+
+function Node:disableGradual()
+	local gd = raw(self)
+	if not la_nhan_chuyen_sac(gd) then return end
+	chuyen_sac[khoa_cua(gd)] = nil
+	_godot_go_chuyen_sac(gd)
+end
+
+-- Tra SAU gia tri: ba kenh cua bo ba 1 roi ba kenh cua bo ba 2, moi so nhan
+-- 255. Than ham 0x2ca6e4 doc +0x380/+0x384/+0x388 roi +0x390/+0x394/+0x398,
+-- `vmul.f32` 255,0 tung so roi day ra (`bl 0x23c4a6`), cuoi cung `return 6` —
+-- bon o ALPHA khong he duoc doc. Doi chieu cho ro: `getColor` tra 4 gia tri, con
+-- ham nay tra 6, khong phai 8.
+--
+-- Nhan chua bat chuyen sac bao gio thi ban goc doc bon o CHUA KHOI TAO (ham dung
+-- cua Label, 0x4f8a24, khong ghi +0x380..+0x398). Ma goc cung khong bao gio hoi
+-- truong hop do: `CUIPublic:SetEnableGradualLableGray` hoi
+-- `IsEnableGradualColor()` truoc roi moi doc (CUIPublic.lua:441). O day tra 0
+-- cho ca sau — mot so THAT nam trong khoang gia tri, khong phai so bia.
+--
+-- Sai khac da biet, ghi lai: ban goc di vong qua float32 (chia roi nhan lai
+-- 255), nen voi vai gia tri no tra ve lech mot don vi cuoi (vi du 99.999992 thay
+-- vi 100). O day tra lai dung so ma nguoi goi dua vao.
+function Node:getEnableGradualColor()
+	local o = chuyen_sac[khoa_cua(raw(self))]
+	if o == nil then return 0, 0, 0, 0, 0, 0 end
+	return o.r1, o.g1, o.b1, o.r2, o.g2, o.b2
+end
+
+-- Co DANG bat chuyen sac hay khong. Ham dung cua Label (0x4f8a24) ghi co nay bang
+-- 0 (`strb.w r6, [r4, #0x3a0]` voi r6 = 0), `enableGradual` ghi 1 (0x4f8026) va
+-- `disableGradual` ghi 0 (0x4f813a). Chinh vi khoi tao la 0 nen phep kiem o
+-- CUIPublic moi co nghia: no bo qua moi nhan chua tung bat chuyen sac.
+--
+-- Node khong phai nhan thi tra false chu khong phai nil: ban goc khong co
+-- phuong thuc nay o lop khac, ma o do `btnText.IsEnableGradualColor == nil` cung
+-- cho ra dung cung mot duong (CUIPublic di thang vao Exit0).
+function Node:IsEnableGradualColor()
+	local k = khoa_cua(raw(self))
+	return k ~= nil and chuyen_sac[k] ~= nil
+end
+
 -- Kich thuoc bao quanh cua node, trong khong gian node CHA — dung nghia
 -- `boundingBox()` cua Cocos: hinh chu nhat (0,0,w,h) di qua phep bien doi node
 -- sang cha. Ban goc chi doc HAI so cuoi (RichLabel.lua:280

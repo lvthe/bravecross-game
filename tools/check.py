@@ -92,6 +92,17 @@ SUITES = [
     # trinh THUONG, tuc xoa luon cai kia. Cong thuc (rgb x1,5, alpha khong nhan)
     # doc tu chinh file `.gdshader`; phan HINH do bang `tools/do_sang.gd`.
     ('to sang (Lua)',        'script', 'tools/verify_sang.gd',   False, []),
+    # Chuyen sac chu (shader so 8 cua ban goc, `.rodata 0x7cbcac`). Bon ham nay
+    # CHI co o lop 12 `Label` — bang bind quet ca 132 lop chi ra dung bon ban ghi,
+    # va `CCLabelTTF` trong .xgg lai LA lop 12 luc chay (do duoc: goi duoc
+    # `setDimensions` — API chi lop 12 moi co — len node nhan cua mot file .xgg
+    # that). Nen phep kiem "node nao" khong the la `type_name == 'Label'`. Kiem
+    # ca ba tang: cong thuc trong file `.gdshader` (tron nguoc chieu la loi IM
+    # LANG), phan noi day (vat lieu theo TUNG node, chieu cao theo o, co khoi tao
+    # 0), va duong ma man hinh dung — `g_CUIPublic:SetEnableGradualLableGray`,
+    # noi khoa luon thu tu sau gia tri vi no "lam phang" dai bang bo ba THU HAI.
+    # Phan HINH do bang `tools/do_chuyen_sac.gd` (can trinh ve that).
+    ('chuyen sac chu (Lua)', 'script', 'tools/verify_chuyen_sac.gd', False, []),
     # He HAT cua ban goc (ui/hat.gd + lua/hat.lua). Du lieu: 33 dinh nghia
     # .plist boc bang brave-cross/work/hatref.py; bo cuc dung 87 node, 7 dinh
     # nghia. Bo kiem tinh LAI tung tham so tu file JSON roi doi chieu voi vat

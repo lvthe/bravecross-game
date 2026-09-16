@@ -806,8 +806,7 @@ theo màn**, không phải số chỗ gọi; hai con số không mâu thuẫn, c
 | `pauseActions` / `resumeActions` | 2 (`CPublic`) | tạm dừng / chạy lại action **và** hẹn giờ của node | `CCNode::pauseActions` của bản gốc gọi `pauseSchedulerAndActions`, tức **cả hai** bộ. Đo trong `libgame.so` (`work/binder.py --nut`): `+0xdc` là bộ quản lý action (5 hàm action đều đọc đúng ô này), `+0xd8` là bộ thứ hai mà **không hàm action nào** đọc, `+0xe0` là `m_bRunning` — nhận ra nhờ `eor r3,r3,#1` (= `!m_bRunning`) nằm đúng chỗ đối số, đúng chữ ký `CCNode::runAction`/`schedule`; `pauseActions` (`0x4aeb88`) và `resumeActions` (`0x4aeacc`) đọc **cả `+0xd8` lẫn `+0xdc`**. Quét cả 132 bảng lớp **không** có hàm nào riêng cho bộ hẹn giờ (`pause`/`resume` 2 lớp; `schedule`/`scheduleOnce`/`scheduleUpdate` chỉ ở lớp `CCSchedule`), nên đây là đường **duy nhất**. Khung hình tạm dừng **không** cộng dồn thời gian, nên chạy lại không nhảy một bước; `tools/verify_lua_actions.gd` — 54 đạt / 0 hỏng |
 | `CCProgressTo` / `CCProgressFromTo` | 49 + 14 = **63** lượt | chạy phần trăm của thanh tiến độ theo thời gian | Nghĩa của Cocos2d-x đọc từ chính mã gốc: `CCProgressTo::startWithTarget` lấy `m_fFrom` = phần trăm **đang có** rồi `update(p)` đặt `m_fFrom + (m_fTo − m_fFrom)·p`; `CCProgressFromTo::startWithTarget` đặt luôn phần trăm về `m_fFrom` **trước** khi chạy — hai cái khác nhau đúng ở chỗ lấy điểm đầu. Đặt qua node Godot chứ **không** qua lớp bọc: lớp bọc đã chốt `__index` về bảng `Node` (`cocos.lua:86`) nên `n:setPercentage(...)` ở đây sẽ rơi vào bộ đếm `M.missing` mà **im lặng**. Trước khi làm, hai thực thể này là **bóng**: `system/engine.lua:82-83` chỉ tạo `CCProgressTo:new()` từ một lớp không có, `create` trả về bảng không có `tien`, và `M.runAction` bỏ qua nó **không một lỗi nào** — mọi thanh tiến độ đứng yên. Đo trước/sau bằng chính bộ kiểm: **44 đạt / 8 hỏng** → **54 đạt / 0 hỏng**. Một chỗ đáng nhớ: `ptLoadingGamePercent` (nút **duy nhất** của cả cây vừa vuông vừa to — 81×81 — và là nút duy nhất ghi tên ảnh ở `+0xE4`) là thanh mà **chính mã gốc** quay bằng đúng cặp này: `CUIDownload.lua:62-70` chạy `ProgressFromTo(0.8, 0, 100)` + `setType "cw"` rồi `ProgressFromTo(0.8, 100, 0)` + `setType "ccw"` |
 
-Hai thứ **cố ý KHÔNG làm**, ghi rõ để lần sau không đoán:
-
+Ba thứ **cố ý KHÔNG làm**, ghi rõ để lần sau không đoán:
 * **`setPercentage`** — ~~cố ý không làm~~ **đã làm xong ở lượt sau**, xem mục 8
   việc 8. Giữ lại đoạn này vì nó là **bản ghi của một kết luận SAI**, và sai ở
   chỗ nào thì đáng nhớ hơn cả kết luận đúng: ghi cũ ở đây nói "quét cả 325 bản
@@ -878,10 +877,109 @@ Hai thứ **cố ý KHÔNG làm**, ghi rõ để lần sau không đoán:
   thành sprite** của `RichLabel` (`sc/user/Public/RichLabel.lua:550-554`), nằm
   trong lớp C++ `Label`. Trả 0 thì `spriteArray` rỗng và chữ vẫn hiện bình
   thường, nhưng đó là **đoán** một con số của engine — không làm.
-* **`IsEnableGradualColor` (10) / `enableGradual` (1)** — **không phải lỗ hổng**:
-  `GradualColor` xuất hiện **0 lần** trong toàn bộ `layout_ref/`, tức mọi nhãn
-  đều không phải nhãn chuyển màu, và `nil` của ta cho ra **đúng nhánh** mà bản gốc
-  đi.
+* **`IsEnableGradualColor` (10) / `enableGradual` (1)** — ~~không phải lỗ hổng~~,
+  **đã làm xong** (xem mục "Chuyển sắc chữ" ngay dưới). Hai con số trong cột
+  "chỗ gọi" là số lần bộ quét **chạy** bắt gặp lúc mở màn hình; đếm **tĩnh**
+  trên `sc/` thì `enableGradual` có **8 chỗ gọi thật** ở 5 file và
+  `IsEnableGradualColor` có **1** (hai chỗ nữa bị chính bản gốc comment lại).
+  Câu cũ ở đây — "`GradualColor` xuất hiện **0 lần** trong toàn bộ `layout_ref/`,
+  tức mọi nhãn đều không phải nhãn chuyển màu, và `nil` của ta cho ra **đúng
+  nhánh** mà bản gốc đi" — là **một kết luận SAI**, giữ lại vì chỗ sai đáng nhớ:
+  phép quét ấy **đúng**, nhưng nó trả lời câu "trong **bố cục** có nhãn chuyển
+  màu sẵn không", trong khi câu phải hỏi là "**mã gốc có gọi không**". Nhãn
+  chuyển màu do **mã** bật lúc chạy, nên "bố cục không có" **không** suy ra được
+  "không cần làm".
+
+### Chuyển sắc chữ (`enableGradual` / `disableGradual` / `getEnableGradualColor` / `IsEnableGradualColor`)
+
+Bốn hàm này **chỉ** có ở lớp 12 `Label`: quét cả 132 bảng lớp của `libgame.so`
+chỉ ra đúng bốn bản ghi, tất cả ở lớp 12 (`enableGradual` `0x002cab6d`,
+`disableGradual` `0x002ca8f3`, `getEnableGradualColor` `0x002ca6e5`,
+`IsEnableGradualColor` `0x002ca5c1`); `CCLabelTTF` (89 bản ghi) và
+`CCLabelBMFont` (101) **không** có hàm nào trong bốn, cũng không có
+`setDimensions` / `autoFixSize`. Nhưng phép kiểm "node nào" **không thể** là
+`type_name == 'Label'`: **đo được** rằng node `.xgg` mang `typeName` là
+`CCLabelTTF` lại **là lớp 12 lúc chạy** — `brave-cross/work/emu_nhan.py` gọi
+được `setDimensions` / `getDimensions` / `autoFixSize` (ba API chỉ lớp 12 mới có)
+lên node `ttfPopDialogContent` của `conf/Pop_Dialog_UI_960_640.xgg`, còn
+`layout_ref` (33.472 node) **không có node nào** mang `typeName` là `Label`. Nên
+cổng nhận node là "**mọi nhãn của bản port, trừ `CCLabelBMFont` / `CCRichLabel` /
+`CCEditBox`**".
+
+Thân hàm thật (`0x4f7ff0`) đọc ra: hai phép kiểm `LabelType` (`+0x218`) và
+`LabelEffect` (`+0x2ec`) **chỉ ghi log** rồi đi tiếp; `+0x3a0 = 1`; đổi shader
+sang `ShaderLabel_Gradual`; bốn `glGetUniformLocation` → `v_coordYRange` =
+`+0x3a4`, `v_colorBegin` = `+0x3a8`, `v_colorEnd` = `+0x3ac`, `v_textColor` =
+`+0x308`; hai `memcpy` 16 byte (đối số 1 → `+0x380` = **begin**, đối số 2 →
+`+0x390` = **end**). Hàm bọc `0x2cab6c` **đòi đúng 6 đối số** (`cmp r0,#6; bne`
+in `enableGradual Error!` rồi **không làm gì**) và chia mỗi số cho 255; bốn ô
+alpha được điền sẵn 1,0. Cờ khởi tạo **0** (hàm dựng `Label` `0x4f8a24` ghi
+`+0x3a0 = 0`), `enableGradual` ghi 1, `disableGradual` (`0x4f8136`) ghi 0 rồi trả
+node về chương trình thường. `getEnableGradualColor` (`0x2ca6e4`) đọc **sáu** số
+theo thứ tự (begin rồi end), nhân 255, và **không bao giờ đọc alpha**;
+`IsEnableGradualColor` (`0x2ca5c0`) đẩy cờ ra dạng boolean.
+
+**Chiều — chỗ dễ làm ngược nhất.** Chương trình số 8, nguồn ở `.rodata 0x7cbcac`
+(909 byte):
+
+```glsl
+float a = abs(v_texCoord.y - v_coordYRange.x) / abs(v_coordYRange.y - v_coordYRange.x);
+resultColor.rgb = v_colorBegin.rgb*a + v_colorEnd.rgb*(1-a);
+resultColor.a = texColor.a;
+gl_FragColor = v_fragmentColor*resultColor;
+```
+
+`v_coordYRange` được nạp bằng `glUniform2f(prog, +0x3a4, quad+0x14, quad+0x5c)`
+(`0x4f708a..0x4f70d4`), đúng là `tl.texCoords.v` và `br.texCoords.v` của
+`V3F_C4B_T2F_Quad` (`tl` ở `+0x14`, `br` = `3*24+0x14` = `+0x5c`) — và v của
+Cocos **tăng xuống dưới**. Nên `a = 0` ở **đầu** ô ⇒ đầu ô = `v_colorEnd` = bộ ba
+**thứ hai**, cuối ô = bộ ba **thứ nhất**.
+
+**Một cái bẫy của Godot đã mắc và đã sửa — `VERTEX` trong `fragment()` là toạ độ
+KHUNG VẼ, không phải toạ độ node.** Bản port viết
+`a = VERTEX.y / chieu_cao` trong `fragment()`, và `tools/do_chuyen_sac.gd` bắt
+được: nhãn cao 55 điểm ảnh đặt ở `y = 8`, nét chữ ở hàng 22..50 của khung, kênh đỏ
+ra **đúng `y_khung / 55`** (lệch nhất 1,1807 trên hàng 47) chứ không phải
+`(y_khung − 8) / 55` — tức phép chia đã **ăn cả vị trí của node**. Sửa bằng cách
+ghi `VERTEX.y` (lúc còn ở không gian cục bộ, trong `vertex()`) ra một biến varying
+rồi dùng nó trong `fragment()`. Sau khi sửa: **29/29 hàng** khớp công thức với
+**lệch 0,0000**, và lượt chụp thứ hai (dời node thêm 16 điểm ảnh) ra nét chữ dời
+đúng 16 còn **màu thì y nguyên**. Đây là lỗi **im lặng**: dải vẫn ra, chỉ ra lệch
+theo chỗ node đứng — và nó chỉ hiện ra ở màn hình thật, nơi nhãn không nằm ở gốc
+khung vẽ.
+
+**Đường của màn hình.** Không màn nào gọi thẳng `enableGradual` để tô xám: mã gốc
+gọi `g_CUIPublic:SetEnableGradualLableGray(btnText, bGray, szBtnText)`
+(`sc/user/Public/CUIPublic.lua:438`), hàm này **có cổng riêng**
+(`if btnText.IsEnableGradualColor == nil or not(btnText:IsEnableGradualColor())
+then goto Exit0 end`, `:441` — nên nhãn chưa từng bật thì nó **bỏ qua**, không
+đụng tới màu riêng của nhãn), nhánh xám gọi `enableGradual(192,192,192,192,192,192)`
++ `setEffectColor(0,0,0,125)`, còn nhánh **trả lại** gọi
+`enableGradual(c.r2, c.g2, c.b2, c.r2, c.g2, c.b2)` (`:474`) — **LÀM PHẲNG** dải
+bằng chính bộ ba **thứ hai**, chứ không trả lại dải gốc. Đó là quy của mã gốc, và
+bộ kiểm khoá luôn **thứ tự** sáu giá trị: trả ngược hai bộ ba thì chỗ này ra
+`(255,210,100)` thay vì `(255,255,190)`.
+
+Tám chỗ gọi `enableGradual` trong `sc/` (5 file) — `CUIContestBattleInfo.lua:414`,
+`CUIContestSchAnimation.lua:51`, `CUIUserInfo.lua:769` và `:772`,
+`CUIWCSBattleInfo.lua:441`, `CUIWCSSchAnimation.lua:51`, cộng hai chỗ trong
+`CUIPublic.lua` ở trên. Bản port: `ui/chuyen_sac.gdshader` (nguyên văn công thức,
+kèm đoạn mã gốc trong chú thích), `ui/chuyen_sac.gd` (vật liệu **của từng node** —
+hai màu là **tham số**, nên không dùng chung được như `ui/xam.gd` / `ui/sang.gd`,
+và vật liệu được nhớ trong meta của node để `go()` biết cái nào là của ta),
+`lua/cocos.lua` (bốn phương thức + bảng trạng thái **khoá theo `get_instance_id()`**,
+vì `boxed` giữ userdata bằng tham chiếu **yếu**: khoá theo userdata thì nó có thể
+bị thu gom giữa hai lần gọi và cờ "đang bật" biến mất **im lặng**, làm cổng
+`IsEnableGradualColor` ở `CUIPublic.lua:441` chặn hết mọi nhãn).
+
+**Khoá:** `tools/verify_chuyen_sac.gd` (51 đạt / 0 hỏng — đọc thẳng file
+`.gdshader` để bắt phép trộn ngược chiều, kiểm phần nối dây và **chạy đúng đường
+của màn hình**, tức `g_CUIPublic:SetEnableGradualLableGray` thật) và
+`tools/do_chuyen_sac.gd` (15 đạt / 0 hỏng — đo trên điểm ảnh thật, cần trình vẽ
+nên **không** nằm trong `check.py`, cùng lối `do_xam.gd` / `do_sang.gd` /
+`do_tron.gd`). Một chỗ **lệch đã biết**: `getEnableGradualColor` của bản gốc trả
+`255 × float32(r/255)` (đi qua `vmul.f32`), bản port trả **đúng con số đã truyền
+vào** — khác nhau ở chữ số cuối của float.
 
 ### Hệ hạt (particle): bố cục CÓ ghi tệp hạt — lỗi ở bộ đọc của ta, đã sửa
 
@@ -2275,3 +2373,34 @@ việc 8). Đây là lần thứ hai trong dự án một việc bị xếp vào
 ảo" hoá ra **đo được bằng dữ liệu đã có** — lần trước là `setGray`. Nên trước khi
 kết luận "phải chạy bản gốc", hãy đọc lại bản ghi theo **từng byte** và tự hỏi bộ
 trích của mình có đang mang trường ấy ra không.
+
+12. ~~**Chuyển sắc chữ** (`enableGradual` / `disableGradual` /
+    `getEnableGradualColor` / `IsEnableGradualColor`)~~ — **xong**, và nó là món
+    to nhất còn lại của bảng "API Cocos CHUA LAM". Chi tiết + số đo: mục "Chuyển
+    sắc chữ" trong phần "Lớp giả lập" ở trên. Hai điều đáng nhớ:
+    (a) câu cũ "bố cục không có nhãn chuyển màu nên không cần làm" là **kết luận
+    sai** — nhãn ấy do **mã** bật lúc chạy, và `sc/` có **8 chỗ gọi thật**;
+    (b) `VERTEX` đọc trong `fragment()` của Godot 4.7 là toạ độ **khung vẽ**, nên
+    dải chuyển sắc lệch theo chỗ node đứng — lỗi **im lặng**, bắt được bằng phép
+    đo điểm ảnh (`tools/do_chuyen_sac.gd`, 15 đạt / 0 hỏng), và mục "đừng tìm
+    lại" của `README.md` nay ghi lại.
+
+Ba món của lượt này (việc 10, 11, 12) đều thuộc **cùng một loại**: API mà `sc/`
+gọi tới nhưng lớp giả lập **chưa từng viết**, nên tên rơi vào bảng `Node` và trả
+`nil` — không lỗi, không cảnh báo. Bảng "API Cocos CHUA LAM" của `quet_show.gd`
+vẫn là chỗ để đọc tiếp. Đếm **tĩnh** trên `sc/` (số lần **xuất hiện** của tên, to
+hơn số lần bộ quét **chạy** bắt gặp vì phần lớn nằm ở màn chưa mở được):
+
+| tên | lần | ghi chú đã kiểm |
+|---|---|---|
+| `initWithSpriteFrameName` / `initWithSpriteFrame` | 66 / 9 | đặt khung hình cho sprite — bản port đặt ảnh bằng đường khác |
+| `setText` | 38 | gồm `CCEditBox`, mà `ui/xgg_layout.gd:77` ánh xạ `"CCEditBox" → "label"` — nhãn thì **không gõ được** |
+| `_ShowShadow` | 20 | **cả 20 đều gọi trên node armature** (`getSpriteFromSpriteCatch` → `SngRig`, `lua/bootstrap.lua:553`) — `grep shadow rig/*.gd` ra **0**, tức chỗ làm là `rig/sng_rig.gd` |
+| `_lua_CollisionSize` | 6 | cùng họ `_lua_*` của armature |
+| `_Lua_addStarLevelEffect` | 4 | |
+| `setLuaCallbackObjAndFunc` | 3 | nối ô nhập chữ với hàm Lua |
+| `setSoundStrArr` | 2 | |
+
+Hai món đáng làm trước: **ô nhập chữ** (`setText` + `setLuaCallbackObjAndFunc`;
+`ui/xgg_layout.gd` đang biến `CCEditBox` thành `Label` nên không có chỗ gõ) và
+**`_ShowShadow`** (rẻ — chỉ là bật/tắt bóng của armature — mà 20 chỗ gọi).

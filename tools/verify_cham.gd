@@ -29,6 +29,7 @@ func t(name: String, cond: bool, note: String = "") -> void:
 func _init() -> void:
 	_du_lieu()
 	_gia_lap()
+	_lop_chan()
 	_man_that()
 	print("\ndat %d, hong %d" % [ok, bad])
 	quit(1 if bad > 0 else 0)
@@ -71,6 +72,76 @@ func _du_lieu() -> void:
 	t("layout_ref co ten cham", tong["tong"] >= 1900,
 			"%d node / %d file" % [tong["tong"], so_file])
 	print("  -> %d node co ten cham trong %d bo cuc" % [tong["tong"], so_file])
+
+	# Lop chan: ca 8 node ma ma goc goi `setIsSwallowInBegan` tren do deu la
+	# CCLayerColorRoundRect. Day la phep kiem lop doc lap cho phep do o
+	# `lua/cocos.lua`: method do chi ton tai tren DUNG mot lop trong 132 bang,
+	# va ca 8 cho goi trong ma goc deu goi TRAN (khong co
+	# `if X.setIsSwallowInBegan then`), nen 8 node do BAT BUOC phai thuoc lop
+	# ay. Sau node tim theo TEN trong layout_ref, hai node cua
+	# CUIFriendsChatting khong co ten — ma goc lay chung bang TAG
+	# (CUIFriendsChatting.lua:140,143: `rootPanel:getChildByTag(1)` la
+	# blockPanel, roi `:getChildByTag(2)` va `:getChildByTag(5)`), nen phai di
+	# dung chuoi tag do chu khong tim theo ten.
+	var can := {}
+	var lop_chan := {"co": 0, "dung_lop": 0}
+	for f in DirAccess.get_files_at("res://layout_ref"):
+		if not f.ends_with(".json"):
+			continue
+		var j = JSON.parse_string(FileAccess.get_file_as_string("res://layout_ref/" + f))
+		if j is Dictionary:
+			for r in j.get("roots", []):
+				_lop_chan_dem(r, lop_chan, can)
+	t("6/8 node cua setIsSwallowInBegan co trong layout_ref theo TEN",
+			can.size() == 6, str(can.keys()))
+	t("ca 6 deu la CCLayerColorRoundRect (type 4)",
+			lop_chan["dung_lop"] == 6, "%d/%d" % [lop_chan["dung_lop"], lop_chan["co"]])
+
+	var fc = JSON.parse_string(FileAccess.get_file_as_string(
+			"res://layout_ref/UI_FriendsChatting_960_640.json"))
+	var chan_fc := 0
+	var giu_fc := false
+	if fc is Dictionary and not fc.get("roots", []).is_empty():
+		var bp = _theo_tag(fc["roots"][0].get("children", []), 1)
+		if bp != null:
+			for tg in [2, 5]:   # :140 va :143
+				var m = _theo_tag(bp.get("children", []), tg)
+				if m != null and String(m.get("typeName", "")) == "CCLayerColorRoundRect" \
+						and int(m.get("type", -1)) == 4:
+					chan_fc += 1
+			# Node CUNG LOP, CUNG CHA, ngay canh do — `lFriendsChattingInvalidTouch`
+			# (tag 4) — ma ma goc KHONG he goi setIsSwallowInBegan tren no. No la
+			# phep kiem rang LOP khong quyet dinh: lop giong nhau thi mac dinh
+			# nuot, va chinh loi goi `false` moi la cai doi hanh vi.
+			var canh = _theo_tag(bp.get("children", []), 4)
+			giu_fc = canh != null and String(canh.get("typeName", "")) == "CCLayerColorRoundRect"
+	t("2/8 node con lai (CUIFriendsChatting) la CCLayerColorRoundRect theo chuoi TAG",
+			chan_fc == 2, "%d/2" % chan_fc)
+	t("node CUNG LOP ngay canh (tag 4) khong goi set -> giu mac dinh NUOT",
+			giu_fc)
+
+
+## Con cua `ds` mang tag `tg`, hoac null.
+func _theo_tag(ds: Array, tg: int) -> Variant:
+	for c in ds:
+		if c is Dictionary and int(c.get("tag", -1)) == tg:
+			return c
+	return null
+
+
+func _lop_chan_dem(nd: Dictionary, dem: Dictionary, can: Dictionary) -> void:
+	var ten := String(nd.get("name", ""))
+	var thay := ["lLevelNotice", "lChattingVoiceTextClose", "lChattingAddFriendClose",
+			"lChattingEmoticonClose", "lCampsiteChattingEmoticonClose",
+			"lCampsiteChattingVoiceTextClose"]
+	if thay.has(ten):
+		can[ten] = true
+		dem["co"] += 1
+		if String(nd.get("typeName", "")) == "CCLayerColorRoundRect" \
+				and int(nd.get("type", -1)) == 4:
+			dem["dung_lop"] += 1
+	for c in nd.get("children", []):
+		_lop_chan_dem(c, dem, can)
 
 
 # 2. Luat phan phoi --------------------------------------------------------
@@ -200,6 +271,96 @@ const _DAT := """
 	B:setCallbackLuaObject(P)
 	B:setLuaTouchName('Tren')
 	K:setLuaTouchName('KhongAi')
+	return true
+"""
+
+
+# 2b. Lop chan (setIsSwallowInBegan) ---------------------------------------
+
+## `setIsSwallowInBegan` — do tu file game: lop `CCLayerColorRoundRect` mac
+## dinh la NUOT (ba ham dung deu ghi 1 vao +0x276), va 8 cho goi trong ma goc
+## deu dat `false` tren cac 阻隔层. `false` nghia la lop chan VAN chay ham cua
+## no nhung KHONG giu cu cham — cu cham di tiep xuong node nam duoi. Bay dieu
+## duoi day chot dung bay nhieu do:
+##
+##   - khong goi gi  -> nuot (giu nguyen luat da do cua verify_cham phan 2)
+##   - goi false     -> khong nuot, VA ham cua lop chan van chay
+##   - goi false     -> chi pha Begin bi nhuong; Move/End van theo node thang
+##   - goi vang doi so -> 1 (nuot) — khong phai "doi so vang la false"
+##   - goi 0         -> truthiness cua Lua: 0 la BAT, khong phai `b ~= false`
+##   - goi false ma khong co ai o duoi -> tra false nhung ham VAN chay
+func _lop_chan() -> void:
+	var lua := LuaRuntime.new()
+	if not lua.open():
+		t("mo Lua (lop chan)", false, ", ".join(lua.errors))
+		return
+	var goc := Control.new()
+	goc.size = Vector2(960, 640)
+	var nut := _o(goc, Rect2(100, 100, 200, 100))
+	var chan := _o(goc, Rect2(0, 0, 960, 640))     # ve sau nut nen nam TREN
+	lua.set_touch_root(goc)
+	lua.state.globals["_NUT"] = nut
+	lua.state.globals["_CHAN"] = chan
+	if lua.run(_DAT_CHAN, "dat lop chan") != true:
+		t("dat lop chan", false, ", ".join(lua.errors))
+		goc.free()
+		return
+
+	# Mac dinh: lop chan nuot. Day cung la phep kiem rang luat cu khong bi doi.
+	var an := _bam(lua, Vector2(150, 150))
+	t("mac dinh (khong goi set): lop chan NUOT, nut duoi khong nhan Begin",
+			an and _nhat(lua) == "chan Begin", "an=%s" % an)
+
+	lua.run("CHAN:setIsSwallowInBegan(false)", "tat nuot")
+	t("co luu vao chinh node Godot (song qua wrap)",
+			chan.has_meta("swallow_begin") and chan.get_meta("swallow_begin") == false)
+	an = _bam(lua, Vector2(150, 150))
+	var s := _nhat(lua)
+	t("false: ham cua lop chan VAN chay, roi cu cham xuong nut duoi",
+			an and s == "chan Begin|nut Begin|nut End true", s)
+	var mong := "chan Begin|nut Begin|nut Move false|nut End false"
+	var truot := _bam(lua, Vector2(150, 150), Vector2(900, 600))
+	t("false: chi Begin bi nhuong — Move/End van theo nut thang Begin",
+			truot and _nhat(lua) == mong, mong)
+
+	lua.run("CHAN:setIsSwallowInBegan(false)", "tat lai")
+	an = _bam(lua, Vector2(700, 500))
+	s = _nhat(lua)
+	t("false ma khong co ai o duoi: khong ai an, nhung ham VAN chay",
+			not an and s == "chan Begin", "an=%s s=%s" % [an, s])
+
+	lua.run("CHAN:setIsSwallowInBegan()", "goi vang doi so")
+	t("goi vang doi so -> 1 (NUOT), khong phai false",
+			_bam(lua, Vector2(150, 150)) and _nhat(lua) == "chan Begin")
+	lua.run("CHAN:setIsSwallowInBegan(0)", "goi so 0")
+	t("goi 0 -> truthiness cua Lua: 0 la BAT (nuot)",
+			_bam(lua, Vector2(150, 150)) and _nhat(lua) == "chan Begin")
+	lua.run("CHAN:setIsSwallowInBegan(true)", "goi true")
+	t("goi true -> nuot lai", _bam(lua, Vector2(150, 150))
+			and _nhat(lua) == "chan Begin")
+	t("doi co nuot khong doi co nghe cham (hai co doc lap)",
+			lua.run("return CHAN:getEnableLuaTouch()", "hoi") == true
+			and not chan.has_meta("lua_touch"))
+	goc.free()
+
+
+const _DAT_CHAN := """
+	local c = require('cocos')
+	NUT, CHAN = c.wrap(_NUT), c.wrap(_CHAN)
+	nhat = {}
+	local function ghi(s) nhat[#nhat + 1] = s end
+	local C = {}
+	function C:onTouchBegin_Chan(s) ghi('chan Begin') end
+	CHAN:setCallbackLuaObject(C)
+	CHAN:setLuaTouchName('Chan')
+	local N = {}
+	function N:onTouchBegin_Nut(s) ghi('nut Begin') end
+	function N:onTouchMove_Nut(s, trong, x, y)
+		ghi(string.format('nut Move %s', tostring(trong)))
+	end
+	function N:onTouchEnd_Nut(s, trong) ghi('nut End ' .. tostring(trong)) end
+	NUT:setCallbackLuaObject(N)
+	NUT:setLuaTouchName('Nut')
 	return true
 """
 

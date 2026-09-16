@@ -1140,7 +1140,12 @@ vật liệu của node cha **không** truyền xuống `Sprite2D` con trong God
   thể** chạy: nó ném lỗi Lua thật ("attempt to call method 'setGray'").
   Cùng phép đo ấy: `CCLayerColorRoundRect` cũng **không** có `setGray`, còn
   `setOrange` chỉ có trên **một** lớp duy nhất là `CCProgressTimer` — khớp đúng
-  **6 chỗ gọi** `setOrange` trong mã gốc, cả 6 đều là progress timer.
+  **6 chỗ gọi** `setOrange` trong mã gốc, cả 6 đều là progress timer. Và
+  `setIsSwallowInBegan` cũng **chỉ có một lớp duy nhất** là
+  `CCLayerColorRoundRect`, khớp đúng **8 chỗ gọi** trong mã gốc — cả 8 gọi
+  **trần** (không có `if X.setIsSwallowInBegan then`), nên 8 node ấy buộc phải
+  thuộc lớp đó; kiểm được **8/8** từ `layout_ref` (6 theo tên, 2 theo tag vì
+  chúng không có tên) — xem §8 việc (d).
   Một chi tiết nữa, cũng đo được: `setGray` **không phải một hàm duy nhất** —
   `CCSprite` và `CCButton` dùng **chung** một địa chỉ mã (`0x49d70d`),
   `CCScale9Sprite` riêng (`0x2d2839`), `Label` riêng (`0x2cb1c9`), còn
@@ -1760,8 +1765,64 @@ bình thường — nên phép đo theo kiểu **không** hỏi lại kiểu mà
    gì, nhánh `true` viết theo đúng nguồn nhưng **không thể chạy ở bản này** nên
    chưa kiểm được bằng ảnh trong Godot), hệ số ở `ui/tien_do.gd`
    (`HE_ORANGE`), và `tools/verify_tien_do.gd` khoá lại — **120 đạt / 0 hỏng**,
-   đã vào `check.py`. Bộ đếm `M.missing` trên đường Login → Main từ **2 loại**
-   xuống **1 loại** (`setIsSwallowInBegan ×6`).
+   đã vào `check.py`.
+
+   **(d) `setIsSwallowInBegan` — XONG lượt này. Đây là cái DUY NHẤT trong hai
+   cái đổi hành vi thật.** Đo từ file game: phương thức chỉ có trên **một** lớp
+   trong 132 bảng bind — `CCLayerColorRoundRect` (Thumb `0x2b4e98`, bản ghi
+   `A=0x2b4e99 kind B=0`). Thân hàm:
+
+   ```
+   push {r4,lr}; r4 = r0; r0 = r1; r1 = 1; bl 0x274ca8   -- tobool(arg, 1)
+   strb.w r0,[r4,#0x276]; r0 = 0; pop {r4,pc}
+   ```
+
+   tức `self[+0x276] = tobool(arg, mặc định 1)` — đối số **vắng** ra `1`, và mọi
+   giá trị khác đi qua **truthiness của Lua** (nên `0` và `''` là BẬT, không
+   phải `b ~= false`). **Mặc định là NUỐT**: **ba** hàm dựng của lớp
+   (`0x2b5f64`, `0x2b5ff6`, `0x2b6092` — cả ba gọi init `0x2b4eac` rồi đặt
+   vtable) đều ghi `1` vào `+0x276`, và không chỗ nào khác ghi `0`. Người **đọc**
+   byte đó là `0x2b4d30` (cùng lớp): `ldrb.w r3,[r4,#0x276]; cbz r3 -> thoát;
+   movs r3,#1; strb.w r3,[r6,#0x38]` — chỉ khi cờ khác 0 mới đánh dấu byte "đã
+   nuốt" (`+0x38`) của **đối tượng chạm**. Bốn chỗ khác trong `.text` cũng dùng
+   offset `+0x276` (`0x3d7c7e`, `0x3d7aaa`, `0x3d8426`) nhưng thuộc **lớp khác**,
+   ở đó `+0x276` là bộ đếm cho `20,0` — trùng offset là **trùng ngẫu nhiên**,
+   không phải cùng trường.
+
+   **Ý nghĩa đọc ra từ chính mã gốc, không suy:** bốn 阻隔层 của `CUIChatting`
+   (comment của bản gốc ghi rõ "表情阻隔层" / "等级阻隔层" / "添加好友阻隔层" /
+   "语音文字阻隔层", `CUIChatting.lua:352-362`) là lớp phủ **rộng hơn** khung
+   bên trong; hàm `onTouchBegin_` của chúng đo toạ độ điểm chạm với khung trong
+   rồi ẩn khung đi nếu chạm ra **ngoài** (`:1203`, `:1335`, `:1649`, `:1875`).
+   Nếu lớp đó nuốt cú chạm thì cú chạm-vào-ra-ngoài ấy **cũng bấm luôn vào nút
+   nằm dưới lớp** — nên phải là `false`.
+
+   **8 chỗ gọi** trong mã gốc, 6 file, **tất cả** `false`, **tất cả** là lớp
+   chặn: `CUIArmyGroupCampsiteChatting.lua:91,94`; `CUIChatting.lua:353,356,
+   359,362`; `CUIFriendsChatting.lua:100,103`. Cả 8 gọi **trần** (không có
+   `if X.setIsSwallowInBegan then`) nên 8 node đó **bắt buộc** thuộc lớp ấy —
+   và kiểm độc lập được **8/8** từ `layout_ref`: 6 node theo **tên**
+   (`lLevelNotice`, `lChattingVoiceTextClose`, `lChattingAddFriendClose`,
+   `lChattingEmoticonClose`, `lCampsiteChattingEmoticonClose`,
+   `lCampsiteChattingVoiceTextClose`), 2 node của `CUIFriendsChatting` theo
+   **tag** vì chúng **không có tên** — mã gốc lấy bằng
+   `rootPanel:getChildByTag(1)` rồi `:getChildByTag(2)` / `:getChildByTag(5)`
+   (`:140`, `:143`); cả 8 đều `type 4 / CCLayerColorRoundRect`. Thêm một phép
+   kiểm **đối chứng**: node **cùng lớp, cùng cha, ngay cạnh** đó (tag 4,
+   `lFriendsChattingInvalidTouch`) mà mã gốc **không** gọi thì giữ **mặc định
+   nuốt** — tức **lớp không quyết định**, chính lời gọi `false` mới đổi hành vi.
+
+   Bản dựng: `Node:setIsSwallowInBegan` ở `lua/cocos.lua` (đặt trên `Node` chứ
+   không trên một lớp riêng, vì bản này đã bỏ lớp C++ đi — `CCLayerColorRoundRect`
+   không có trong `KIND_OF_TYPE`, `ui/xgg_layout.gd:73-88`), cờ lưu vào meta của
+   chính node Godot, và `M.cham` **chạy hàm rồi trả `false`** khi cờ là `false`
+   — cú chạm đi tiếp xuống node dưới, đúng như mã gốc. Chỉ nhường pha **Begin**
+   (chỗ duy nhất mã gốc đọc byte ấy; `Move`/`End` đã đi theo node thắng Begin).
+   Mặc định **không đổi**: node không gọi setter vẫn nuốt, nên luật đã đo của
+   `verify_cham.gd` phần 2 và lớp phủ modal `lNormalDlgTouchMask` giữ nguyên.
+   `tools/verify_cham.gd` khoá lại — **33 đạt / 0 hỏng**, đã vào `check.py`.
+   Bộ đếm `M.missing` trên đường Login → Main từ **2 loại** xuống **1 loại**
+   (`setIsSwallowInBegan ×6`), rồi lượt này xuống **0 loại**.
 
    **Lượt này có đo lại (b) bằng máy ảo và VẪN không lấy được góc — lý do là đo
    được, không phải vì không thử** (`work/emu_pt.py --kieu`, 11 lượt):

@@ -447,7 +447,26 @@ Cả 6 chỗ gọi đều hỏi `GetLanguageName()=="en"`, mà bản dựng khô
 `"en"` (`IS_OPEN_LANGUAGE = false`), nên nhánh chạy được là `false` — và ba lượt
 trên máy ảo cho thấy `setOrange(false)` khác *không gọi gì* **0 / 921.600 điểm
 ảnh**. Đã đặt tên phương thức (`lua/tien_do.lua`, hệ số `HE_ORANGE` ở
-`ui/tien_do.gd`); đường Login → Main vì thế còn **đúng một** API chưa làm.
+`ui/tien_do.gd`).
+
+`setIsSwallowInBegan` — cái cuối cùng của đường Login → Main — cũng **đã làm, và
+là chỗ DUY NHẤT trong hai cái đổi hành vi thật**. Đo từ file game: nó chỉ có trên
+**một** lớp trong 132 bảng (`CCLayerColorRoundRect`, Thumb `0x2b4e98`), thân hàm
+là `self[+0x276] = tobool(arg, mặc định 1)`, **ba** hàm dựng của lớp đều ghi `1`
+→ **mặc định là NUỐT**, và người đọc byte đó (`0x2b4d30`, cùng lớp) chỉ đánh dấu
+byte "đã nuốt" khi cờ khác 0. Cả **8 chỗ gọi** trong mã gốc (6 file) đều đặt
+`false` và đều gọi **trần**, nên 8 node đó buộc phải thuộc lớp ấy — kiểm độc lập
+được từ `layout_ref`: 6 node theo **tên**, 2 node của `CUIFriendsChatting` theo
+**tag** (`rootPanel:getChildByTag(1)` → `getChildByTag(2)`/`(5)`), **8/8** đều
+`CCLayerColorRoundRect`; node **cùng lớp, cùng cha, ngay cạnh** (tag 4,
+`lFriendsChattingInvalidTouch`) mà mã gốc **không** gọi thì giữ mặc định nuốt —
+tức **lớp không quyết định, chính lời gọi `false` mới đổi hành vi**. Ý nghĩa đọc
+từ chính mã gốc: bốn 阻隔层 của `CUIChatting` là lớp phủ **rộng hơn** khung bên
+trong, hàm `onTouchBegin_` của chúng đo toạ độ điểm chạm với khung trong rồi ẩn
+khung đi nếu chạm ra **ngoài** — nuốt thì cú chạm-vào-ra-ngoài đó cũng bấm luôn
+vào nút nằm dưới lớp. Bản dựng vì thế chạy hàm rồi **trả `false`** để cú chạm đi
+tiếp xuống node dưới (`M.cham` chỉ nhường pha **Begin**, đúng chỗ duy nhất mã gốc
+đọc byte ấy). Đường Login → Main vì thế **không còn API nào chưa làm**.
 
 Bấm được: `lua/cocos.lua` (`M.cham`) + `LuaRuntime.touch_at`, kiểm bằng
 `tools/verify_cham.gd`. Số màn mở được: xem bảng đầu `ROADMAP.md` (đo bằng

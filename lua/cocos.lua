@@ -396,6 +396,55 @@ function Node:getEnableLuaTouch()
 	return true
 end
 
+-- LOP CHAN (阻隔层): nuot hay khong nuot cu cham Begin. Do tu file game, khong
+-- suy. `setIsSwallowInBegan` chi co tren MOT lop duy nhat trong ca 132 bang:
+-- `CCLayerColorRoundRect` (Thumb 0x2b4e98, ban ghi A=0x2b4e99 kind B=0).
+-- Than ham:
+--
+--     push {r4,lr}; r4 = r0; r0 = r1; r1 = 1; bl 0x274ca8   -- tobool(arg, 1)
+--     strb.w r0,[r4,#0x276]; r0 = 0; pop {r4,pc}
+--
+-- Tuc `self[+0x276] = tobool(arg, mac dinh 1)`. Hai dieu ve phep doi so:
+-- doi so VANG thi ra 1, va moi gia tri khac di qua phep truthiness cua Lua —
+-- nen `0` va `''` la BAT, chu khong phai `b ~= false`.
+--
+-- MAC DINH LA BAT: ba ham dung cua lop (0x2b5f64, 0x2b5ff6, 0x2b6092 — ca ba
+-- goi init 0x2b4eac roi dat vtable) deu ghi 1 vao +0x276, va khong cho nao
+-- khac ghi 0. Nguoi doc byte do la 0x2b4d30 (cung lop):
+--
+--     ldrb.w r3,[r4,#0x276]; cbz r3 -> thoat
+--     movs r3,#1; strb.w r3,[r6,#0x38]        -- +0x38 = byte "da nuot"
+--
+-- tuc chi khi co thu moi danh dau byte "da nuot" cua doi tuong cham. (Bon cho
+-- khac trong .text cung dung offset +0x276 — 0x3d7c7e, 0x3d7aaa, 0x3d8426 —
+-- nhung thuoc mot lop KHAC, o do +0x276 la bo dem cho 20,0; trung offset la
+-- trung ngau nhien, khong phai cung truong.)
+--
+-- Y nghia doc ra tu chinh ma goc: `false` = lop chan VAN chay ham
+-- onTouchBegin_ cua no, nhung KHONG giu cu cham lai — cu cham di tiep xuong
+-- node nam duoi. Bon 阻隔层 cua CUIChatting (comment cua ban goc ghi ro
+-- "表情阻隔层" / "等级阻隔层" / "添加好友阻隔层" / "语音文字阻隔层",
+-- CUIChatting.lua:352-362) la lop phu RONG HON khung ben trong: ham
+-- onTouchBegin_ cua chung doi toa do cham voi khung trong roi an khung di neu
+-- cham ra NGOAI (:1203, :1335, :1649, :1875). Neu lop do nuot cu cham thi cu
+-- cham-vao-ra-ngoai cung bam luon vao nut nam duoi lop.
+--
+-- 8 cho goi trong ma goc, 6 file, TAT CA deu `false` va tat ca deu la lop chan:
+-- CUIArmyGroupCampsiteChatting.lua:91,94; CUIChatting.lua:353,356,359,362;
+-- CUIFriendsChatting.lua:100,103. Ca 8 goi TRAN, khong co
+-- `if X.setIsSwallowInBegan then` — nen 8 node do BAT BUOC phai la
+-- CCLayerColorRoundRect; day la mot phep kiem lop doc lap cho phep do o tren.
+--
+-- Dat tren Node chu khong tren mot lop rieng: ban goc chi co no o mot lop,
+-- nhung ban nay bo lop C++ di ('CCLayerColorRoundRect' khong co trong
+-- KIND_OF_TYPE, ui/xgg_layout.gd:73-88, nen roi ve 'layer'), va co dinh vao
+-- lop chi lam phep goi that bai o dung 8 cho kia. Ghi lai su that cua ban goc
+-- o day, con hanh vi thi giong het.
+function Node:setIsSwallowInBegan(b)
+	if b == nil then b = true end
+	raw(self):set_meta('swallow_begin', b and true or false)
+end
+
 -- Goi tu GDScript (LuaRuntime.touch_at) khi node gd bi cham. Tra ve true neu
 -- node co doi tuong nhan — tuc engine co dang ky no — du doi tuong co ham cho
 -- pha nay hay khong: node da dang ky thi nuot cham, nen nut o duoi khong an.
@@ -445,6 +494,18 @@ function M.cham(pha, gd, a, b, c)
 	-- Ha tang that cua lan do la lop phu lNormalDlgTouchMask cua hop thoai
 	-- dang mo phu kin man (960x640 o (0,0)) — no NUOT la dung, hop thoai la
 	-- modal; cho can sua la phep do, khong phai luat nuot.
+	--
+	-- Lop chan da goi `setIsSwallowInBegan(false)` thi tra false o day — ham
+	-- cua no da chay xong o tren roi, nen no van biet nguoi choi vua cham ra
+	-- ngoai khung, chi la cu cham khong bi giu lai. Vong lap Begin cua
+	-- LuaRuntime.touch_at (game/lua_runtime.gd:717-722) lay ung vien dau tien
+	-- tra true, nen tra false la di tiep xuong node ben duoi — dung nhu ban
+	-- goc. CHI pha Begin: ben goc chi co mot cho doc byte do la ham Begin cua
+	-- lop (0x2b4d30), va Move/End thi da di theo node thang Begin roi.
+	if pha == 'Begin' and gd:has_meta('swallow_begin')
+			and gd:get_meta('swallow_begin') == false then
+		return false
+	end
 	return true
 end
 

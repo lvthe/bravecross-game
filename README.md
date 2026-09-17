@@ -1413,10 +1413,15 @@ khi engine nhận `setDispatchID`. Bấm nút hay `CUIGame:TouchArrmy(n)` (đư�
 từ dữ liệu bản gốc: `L_N_01_01` có thống soái 6, `LeaderShipResume` 5;
 `Troop_1` (`DefenderN`, HP 1.000) tốn 3, mỗi toán 4 người. ĐẶT, chưa đo: vào
 trận đầy thống soái; hồi 1 điểm sau mỗi `LeaderShipResume` giây. Toán lính đưa
-ra **đứng ở ô 0** (mép trái sàn) — ĐẶT, và đã thử đặt lên mốc của toán rồi **phải
-bỏ** (`--kichban` tụt 9/0 → 6/3: toán đứng trong sàn gặp địch sớm hơn ~1,4 giây,
-trận kết thúc trước bước kế tiếp của kịch bản, mà đồng hồ kịch bản chính là đồng
-hồ trận — xem `san_tran_ve.dua_linh`). Còn mốc của toán thì là **số đo**
+ra **đứng ở ô 0** (mép trái sàn) — ĐẶT, **đã đo lại**. Đã thử đặt lên mốc của
+toán (2026-09-17) và phải bỏ: `--kichban` tụt 9/0 → 6/3. **Nguyên nhân cú tụt ấy
+hoá ra là hai lỗi thật của bản dựng, đã vá** (`dua_linh` gác oan theo cờ TẠM DỨNG
+`T.dung` = `_Lua_PauseGame`, và `dung_tran` tắt đồng hồ đang bước kịch bản), nên
+đã **đo lại cùng ngày**: đặt ngay mốc nay ra **11/0 y hệt** lượt đặt ô 0 — cùng
+nhật ký kịch bản, cùng **1379 khung**; khác biệt duy nhất là trận xong sớm hơn
+theo **giờ trận** (`song 0 giay 18` so với `giay 57`). Vì bộ đo **không phân biệt
+được** hai chỗ đặt, ta giữ nguyên ô 0 — đổi là đổi hành vi mà không có bằng chứng
+nào đổi theo. Xem `san_tran_ve.dua_linh`. Còn mốc của toán thì là **số đo**
 (`Sprite.Troop.PosX` — đo trong trận thật: 7 ô = 700 px ở `L_N_01_01`), và
 `dispatch()` của engine **không tính toạ độ nào** (`.so` bản vn: `0x45eda4` →
 `0x466220` chỉ ghi danh quân vào danh sách của sàn), nên "chỗ đứng của quân đưa ra

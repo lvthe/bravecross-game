@@ -318,25 +318,30 @@ một ô. Số làn cũng là số đo: `Location` của 91 mục trong `KDBGame
 chỉ nhận 0..3. Nay `fArmySpace` có bản anh em `fArmySpaceInArena` (1.2) cho đấu
 trường, engine có hai hàm đọc riêng (`0x38193c` / `0x388240`). Đường đo +
 `tran_ref.json` + `tools/verify_lan.gd`; hàm `san_tran_ve.gd:lan_lech_y()` là chỗ
-duy nhất tính làn ra toạ độ. **Chỗ đặt toán lính đưa ra — ĐÃ THỬ VÀ PHẢI BỎ
-(2026-09-17); vẫn là ĐẶT (ô 0).** Đã tưởng chốt được: `dispatch()` của engine
+duy nhất tính làn ra toạ độ. **Chỗ đặt toán lính đưa ra — ĐÃ ĐO (2026-09-18) và
+vẫn là ĐẶT (ô 0).** Đã tưởng chốt được: `dispatch()` của engine
 **không tính toạ độ nào** (`.so` **bản vn**: `0x45eda4` → `0x466220` chỉ đánh dấu
 quân `+0x5a4 = 0x44` rồi nối vào danh sách của sàn `+0x39c`), nên quân đưa ra đứng
 đúng chỗ của toán, và chỗ ấy là `Sprite.Troop.PosX` (`CUIGame:FitBattleArmyPos` đặt
 3,83 ô, `FightLogic:GetSelfFightDataBody` mặc định 7). **Đo trong trận thật**
-(`L_N_01_01`, `do_chien_dich --kiem`): `PosX = 7` ô = **700 px**. Nhưng đổi
-`dua_linh` sang dùng mốc ấy thì `do_chien_dich --kichban` **tụt từ 9 đạt / 0 hỏng
-xuống 6/3** — toán đứng trong sàn gặp địch sớm hơn ~1,4 giây, trận kết thúc trước
-bước kế tiếp của kịch bản, mà **đồng hồ kịch bản chính là đồng hồ trận**
-(`lua/san_tran.lua:78`, `dung_tran` gọi `T.hen:stop()`), nên kịch bản đứng ở lệnh
-27/43. Đặt từ **mép** sàn cũng ra 6/3. Nên đã **trả về ô 0**, giữ lại phần **đo
-được**: một chỗ định nghĩa duy nhất `tran_goc.moc_toan(sprite)` cho `doc_quan`
-(hành vi y hệt mã cũ — ải 1 vẫn 9/0), khoá bằng `tools/verify_dat_linh.gd`
-(17 đạt / 0 hỏng) và một phép kiểm **hai đường đọc độc lập** trong
-`do_chien_dich --kiem` (Lua `cjson` đọc lại chuỗi JSON so với số của màn trận,
-`dat 27, hong 0`). Câu cũ "phải dựng lại trên máy ảo bằng cờ `bDirectBattle`"
-**đã đo và SAI**: đường ấy tới `bDirectBattle = true` rồi SIGSEGV trong
-`RepaleceScene` (`work/emu_dom.py`). **Lượt này bác bỏ thêm một giả thuyết bằng
+(`L_N_01_01`, `do_chien_dich --kiem`): `PosX = 7` ô = **700 px**. Đổi
+`dua_linh` sang dùng mốc ấy (2026-09-17) thì `do_chien_dich --kichban` **tụt từ
+9 đạt / 0 hỏng xuống 6/3**; đặt từ **mép** sàn cũng ra 6/3. **Nguyên nhân của cú
+tụt ấy hoá ra là hai lỗi THẬT của bản dựng, đã vá cùng lượt sau** — `dua_linh`
+gác oan theo cờ TẠM DỨNG (`T.dung` = `_Lua_PauseGame`) và `dung_tran` tắt đồng hồ
+đang bước kịch bản (`T.hen:stop()`; xem mục "chờ người chơi đặt quân" ở trên).
+**Nên đã ĐO LẠI:** đặt ngay mốc nay ra **11/0 y hệt** lượt đặt ô 0 — cùng nhật ký
+kịch bản, cùng **1379 khung**; khác biệt duy nhất là trận xong sớm hơn theo **giờ
+trận** (`song 0 giay 18` so với `giay 57`). Vì hai chỗ đặt **không phân biệt được
+bằng bộ đo** và `dispatch()` không tính toạ độ (nên cả hai đều là SUY RA), ta
+**giữ nguyên ô 0** — đổi là đổi hành vi mà không có bằng chứng nào đổi theo. Phần
+**đo được** vẫn giữ: một chỗ định nghĩa duy nhất `tran_goc.moc_toan(sprite)` cho
+`doc_quan` (hành vi y hệt mã cũ — ải 1 vẫn 9/0), khoá bằng
+`tools/verify_dat_linh.gd` (17 đạt / 0 hỏng) và một phép kiểm **hai đường đọc độc
+lập** trong `do_chien_dich --kiem` (Lua `cjson` đọc lại chuỗi JSON so với số của
+màn trận, `dat 27, hong 0`). Câu cũ "phải dựng lại trên máy ảo bằng cờ
+`bDirectBattle`" **đã đo và SAI**: đường ấy tới `bDirectBattle = true` rồi SIGSEGV
+trong `RepaleceScene` (`work/emu_dom.py`). **Lượt này bác bỏ thêm một giả thuyết bằng
 phép đo:** `SeDispatchButtonDisable` / `SetWakeButtonDisable` **không phải** lệnh
 ghi nhật ký — chúng ghi **cờ bật nút** của lớp drama (vn `0x468b54` / `0x468b78`:
 `eor r0,r0,#1; strb.w r0,[drama+0x390]` / `+0x391` tại `0x468b6a` / `0x468b8e`;

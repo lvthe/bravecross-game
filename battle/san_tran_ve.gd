@@ -306,16 +306,25 @@ func _mep_vao(doi: int) -> float:
 ##   * may ao khong do duoc: bat co `bDirectBattle` (`sc/game.lua:483` ->
 ##     `CUIGame:Test()`) thi tien trinh toi `bDirectBattle = true` roi SIGSEGV
 ##     trong `RepaleceScene` (do: `work/emu_dom.py`, `work/emu_tran.py`);
-##   * DA THU dat ngay moc: sua `dua_linh` dung `_moc_toan` (2026-09-17) thi
-##     `do_chien_dich --kichban` tut tu **9 dat / 0 hong** xuong **6 dat / 3 hong**.
-##     Do nguyen nhan: toan dung trong san nen gap dich som hon ~1,4 giay, tran
-##     KET THUC truoc buoc ke tiep cua kich ban, ma dong ho cua kich ban chinh la
-##     dong ho tran (`lua/san_tran.lua:78` — `dung_tran` goi `T.hen:stop()`), nen
-##     kich ban dung han o lenh thu 27/43 (`ChangeFight LvbuEvil Fight` -> khong
-##     bao gio toi `SetArmyWaiting`). Do bang phep do tam trong `do_chien_dich`:
-##     `isGaming` chuyen `false` o khung ~1400 trong khi `_cho.kieu = 'tre'`,
-##     `_tre = 1,40` con lai. Dat tu mep (`_mep_vao`) cung ra **6 dat / 3 hong**
-##     — tuc moi cho dat TRONG san deu doi ket qua ai 1.
+##   * DA THU dat ngay moc, va DA DO LAI (2026-09-18) sau khi va hai loi o
+##     `lua/san_tran.lua` (`dua_linh` gac oan theo co TAM DUNG, va `dung_tran` tat
+##     dong ho dang buoc kich ban — xem `lua/san_tran.lua`):
+##       - luot 2026-09-17 (luc hai loi con do): dat ngay moc lam
+##         `do_chien_dich --kichban` tut tu **9 dat / 0 hong** xuong **6 dat / 3
+##         hong**, vi tran KET THUC truoc buoc ke tiep cua kich ban ma dong ho kich
+##         ban chinh la dong ho tran (`dung_tran` goi `T.hen:stop()`) — kich ban
+##         dung han o lenh 27/43 (`ChangeFight LvbuEvil Fight`, khong bao gio toi
+##         `SetArmyWaiting`). Dat tu mep (`_mep_vao`) cung ra **6 dat / 3 hong**.
+##       - luot 2026-09-18 (sau khi va): dat ngay moc ra **11 dat / 0 hong**,
+##         nhat ky kich ban **Y HET** luot dat o o 0, cung **1379 khung**. TUC
+##         ket qua tut cua luot truoc la HE QUA cua hai loi kia, khong phai cua
+##         cho dat. Khac biet DUY NHAT do duoc: tran xong som hon theo gio tran
+##         (`song 0 giay 18` so voi `giay 57`) — nay vo hai vi `hen:buoc` van buoc
+##         kich ban cho tới khi kich ban dien xong.
+##     VI SAO van giu o 0: hai cho dat nay **bo do khong phan biet duoc** (cung
+##     11/0, cung nhat ky, cung so khung), nen doi cho dat la doi hanh vi ma khong
+##     co bang chung nao doi theo. `dispatch()` cua engine khong tinh toa do nao,
+##     nen ca hai deu la SUY RA. Giu nguyen o 0 cho tới khi co bang chung THAT.
 ##   * Duong (b) — lam bo do trung thanh — DA LAM MOT PHAN, va chinh no BAC BO mot
 ##     gia thiet cu: `lua/kich_ban.lua` nay giu CO THAT cua lenh
 ##     `SeDispatchButtonDisable` (`.so` BAN VN `0x468b54`: `r0 = toboolean(arg);
@@ -328,9 +337,10 @@ func _mep_vao(doi: int) -> float:
 ##     Gia thiet cu ("bo do bam nut moi 30 khung KE CA trong cua so cam") vi the
 ##     SAI — no khong dung duoc de giai thich 9/0 -> 6/3; nguyen nhan van la dong
 ##     ho kich ban dung theo tran (muc ngay tren).
-##   * Con lai cho (a): do duoc tren ban goc (duong may ao da chet). Duong (b) con
-##     mot buoc nua moi trung thanh that: cho bo do TUAN THEO co ay — khi do
-##     `bam_cam` khac 0 moi la loi cua bo do, con bay gio no la so do.
+##   * Con lai cho (a): do duoc tren ban goc (duong may ao da chet) — van la
+##     "chua ro" THAT, khong phai "da bac bo". Duong (b) con mot buoc nua moi
+##     trung thanh that: cho bo do TUAN THEO co ay — khi do `bam_cam` khac 0 moi
+##     la loi cua bo do, con bay gio no la so do.
 ## Vi vay: giu nguyen cho dat CU (o 0) cho toi khi co bang chung, va ghi lai ĐẶT.
 func dua_linh(ten: String) -> int:
 	if _xong:

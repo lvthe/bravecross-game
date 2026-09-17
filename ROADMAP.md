@@ -2382,6 +2382,20 @@ tướng không bị cướp, cấp 5 thay cấp 3, cấp 1 xoá sạch); D **ch
       dùng thật (trước đây chỉ có đường "quá giờ"), kịch bản đi hết tới
       `FinishGame`, và cả lượt chỉ tốn **1379 khung** (trước: 1536, vì phải chờ
       hết 6 giây vô ích).
+      **ĐO LẠI câu "đặt ngay mốc của toán" (cùng ngày, sau khi vá hai lỗi trên):
+      nay KHÔNG còn làm tụt kịch bản — nhưng bộ đo cũng KHÔNG phân biệt được hai
+      chỗ đặt.** Sửa `dua_linh` dùng `_moc_toan` (đúng phép thử 2026-09-17) rồi
+      chạy lại `--kichban`: **11 đạt / 0 hỏng**, nhật ký kịch bản **y hệt** lượt
+      đặt ở ô 0 (cùng `dua Troop_1 @8,2 > dat linh xong @8,2`, cùng đi hết tới
+      `FinishGame`), cùng **1379 khung**. Kết luận: con số 9/0 → 6/3 của lượt
+      trước là **hệ quả của hai lỗi đã vá**, không phải của chỗ đặt. Khác biệt
+      **duy nhất** đo được: trận xong sớm hơn theo **giờ trận** — `song 0 giay 18`
+      so với `giay 57` ở lượt đặt ô 0 (toán đứng trong sàn thì gặp địch ngay,
+      không phải đi vào) — và nay vô hại vì `hen:buoc` vẫn bước kịch bản cho tới
+      khi kịch bản diễn xong. Vì **không có bằng chứng nào phân biệt hai chỗ đặt**
+      (`dispatch()` của engine không tính toạ độ nào, nên cả hai đều là SUY RA),
+      **giữ nguyên ô 0** — đổi là đổi hành vi mà không có bằng chứng đổi theo.
+      Đây là câu đã ĐO, không còn là "chưa đo" lẫn "đã bác bỏ".
       **Còn CHƯA rõ (ghi rõ, không bịa số):** (1) người **đầu tiên** của toán
       đứng **ngay** mốc hay lệch **nửa toán** — engine có `X -= fArmyLength ×
       0.5 × cỡ ô` = 200 px ở `0x41b538` (hàm mà địa chỉ ấy thuộc về được `bl`
@@ -2692,7 +2706,12 @@ tướng không bị cướp, cấp 5 thay cấp 3, cấp 1 xoá sạch); D **ch
    bản** — nên thắng sớm là kịch bản đứng giữa đường (đo: nhật ký kết ở
    `ChangeFight LvBuEvil Fight`, thiếu `MoveThenDo` / `SetArmyWaiting`). Nay nhật
    ký `--kichban` ghi `dua Troop_1 @8,2 > dat linh xong @8,2` — đường SỰ KIỆN
-   được dùng thật — và `kich ban tran (Lua)` **11/0**. Còn chưa rõ
+   được dùng thật — và `kich ban tran (Lua)` **11/0**. **Chỗ đặt toán lính cũng
+   đã ĐO LẠI cùng ngày:** đặt ngay mốc của toán nay ra **11/0 y hệt** (cùng nhật
+   ký, cùng 1379 khung; chỉ trận xong sớm hơn theo giờ trận, `giay 18` so với
+   `giay 57`), nên con số 9/0 → 6/3 của phép thử 2026-09-17 là hệ quả của hai lỗi
+   vừa vá chứ không phải của chỗ đặt — và vì bộ đo **không phân biệt được** hai
+   chỗ đặt, ta **giữ nguyên ô 0**. Còn chưa rõ
    (ghi rõ, không bịa): người đầu tiên có lệch nửa toán không (`0x41b538` có
    `vsub.f32` = `X ∓ fArmyLength × 0.5 × cỡ ô` = 200 px; dấu do `0x414912` quyết
    định), và nhịp cách giữa các **toán** đưa ra. Ba sự thật mới của `.so` cùng

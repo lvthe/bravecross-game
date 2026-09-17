@@ -11,18 +11,21 @@
 #      bằng `do_chien_dich --kiem`: PosX = 7 ô = 700 px. `tran_goc.moc_toan` là chỗ
 #      ĐỊNH NGHĨA duy nhất, `tran_goc.doc_quan` đặt lính CÓ SẴN ở đó.
 #
-#   2. CHỖ ĐẶT TOÁN LÍNH ĐƯA RA — ĐẶT, chưa đo lại được. `dua_linh` đặt ở ô 0 (mép
-#      trái sàn) và KHÔNG dùng mốc của toán. Đã THỬ dùng mốc (2026-09-17) và phải
-#      bỏ: `do_chien_dich --kichban` tụt từ 9 đạt / 0 hỏng xuống 6 đạt / 3 hỏng,
-#      vì toán đứng trong sàn thì gặp địch sớm hơn ~1,4 giây, trận KẾT THÚC trước
-#      bước kế tiếp của kịch bản, và lúc ấy ĐỒNG HỒ KỊCH BẢN CHẾT THEO TRẬN
-#      (`dung_tran` gọi `T.hen:stop()`) — kịch bản đứng hẳn ở lệnh 27/43.
-#      **Lý do đó nay KHÔNG còn**: `dung_tran` (2026-09-18) chỉ đặt `T.ket`, còn
-#      `hen:buoc` thôi bước trận nhưng VẪN bước kịch bản cho tới khi kịch bản diễn
-#      xong (trước đó, thắng sớm là nhật ký kịch bản kết ở `ChangeFight LvBuEvil
-#      Fight`, thiếu `MoveThenDo`/`SetArmyWaiting`). Nên "đặt ngay mốc có làm tụt
-#      kịch bản không" là câu **CHƯA ĐO LẠI**, không còn là câu đã bác bỏ.
-#      Xem `dua_linh` để có đủ chuỗi bằng chứng.
+#   2. CHỖ ĐẶT TOÁN LÍNH ĐƯA RA — ĐẶT, đã đo lại (2026-09-18) và bộ đo KHÔNG
+#      phân biệt được. `dua_linh` đặt ở ô 0 (mép trái sàn) và KHÔNG dùng mốc của
+#      toán. Đã THỬ dùng mốc (2026-09-17) và phải bỏ: `do_chien_dich --kichban`
+#      tụt từ 9 đạt / 0 hỏng xuống 6 đạt / 3 hỏng, vì toán đứng trong sàn thì gặp
+#      địch sớm hơn ~1,4 giây, trận KẾT THÚC trước bước kế tiếp của kịch bản, và
+#      lúc ấy ĐỒNG HỒ KỊCH BẢN CHẾT THEO TRẬN (`dung_tran` gọi `T.hen:stop()`) —
+#      kịch bản đứng hẳn ở lệnh 27/43. **Lý do đó là một lỗi thật, đã vá**
+#      (`dung_tran` nay chỉ đặt `T.ket`; `hen:buoc` thôi bước trận nhưng VẪN bước
+#      kịch bản cho tới khi kịch bản diễn xong), nên câu ấy đã **ĐO LẠI** cùng
+#      ngày: đặt ngay mốc ra **11 đạt / 0 hỏng**, nhật ký kịch bản **y hệt** lượt
+#      đặt ở ô 0, cùng **1379 khung**; chỉ khác trận xong sớm hơn theo giờ trận
+#      (`song 0 giay 18` so với `giay 57`). Vì hai chỗ đặt **không phân biệt được
+#      bằng bộ đo**, và `dispatch()` của engine không tính toạ độ nào (nên cả hai
+#      đều là SUY RA), ta giữ nguyên ô 0 — đổi là đổi hành vi mà không có bằng
+#      chứng nào đổi theo. Xem `dua_linh` để có đủ chuỗi bằng chứng.
 #
 # Vì thế bộ này kiểm: mốc đọc đúng từ dữ liệu và `doc_quan` dùng nó; `dua_linh`
 # đặt ở ô 0 như đã ghi; và BẰNG CHỨNG còn nguyên trong Lua gốc (mất hai dòng ấy

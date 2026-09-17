@@ -232,8 +232,12 @@ hiển thị (`PropertyType.MovingSpeed = 21`). Tốc độ thật: mỗi sprite
 `<sMove>` trỏ tới một khối `<move>` trong `map/*_config.xml`, khối đó ghi
 `<ptVector>` (đi) và `<ptRunVector>` (chạy), đơn vị **ô**, 1 ô = 100 px
 ("单位:格 100pix"). Bê ra bằng `work/move_speed.py` → `data_ref/move_ref.json`,
-tra bằng `MoveRef.di()` / `MoveRef.chay()`. ĐẶT: ta lấy tốc độ ĐI; engine chọn
-đi hay chạy lúc nào thì do "brain" bên C++.
+tra bằng `MoveRef.di()` / `MoveRef.chay()`. Công tắc đi/chạy của engine: một
+byte cờ ở `+0x295` của lớp move — **bật** khi lệch hoành độ tới mục tiêu
+(`self+0x17c`) `≥ 4 × W` (`0x413c4c`), chỗ dùng trao `&ptRunVector` vào slot ảo
+`+0x2E8` rồi **xoá cờ** (`0x415a4d`); `W` (float đầu của kết quả ảo `+0x270`)
+**chưa rõ**. ĐẶT: ta lấy tốc độ ĐI; nối tốc độ chạy thì ngưỡng sẽ là ĐẶT.
+Phép đo đầy đủ + ba bẫy quét: `ROADMAP.md` §5 "Tốc độ quân".
 
 `SetCameraScale(giây, tham2, tỉ lệ, x, y)` — ĐÃ GIẢI HẾT bằng hàm engine
 `0x366c7c` (tìm qua bảng bind Lua `.data:0x939704` → `0x467fb4`). Tỉ lệ ở tham

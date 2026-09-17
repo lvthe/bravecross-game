@@ -2096,7 +2096,53 @@ tướng không bị cướp, cấp 5 thay cấp 3, cấp 1 xoá sạch); D **ch
       `map/*_config.xml`, đơn vị ô, 1 ô = 100 px: bộ binh đi 130 px/s chạy 300,
       cung 130/250, kỵ 130/350. Bê ra bằng `work/move_speed.py` (124 sprite).
       **ĐẶT còn lại**: lấy tốc độ ĐI; engine chọn đi hay chạy lúc nào thì do
-      "brain" bên C++
+      "brain" bên C++.
+      **Truy `ptRunVector` — đo lại 2026-09-18 (lượt hai): kết luận lượt đầu
+      SAI, và luật đi/chạy đã khôi phục được một phần.** (a) Cả họ
+      `CDFSpriteMove*` (17 lớp, RTTI ở `0x8de29c`, 34 vtable) có hàm dựng cấu
+      hình ở `0x415c34`, và tên hai trường giải được **bằng tra chuỗi**, không
+      suy đoán: literal `0x003a7f1e` → `0x7bdb68` = `'ptVector'`, đi kèm đúng
+      lệnh `add.w r6, r4, #0x1b0`; literal `0x003a8da6` → `0x7bea24` =
+      `'ptRunVector'`, đi kèm `#0x1b8`. Tức `+0x1B0` = `ptVector`, `+0x1B8` =
+      `ptRunVector`, mỗi cái một `Vec2`.
+      (b) Hai bẫy của phép quét, cả hai đều **làm ra kết luận sai**: phải bắt
+      cả dạng **lấy địa chỉ** (`add.w rX, rY, #imm`), không chỉ dạng ngoặc
+      vuông; và phải **bỏ `[pc, #imm]`** — đó là nạp literal theo PC-relative
+      (khoảng cách tới literal), không phải trường nào, để nguyên thì
+      `+0x1B0`/`+0x1B4` ra một dòng "đọc" giả. Bẫy thứ ba: **độ dài vtable**
+      phải cắt bằng địa chỉ vtable kế tiếp, vì các vtable nằm liền nhau trong
+      `.data.rel.ro` — đi cho tới khi gặp word không trỏ vào `.text` thì ăn
+      luôn vtable sau (lần đầu đếm ra 13.259 "ô mã" thay vì 3.980).
+      (c) `work/move_vt.py` (repo `brave-cross`) đo lại: 34 vtable → **3.980 ô
+      mã** → **574 hàm** (điểm vào riêng) → **12.366 lệnh** thân hàm, trên nền
+      sweep **2.233.285** lệnh (có resync — `disasm()` của capstone dừng ở byte
+      hỏng đầu tiên nên quét thẳng chỉ ra ~60k lệnh). Số chỗ chạm trường:
+      `+0x1B0` **21 chỗ / 18 hàm**, `+0x1B4` 4/3, `+0x1B8` **3 chỗ / 3 hàm**,
+      `+0x1BC` 1/1. Nên câu "**không một ô nào** đọc `+0x1B8`" của lượt đầu
+      **sai** — hai trong ba chỗ ấy **trao thẳng `&ptRunVector`** vào slot ảo
+      `+0x2E8`: `0x412faa` (sau `vcmpe`/`ble`) và `0x415a9c` (**gác bằng byte cờ
+      `+0x295`**); chỗ thứ ba `0x415c7c` là bộ đọc cấu hình ghi vào `+0x1B8`.
+      (d) Cờ `+0x295` ấy là **công tắc đi/chạy**, và toàn bộ `.text` chỉ có
+      **đúng 3 chỗ** chạm tới nó: hàm dựng xoá về 0 (`0x412540`/`0x412544`),
+      chỗ dùng **xoá sau khi chạy** (`0x415b18` — chạy một bước rồi tắt), và
+      chỗ **bật**, `0x413c4c`. Chỗ bật đọc được: `|Δx| ≥ 4 × W` — so `vcmpe`
+      với `vmul #4.0`, `itt pl` + `strbpl.w` — rồi đặt cờ; `Δx` là hiệu hoành
+      độ giữa `self` và vật ở `self+0x17c` (đúng ô `+0x17c` mà `0x415a4d`
+      dùng, nên cùng họ lớp).
+      **W chưa rõ là gì**: nó là float đầu của kết quả ảo `+0x270` trên một
+      vật lấy qua chuỗi truy cập toàn cục, bước cuối là `ldr r0, [r0, #0x1b8]`
+      (`0x462e5e`, **533 chỗ gọi**) — nên `+0x1B8` ở đó là trường của **một lớp
+      khác**, không phải `ptRunVector`: đúng cái bẫy "cùng độ lệch, khác lớp",
+      và là lý do không được khẳng định gì chỉ từ một độ lệch.
+      Vậy tóm lại luật đi/chạy: **bật cờ chạy khi lệch hoành độ tới mục tiêu
+      ≥ 4 × W; chỗ dùng trao `&ptRunVector` cho bộ di chuyển ảo `+0x2E8` rồi
+      xoá cờ.** Cổng **vẫn giữ tốc độ ĐI** (ĐẶT) vì `W` chưa xác định — nối
+      bằng một ngưỡng tự đặt thì phải ghi rõ là ĐẶT. Tốc độ CHẠY **đã trích**
+      (`data_ref/move_ref.json`) và **đã có phép kiểm**
+      (`tools/verify_battle.gd:108-116`) nhưng **chưa nối** vào chỗ dùng
+      (`battle/unit.gd:80` đang lấy `MoveRef.di()`). Ghi chú chưa truy: hàm
+      dựng một lớp move đặt `+0x1FC = 20` (`0x4124e0`), một lớp khác `= 30`
+      (`0x412548`) — nghi là số tốc độ theo lớp, chưa đo.
 - [x] **Ánh xạ trường sang bên đánh / bên chịu** — đọc thẳng từ **chỗ điền
       struct** (`0x41ab82..0x41ad08`), không còn suy theo nghĩa của tên. Hàm
       `0x380c94` nhận một struct 0x4c byte; chỗ điền lấy từng ô từ hai đối
@@ -2423,9 +2469,13 @@ tướng không bị cướp, cấp 5 thay cấp 3, cấp 1 xoá sạch); D **ch
    "Cách hồi thống soái" (đo được `ld_max / ld_hoi / công thức / JSON / JSON` =
    `6 / 5 / 6 / 6 / 5`, và nhịp hồi ba lần liên tiếp cách nhau `151, 151` khung).
    Còn lại **(a) chỗ đứng** (chỗ đặt toán lính đầu tiên ở mép trái ô 0, và đơn
-   vị của `fLaneWidth` / `fLaneOffset`) và **(b) tốc độ** (mới có tốc độ ĐI;
-   tốc độ CHẠY — bộ binh 300, cung 250, kỵ binh 350 — và bộ "não" C++ chọn
-   đi hay chạy thì chưa nối).
+   vị của `fLaneWidth` / `fLaneOffset`) và **(b) tốc độ** — đo lại 2026-09-18:
+   tốc độ CHẠY **đã trích** (bộ binh 300 / cung 250 / kỵ 350) và đã có phép
+   kiểm, và luật đi/chạy **nay ĐÃ khôi phục được một phần** (lượt đo đầu kết
+   luận sai là "không khôi phục được"): cờ `+0x295` bật khi lệch hoành độ tới
+   mục tiêu `≥ 4 × W`, chỗ dùng trao `&ptRunVector` cho bộ di chuyển ảo
+   `+0x2E8` rồi xoá cờ — còn `W` (float đầu của kết quả ảo `+0x270`) thì
+   **chưa rõ**. Chi tiết, số đo và ba bẫy của phép quét: §5 mục "Tốc độ quân".
 5. ~~**Làm binding engine `LuaTableView_create`**~~ — **xong**
    (`lua/bang.lua`, gắn ở `bootstrap.lua:228`), cùng lượt ấy làm luôn
    `LuaTableViewCell_create`. Trước đó `tv` là bong nên màn nào chạm vào nó thì

@@ -85,13 +85,23 @@ func _init() -> void:
 			'LGG_GetSetFilePath', 'sngUtil_getDownloadPath',
 			'sngUtil_getTempDownloadPath', 'sngUtil_getFileData',
 			'sngUtil_getFileSize', 'sngUtil_getIDFV', 'LGG_GetUtf8WordLen',
-			'GetStringWithKey', 'GetCNStringWithKey',
+			'GetStringWithKey', 'GetCNStringWithKey', 'toAnimationName',
 		}
 		local bong = {}
 		for _, ten in ipairs(doi) do
 			if boot.la_bong(_G[ten]) then bong[#bong + 1] = ten end
 		end
 		out['bong engine'] = table.concat(bong, ' ')
+
+		-- toAnimationName: bang tra rut tu <sAnimation> cua cau hinh sprite ban
+		-- goc (data_ref/anim_ref.json, sinh bang brave-cross/work/anim_ref.py).
+		-- Ba phep thu: so dong bang tra, mot ten CO ghi de, va hai ten KHONG co
+		-- (phai tra ve nguyen ten — day la phan chua do duoc cua ham C++, xem
+		-- chu thich o lua/bootstrap.lua).
+		out['anim ref'] = tostring(boot.so_anim_ref)
+		out['anim ghi de'] = tostring(toAnimationName('Archer_VampirE'))
+		out['anim nguyen ten'] = tostring(toAnimationName('Archer_WeaponNormal'))
+		out['anim ten thuong'] = tostring(toAnimationName('ZhangJiao'))
 
 		out['platform'] = tostring(LGG_GetPlatformString())
 		out['platform la chuoi'] =
@@ -139,6 +149,19 @@ func _init() -> void:
 	t("khong ham engine nao bi lam bong",
 			String(r.get("bong engine", "?")) == "",
 			String(r.get("bong engine", "?")))
+	# 13 dong: dung so do cua ban goc (work/anim_ref.py in ra 'muc co
+	# <sAnimation>: 13' va dung 13 dong ghi de).
+	t("bang doi ten armature nap du 13 dong",
+			int(r.get("anim ref", 0)) == 13, String(r.get("anim ref", "?")))
+	t("toAnimationName doi dung ten ghi de",
+			String(r.get("anim ghi de", "?")) == "Archer",
+			String(r.get("anim ghi de", "?")))
+	t("toAnimationName tra nguyen ten khi khong co ghi de",
+			String(r.get("anim nguyen ten", "?")) == "Archer_WeaponNormal",
+			String(r.get("anim nguyen ten", "?")))
+	t("toAnimationName tra nguyen ten voi tuong",
+			String(r.get("anim ten thuong", "?")) == "ZhangJiao",
+			String(r.get("anim ten thuong", "?")))
 	t("LGG_GetPlatformString tra chuoi that",
 			String(r.get("platform la chuoi", "")) == "true")
 	# Ban goc CO ban Windows that (GameOS.lua, OS_TYPE.WINDOWS), va 24 cho trong

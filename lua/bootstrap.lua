@@ -562,6 +562,54 @@ function M.install_cocos()
 	end
 	getUIAnimFromSpriteCatch = getSpriteFromSpriteCatch
 
+	-- toAnimationName(ten sprite) -> ten armature. CHI MOT cho goi trong ma goc:
+	-- CPublic:toArmatureName (sc/user/Public/CPublic.lua:2033-2040), va CPublic
+	-- goi no cho tung tuong, tung linh `Troop_N` va tung nhom dich de lap danh
+	-- sach armature nap truoc cua tran (CPublic:SetBattleArmatureName, :1890 —
+	-- CUIBattleDeploy, CUIArenaRecord, ClientArenalLogic... goi vao 15 cho).
+	-- Tra ve BONG thi `KDebug.ProcessNotString` o :2041 that bai, ham thoat som va
+	-- danh sach rong.
+	--
+	-- Ten nay CO trong libgame.so (binding toan cuc, dang ky o 0x20c0ba — ngay
+	-- giua giveBackToSpriteCatch va updateSettingFile), nhung HAM C++ KHONG DOC
+	-- RA DUOC: con tro ham nam trong bang nap luc chay. Nen bang tra o day rut
+	-- tu DU LIEU ma ham do doc — sau file cau hinh sprite cua ban goc
+	-- (map/{hero,heroex,player,sprite,boss,evil}_config.xml), qua
+	-- brave-cross/work/anim_ref.py:
+	--
+	--   * 1968 muc co <sName>; `<sAnimation>` chi co o **13 muc**, tat ca trong
+	--     evil_config.xml, va moi gia tri deu la armature CO THAT trong map/:
+	--     Archer_VampirE -> Archer, Cavalry_VampirE -> Cavalry, ...
+	--   * `<sBaseItem>` (867 muc) la ke thua truong cho toc/ao/vu khi
+	--     (ZhangJiao_Hair -> Silk_Short); chuoi cua chung ket thuc o ten KHONG
+	--     phai armature (Silk, weapon_throw, Player03), nen luat "di den goc"
+	--     bi chinh du lieu bac bo — khong phai luat cua ham.
+	--
+	-- Con lai tra ve NGUYEN TEN. Do khong phai suy dien suong: lop nap armature
+	-- cua ban goc (`LuaRuntime._tao_rig`) tu phan giai ten bien the ra armature
+	-- bang TIEN TO DAI NHAT co du lieu (Archer_WeaponNormal -> Archer,
+	-- Player004M03F -> Player004) — do tren 3142 armature cua assets_ref. Va ca
+	-- 13 gia tri ghi de deu DUNG BANG ket qua phep phan giai do, nen hoi them
+	-- ham C++ lam gi thi armature duoc nap cung khong doi.
+	local anim_doi_ten = {}
+	local function nap_anim_ref()
+		if _godot_doc_file == nil then return 0 end
+		local s = _godot_doc_file('anim_ref.json')
+		if s == nil then return 0 end
+		local ok, t = pcall(function() return require('json').decode(s) end)
+		if not ok or type(t) ~= 'table' or type(t.doi_ten) ~= 'table' then return 0 end
+		local n = 0
+		for ten, armature in pairs(t.doi_ten) do
+			anim_doi_ten[ten] = armature
+			n = n + 1
+		end
+		return n
+	end
+	M.so_anim_ref = nap_anim_ref()
+	function toAnimationName(ten)
+		return anim_doi_ten[ten] or ten
+	end
+
 	-- sngHttpRequestWithData(url, du_lieu, kieu, obj_ok, ham_ok, obj_hong,
 	-- ham_hong, so_lan_thu): engine goc LUON co — rpc.lua:305 goi thang khong
 	-- kiem. Engine cua ta khong co mang ra ngoai: moi yeu cau deu hong, va bao

@@ -1473,9 +1473,23 @@ Hai chỗ tìm ra khi dựng hình:
   giải — đếm ký tự UTF-8, chỉ ảnh hưởng tỉ lệ thu nhỏ tên dài), `CCLayer`,
   `CCLayerColorRoundRect` (thứ tự đối số theo `CCLayerColor` của Cocos, suy từ
   tên), `TableView:cellAtIndex`.
-* Còn thiếu, không chặn: `toAnimationName` (có trong `libgame.so`, dùng lập
-  danh sách armature nạp trước; cách đổi tên chưa rõ), `ClientReachAchieve`,
-  `G_MysteriousStoreLogic.ClientRefresh`.
+* ~~Còn thiếu: `toAnimationName`, `ClientReachAchieve`,
+  `G_MysteriousStoreLogic.ClientRefresh`~~ — **xong cả ba.**
+  * `toAnimationName` (có trong `libgame.so`, dùng lập danh sách armature nạp
+    trước): hàm C++ **không đọc ra được** (con trỏ hàm nằm trong bảng nạp lúc
+    chạy), nên bảng tra rút từ **dữ liệu mà hàm đó đọc** — sáu file cấu hình
+    sprite của bản gốc: 1968 mục `sName`, `<sAnimation>` có đúng **13 mục**
+    (toàn trong `evil_config.xml`, `Archer_VampirE → Archer`, …) và cả 13 giá
+    trị đều là armature có thật. Phần còn lại trả **nguyên tên**, và đúng như
+    vậy: lớp nạp armature đã tự phân giải tiền tố dài nhất (`_tao_rig`), kết quả
+    của 13 dòng ghi đè **trùng** kết quả phân giải đó. Sinh lại:
+    `python ../brave-cross/work/anim_ref.py --json data_ref/anim_ref.json`.
+    Chỗ **chưa đo được**: `<sBaseItem>` (867 mục) có phải là kế thừa
+    `<sAnimation>` không — chuỗi của nó kết thúc ở tên **không** phải armature
+    (`Silk`, `weapon_throw`, `Player03`), nên luật "đi tới gốc" đã bị chính dữ
+    liệu bác bỏ.
+  * `ClientReachAchieve` → `sc/offline/handlers/achieve.lua`;
+    `G_MysteriousStoreLogic.ClientRefresh` → `sc/offline/handlers/mysterious.lua`.
 
 #### Trạng thái người chơi — những chỗ đã mất công tìm ra
 

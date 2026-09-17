@@ -211,6 +211,30 @@ func plug(idx: int) -> Node2D:
 	return null
 
 
+## Hop cham cua armature (`_lua_CollisionSize` cua ban goc, 6 cho goi). Tra ve
+## `Vector2.ZERO` khi khong tra duoc — dung nhu ban goc tra (0, 0) cho armature
+## khong co xuong `Collision`. Cong thuc, so do va do chinh xac: `battle/cham_ref.gd`.
+##
+## Tra theo BIEN THE DANG DUNG (`variant`), vi do moi la hinh tuong that su duoc
+## dung ra — mot file `.xml` chua nhieu armature voi co rieng.
+##
+## HE QUA da do: co 47 rig ma `_richest_variant()` chon KHAC bien the mang ten
+## file, va trong 15 rig do chi bien the mang ten file moi co `Collision` (DaQiao
+## → `DaQiaoReplica`, XiaHouDun → `XiaHouDunGhost`, TenAttendants → `_Boss`...).
+## 15 rig ay se tra (0, 0) cho toi khi `_richest_variant()` duoc sua. Day la he
+## qua cua LOI CHON BIEN THE, khong phai cua ham nay: tra theo ten file o day
+## thi hop cham se thuoc mot hinh tuong khac voi hinh dang duoc ve.
+func ho_cham() -> Vector2:
+	return ChamRef.ho_cham(variant)
+
+
+## Bien the nay co so do hop cham khong — de phan biet "(0, 0) vi khong co xuong
+## `Collision`" voi "(0, 0) vi bang thieu".
+func co_ho_cham() -> bool:
+	return not ChamRef.muc(variant).is_empty()
+
+
+
 # ------------------------------------------------------------------ noi bo
 
 func _richest_variant() -> String:

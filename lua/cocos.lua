@@ -1961,6 +1961,22 @@ function Node:_UpdateShadowPosY()
 	if r ~= nil and r:has_method('cap_nhat_bong_y') then r:cap_nhat_bong_y() end
 end
 
+-- Hop cham cua armature (6 cho goi: CUIBarracksMain 1043/1091, CUICavern
+-- 363/408/454, CUIInfiniteLevelMain 848). Bon cho dung be CAO de dat nhan/nut
+-- len tren dau nhan vat (`setPosition(0, y*1.3)`, `y*1.7`, hoac
+-- `convertToWorldSpace(nW/2, nH)`), nen day la kich thuoc THAN nguoi, khong
+-- phai hitbox vat ly.
+--
+-- Ban goc tra HAI so, va tra `(0, 0)` khi armature khong co xuong `Collision`
+-- (do tren `DaQuZhanShi`) — im lang chu khong bao loi. Cong thuc va so do nam o
+-- `battle/cham_ref.gd`.
+function Node:_lua_CollisionSize()
+	local r = _rig_cua(raw(self))
+	if r == nil or not r:has_method('ho_cham') then return 0, 0 end
+	local v = r:ho_cham()
+	return v.x, v.y
+end
+
 -- Diem gan cua armature (plug) --------------------------------------------
 -- Ba ham, 48 cho goi: _lua_addChildToPlugIn 33, _lua_clearPlugIn 10,
 -- _lua_getPlugInPositionInNode 5. Day la cach ban goc treo mot node Lua (nhan

@@ -1,0 +1,107 @@
+# HOP CHAM cua armature (data_ref/cham_ref.json).
+#
+# Sinh bang `python ../brave-cross/work/cham_ref.py --json <duong dan>` tu 418
+# file `map/*.xml`. Tra bang `ChamRef.ho_cham(<ten bien the>)`.
+#
+# CONG THUC (da do, khong phai suy doan):
+#
+#     hop = (w*sx*|cos rot1| + h*sy*|sin rot1| ,
+#            h*sy*|cos rot2| + w*sx*|sin rot2|)
+#
+#   * `w, h` la khung cua BAN GHI SPRITE TRONG .xml (khong phai khung trong
+#     `.plist`; hai cho khac nhau that — Hoplite_res-44 la 3x3 trong .xml nhung
+#     1x1 trong plist, va ban goc tra 3 x 54,52 = 163,56, tuc theo .xml).
+#   * `sx, sy, rot1, rot2` la KHOA 0 cua xuong `Collision` cua bien the.
+#   * `|cos|` chu khong phai `cos`: hinh chu nhat quay goc 180 (co lat) cho
+#     `cos = -1`, de nguyen dau thi be cao ra AM.
+#   * Goc tinh bang DO. Voi goc bang 0 thi cong thuc thoan hoa thanh `w*sx`,
+#     `h*sy`.
+#
+# CACH TIM RA: bang bind cua lop armature o `.data` 0x937350 (81 ban ghi 12
+# byte, KHONG nam trong 132 lop cua `binder.py`) tro toi `0x2ab932`, than ham
+# doc hai float roi `lua_pushnumber` HAI lan — mot CAP so, khong phai mot so.
+# No goi `0x2ab860`, ma `.symtab` goi dung ten
+# `std::map<int, CDFColliderBoneInfo>::operator[]` — tuc cap so nam trong mot
+# ban ghi tren chinh armature o `+0x27c`, khoa 0.
+#
+# DO CHINH XAC, noi dung muc:
+#   * `rot = 0` — khop TUNG BIT voi ban goc (7 phep do tren may ao, lech
+#     <= 4e-12, tuc chi con sai so bieu dien float32).
+#   * `rot = 180` — cung khop tung bit, va khong phai trung ngau nhien:
+#     `|cos 180| = 1`, `|sin 180| = 0` nen khong co duong luong giac nao chay.
+#     Quet ca 592 bien the thi chi co DUNG BA gia tri goc: 0, 180, va ba rig
+#     duoi day — nen 589/592 bien the roi vao hai ca khop bit.
+#   * Goc nho khac 0 — CHI 3/592 bien the (`YuJin`, `MaYuanYi`, `GongSunZan`,
+#     |rot| <= 0,08 do): lech toi da 2,2e-4 diem anh. Da thu mo hinh hoa phan
+#     lech nay (coi nhu sai so cua chinh goc, suy nguoc tu so do) va no KHONG
+#     theo mot luat nao — ghi lai la CHUA RO, khong gan cho mot nguyen nhan nao.
+#     Anh huong: duoi 0,0002 diem anh, khong nhin thay duoc.
+#
+# TRA `(0, 0)` khi armature KHONG co xuong `Collision` — do la so ban goc tra
+# ve (do tren `DaQuZhanShi`), chu khong phai mot mac dinh cua ta. Luu y
+# `getContentSize()` la mot DAI LUONG KHAC, khong phai ham nay (DaQuZhanShi:
+# getContentSize 104,78 x 123,24 con hop cham la 0 x 0).
+#
+# KHOA CUA BANG LA TEN BIEN THE, khong phai ten file: mot file `.xml` chua
+# NHIEU armature (`CaoCao_WeaponWake`, `ZhangLiangBao_ZhangLiang`... la nhung
+# hinh tuong RIENG, co rieng), va `SngRig` chi biet bien the no dung ra. Ten
+# bien the hoac trung ten file (`Archer`) hoac la `<File>_<Hau to>`.
+class_name ChamRef
+extends RefCounted
+
+const DUONG := "res://data_ref/cham_ref.json"
+
+static var _d: Dictionary = {}
+static var _da_doc := false
+static var _thieu: Dictionary = {}
+
+
+static func _doc() -> void:
+	if _da_doc:
+		return
+	_da_doc = true
+	var f := FileAccess.open(DUONG, FileAccess.READ)
+	if f == null:
+		push_warning("ChamRef: chua co %s — chay: python ../brave-cross/work/cham_ref.py --json %s"
+				% [DUONG, DUONG])
+		return
+	var v = JSON.parse_string(f.get_as_text())
+	if v is Dictionary:
+		_d = v
+
+
+static func co_bang() -> bool:
+	_doc()
+	return not _d.is_empty()
+
+
+static func so_bien_the() -> int:
+	_doc()
+	return int(_d.get("so_bien_the", 0))
+
+
+## Muc day du cua mot bien the (rong, cao, va ca thanh phan dung ra chung) —
+## de phep kiem tinh lai cong thuc tu chinh cac thanh phan ay. {} neu khong co.
+static func muc(bien_the: String) -> Dictionary:
+	_doc()
+	var bang: Dictionary = _d.get("cham", {})
+	if bien_the == "":
+		return {}
+	if bang.has(bien_the):
+		return bang[bien_the]
+	_thieu[bien_the] = true
+	return {}
+
+
+## Hop cham cua mot bien the. `Vector2.ZERO` khi bang khong co muc nao — dung
+## nhu ban goc tra (0, 0) cho armature khong co xuong `Collision`.
+static func ho_cham(bien_the: String) -> Vector2:
+	var m := muc(bien_the)
+	if m.is_empty():
+		return Vector2.ZERO
+	return Vector2(float(m["rong"]), float(m["cao"]))
+
+
+## Cac ten da hoi ma bang khong co — de phep kiem in ra, khong de doan bua.
+static func thieu() -> Array:
+	return _thieu.keys()

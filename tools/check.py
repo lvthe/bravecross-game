@@ -159,6 +159,13 @@ SUITES = [
     # Do la phep thu cho thuat toan tach alpha cua ETC1: doc sai mat na thi khong
     # ra hinh doi xung gon gang nhu vay.
     ('bong armature',        'script', 'tools/verify_bong.gd',   False, []),
+    # HOP CHAM cua armature (`_lua_CollisionSize`) — 6 cho goi, truoc day ten
+    # khong co trong bang Node nen roi vao `__index`: khong loi, chi la cai nhan
+    # tren dau nhan vat roi vao goc. Ba tang doc lap: bang so lieu (ChamRef tinh
+    # lai cong thuc tu chinh cac thanh phan no luu), bay phep do tren may ao ghi
+    # thang vao bo kiem, va duong Lua qua `getSpriteFromSpriteCatch`. So do phan
+    # biet that: chieu RONG truoc chieu CAO (ElephantSoldier 170,52 x 118,5).
+    ('cham armature',        'script', 'tools/verify_cham_size.gd', False, []),
 ]
 
 SCORE = re.compile(r'dat (\d+), hong (\d+)')

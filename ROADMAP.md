@@ -1705,6 +1705,103 @@ lật lại nguồn khung); tầng C dựng
 đòi `_lua_CollisionSize` **không** nằm trong bộ đếm `M.missing`.
 
 
+#### Hai hàm xương (`_lua_getBonePosInNode` / `_lua_getBoneRectInNode`) — hai hàm mà thiếu thì **KHÔNG** im lặng
+
+Đây là ngoại lệ đáng nhớ của cả danh sách "API Cocos CHƯA LÀM": mọi API thiếu
+khác đều **im lặng** (lớp giả lập trả về một hàm rỗng), nên chúng chỉ lộ ra khi
+**đếm**. Hai hàm này thì không — chỗ gọi chúng **gác** bằng
+
+```lua
+if spHero._lua_getBonePosInNode ~= nil and spHero._lua_getBoneRectInNode ~= nil then
+    headBoneX, headBoneY = spHero:_lua_getBonePosInNode("Head", spTargetPos)
+    ...
+    facePosX = headBoneX + offsetX          -- headBoneX = nil -> LỖI LUA THẬT
+```
+
+`__index` của lớp giả lập trả về một hàm cho **mọi** tên, nên phép gác ấy **luôn
+đúng**; rồi giá trị trả về là `nil` và phép cộng ném lỗi. Chỗ gọi: **đúng hai
+lượt, trong một file** — `sc/user/UI/CUIHeroInfoFightSoulUI.lua:3105-3106`
+(`CUIFightSoulAnimation:playFail_Step2`, tức hoạt ảnh **thất bại** khi nâng cấp
+võ hồn; `spTargetPos = cnHeroInfoUIAnimPos`, một node **thường** chứ không phải
+armature).
+
+**Năm phép đo trên máy ảo** (`brave-cross/work/emu_xuong.py`, bản gốc chạy trong
+Android) chốt được bảng sau. Cặp trả về là cặp `+0x08` của bản ghi khung
+(`anim.py` ghi là `v2`/`v3`, trước đây ghi "chưa rõ nghĩa"), với **y đảo dấu**:
+
+| rig | xương | `(v2, v3)` trong file | `_lua_getBonePosInNode` trả |
+|---|---|---|---|
+| `ZhangLiangBao` | `Collision` | (−88, −227) | (−88, **227**) |
+| `ElephantSoldier` | `Collision` | (−103, −115) | (−103, **115**) |
+| `YuJin` | `Head` | (1, −127) | (1, **127**) |
+| `Gashapon` | `Collision` | (−132, −196) | (−132, **196**) |
+| `Hoplite` | `Collision` | (−77, −162) | (−77, **162**) |
+
+Năm số **khác nhau** nên một bản quên đảo trục y sẽ trượt ngay — và cả năm đều
+đọc lại được **độc lập** từ chính file `.json`, không cần máy ảo.
+
+Bốn tính chất còn lại, đo được và đều đã khoá trong `tools/verify_xuong.gd`:
+
+* **Cặp ấy là dữ liệu TỪNG KHUNG, không phải một tư thế tĩnh**: `Head` của
+  `YuJin` trong động tác `Run` có **bốn** giá trị khác nhau — (1, −127),
+  (−1, −125), (−9, −121), (−4, −124).
+* **Tham số 2 bỏ trống được**, và truyền **chính cái rig** làm node đích cho kết
+  quả **y hệt** bỏ trống (`pos-self == pos-nil` trên cả năm xương): nghịch đảo
+  của chính nó khử đúng độ dời của nó. Nghĩa là cặp lưu nằm trong **hệ của
+  chính rig**, còn chiều cao node cha trong phép dò ấy bằng 0.
+* **Đổi node đích là một phép đổi KHÔNG GIAN thật, tỉ lệ 1**: đặt node đích từ
+  cocos `(−40, 7)` sang `(100, 50)` — tức dời `+(140, 43)` trong hệ cocos — thì
+  kết quả đổi **đúng `−(140, 43)`** = `(−140, −43)`. Một bản trả toạ độ toàn cục
+  sẽ ra hiệu khác hẳn, còn một bản quên đảo trục y sẽ sai dấu ở đúng một trục.
+  Cổng dựng đi đúng đường của `_lua_getPlugInPositionInNode`:
+  `p = target.get_global_transform().affine_inverse() * rig.to_global(v)`
+  rồi trả `p.x, parent_h(target) − p.y`.
+* **`_lua_getBoneRectInNode` = đúng công thức `hop()` của `cham_ref.py`**, với
+  `(w, h)` = `sourceSize` của **ảnh mà chính xương ấy đang vẽ** — và bằng
+  `_lua_CollisionSize()` khi xương là `Collision` (đo trên `YuJin`, `Gashapon`,
+  `Hoplite`). Hộp là một **kích thước**, nên node đích chỉ **trượt** thì nó
+  không đổi (đo `ZhangLiangBao` `175 × 227,5` ở cả hai lần đặt).
+
+**Một lỗi XUẤT đã lộ ra ở đây và đã sửa.** `spriteFiles[<tên>] = null` nghĩa là
+"sprite ấy **không cắt được PNG**" (ô 0×0 trong atlas — mỗi nhân vật có một cái),
+chứ không phải "không có ô": ô của nó vẫn nằm trong `.plist`. Mà các hộp
+`Collision` / `Area_*` / `PlugIn_*` **chính là** những sprite ấy, nên
+`khung_xuong` ra `(0, 0)` và hộp xương ra 0. **Phạm vi đo được** (quét cả 397 rig,
+đi hết các bộ phận lồng nhau): **2.112 / 32.395** cặp xương→ảnh (6,52%) ở
+**171 / 397** rig là ảnh `null` — trong năm rig đã đo thì **hai** dính trực tiếp
+(`ZhangLiangBao_res-44` 1×1, `YuJin_res-44` 1×1; ba rig kia có PNG thật: 3×3,
+7×7, 3×3). Nay `export.py` xuất thêm bản đồ `sourceSize` cho **mọi** tên sprite,
+và `khung_xuong` lùi về nó khi `spriteFiles` là `null`. Cùng lượt ấy lộ ra lỗi
+thứ hai: `json.dump` của Python ghi thẳng `NaN` (không phải JSON hợp lệ) và
+`JSON.parse_string` của Godot **từ chối cả file** — rig `XSJiYouHeTiJi` không
+dựng được, bộ `rig nhân vật` đỏ **1 hỏng**. Nay `export.py` thay mọi số không
+hữu hạn bằng `0.0`, **đếm lại** và in con số ra dòng tổng kết (đo được: đúng
+**2** chỗ, cả hai ở khoá 4/5 của hai xương — vùng rác đã biết của
+`XSJiYouHeTiJi`/`BingYing`, xem `anim.py` mục `d`/`dur`), kèm `allow_nan=False`
+để lần sau có chỗ nào lọt thì `json.dump` **ném lỗi ngay**.
+
+**Một chỗ CHƯA KHỚP, ghi rõ và KHÔNG đoán:** nếu node đích **là armature** thì
+bản gốc lệch hệ số **1,02** ở **cả hai** hàm, và lệch **ngược chiều nhau** — điểm
+`(−137,255, −42,157)` thay vì `(−140, −43)` (bản dựng **lớn** hơn 1,02 lần), hộp
+`178,5 × 232,04899597168` thay vì `175 × 227,5` (bản dựng **nhỏ** hơn 1,02 lần).
+Hai chiều ngược nhau ấy **loại trừ** cách giải thích dễ nghĩ nhất: 1,02 **không
+thể** là một tỉ lệ duy nhất nằm trên node đích, vì một tỉ lệ như vậy đi vào phép
+nghịch đảo thì **cả hai** kết quả đều bị chia cùng một chiều. Chủ nhân của hệ số
+ấy **chưa biết**: `getScale` lẫn `setScale` đều **giết cả tiến trình dò** trên máy
+ảo (`pcall` không bắt được SIGSEGV của mã native), nên không đo được nó thuộc node
+nào. Bản dựng **không** nhân hệ số ấy — và chỗ gọi thật (`:3105`) truyền node
+**thường**, nên nó không dính. Bộ kiểm **in** hai phép đo này ra chứ không khẳng
+định.
+
+Khoá bằng `tools/verify_xuong.gd` (**59 đạt / 0 hỏng**, bộ thứ 40 của
+`tools/check.py`): tầng A đọc lại khoá 0 từ chính file `.json` bằng GDScript (hai
+đường độc lập), tầng B đối chiếu năm phép đo máy ảo, tầng C tính lại `hop_xuong`
+từ `(w, h, rot, rot2, sx, sy)` và so với `ho_cham()` (hai nguồn dữ liệu khác
+nhau: `cham_ref.json` với bản đồ `sourceSize`), tầng D đi **đường Lua thật** qua
+`getSpriteFromSpriteCatch` — kể cả luật đổi không gian, xương sai tên, và node
+không phải rig (im lặng trả `(0, 0)`, đúng như bản gốc).
+
+
 - [~] Ải vô tận / Epic / SB / COG (11 màn) — **con số 11 sai, và sai kiểu đã
       cảnh báo ở trên**: nó đếm theo đường dẫn file ném lỗi nên gộp **bốn họ
       riêng** (InfiniteLevel 7 màn đăng ký, Epic 6, SB 6, COG 22) với **hai

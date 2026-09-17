@@ -516,6 +516,34 @@ vào nút nằm dưới lớp. Bản dựng vì thế chạy hàm rồi **trả 
 tiếp xuống node dưới (`M.cham` chỉ nhường pha **Begin**, đúng chỗ duy nhất mã gốc
 đọc byte ấy). Đường Login → Main vì thế **không còn API nào chưa làm**.
 
+Hai hàm xương của armature — `_lua_getBonePosInNode` / `_lua_getBoneRectInNode`
+— là **ngoại lệ của cả danh sách "API chưa làm"**: mọi API thiếu khác đều im
+lặng, còn hai hàm này thì chỗ gọi **gác** bằng `if spHero._lua_getBonePosInNode
+~= nil then` — mà `__index` của lớp giả lập trả về một hàm cho **mọi** tên, nên
+phép gác ấy luôn đúng, rồi hai giá trị trả về là `nil` và `facePosX = headBoneX
++ offsetX` ném **lỗi Lua thật**. Đúng **hai** lượt gọi, một file:
+`sc/user/UI/CUIHeroInfoFightSoulUI.lua:3105-3106` (hoạt ảnh thất bại khi nâng cấp
+võ hồn). Cặp số là cặp `+0x08` của bản ghi khung với **y đảo dấu** —
+`(v2, −v3)` — đo trên năm rig và đọc lại được độc lập từ chính file `.json`; nó
+là dữ liệu **từng khung**, đổi node đích là một phép **đổi không gian** thật
+(dời node đích `+(140, 43)` theo cocos thì kết quả đổi đúng `−(140, 43)`), và
+`_lua_getBoneRectInNode` **chính là** công thức `hop()` của `cham_ref.py` với
+`(w, h)` = `sourceSize` của ảnh mà xương ấy vẽ. Cùng lượt ấy lộ ra hai lỗi xuất:
+hộp của các sprite `_res-44` (ô 0×0 trong atlas nên `spriteFiles` là `null`) **thiếu
+hẳn** — đo được **2.112/32.395** cặp xương→ảnh (6,52%) ở **171/397** rig — nay có
+bản đồ `sourceSize` cho mọi tên sprite; và `json.dump` ghi `NaN`
+làm Godot **từ chối cả file** JSON của một rig (`XSJiYouHeTiJi`), nay số không
+hữu hạn bị thay bằng `0.0` và **đếm lại**. Còn **một chỗ CHƯA KHỚP** ghi rõ:
+node đích là **armature** thì bản gốc lệch đúng **1,02** ở **cả hai** hàm nhưng
+**ngược chiều nhau** (điểm: bản gốc `(−137,255, −42,157)` còn bản dựng
+`(−140, −43)`, tức bản dựng **lớn hơn**; hộp: bản gốc `178,5 × 232,04899597168`
+còn bản dựng `175 × 227,5`, tức bản dựng **nhỏ hơn**), nên 1,02 **không thể** là
+một tỉ lệ nằm trên node đích — và chủ nhân hệ số ấy chưa biết
+(`getScale`/`setScale` giết cả tiến trình dò trên máy ảo); bản dựng không nhân
+hệ số ấy, và chỗ gọi thật truyền node **thường** nên không dính.
+Chi tiết đầy đủ + số đo: `ROADMAP.md`, mục "Hai hàm xương"; khoá bằng
+`tools/verify_xuong.gd` (59 đạt / 0 hỏng).
+
 Bấm được: `lua/cocos.lua` (`M.cham`) + `LuaRuntime.touch_at`, kiểm bằng
 `tools/verify_cham.gd`. Số màn mở được: xem bảng đầu `ROADMAP.md` (đo bằng
 `tools/quet_show.gd`, con số dao động ±3 giữa các lần chạy). Phần lớn màn hỏng

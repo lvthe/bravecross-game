@@ -1065,6 +1065,31 @@ và đo ra thì cả kho chỉ có **9 node** vượt quá ngưỡng ấy nên k
     ấy bác bỏ **cả hai** cách chọn kia: luật đúng là **khớp tên**, như
     `getSpriteFromSpriteCatch(<tên>)`. **12** rig đổi kết quả.
 
+12. ~~**Hai hàm xương của armature — `_lua_getBonePosInNode` /
+    `_lua_getBoneRectInNode`**~~ — **xong**, khoá bằng `tools/verify_xuong.gd`
+    (**59 đạt / 0 hỏng**, `check.py` bộ thứ **40**). Khác mọi API thiếu khác ở
+    một chỗ quan trọng: **thiếu thì không im lặng**. Chỗ gọi
+    (`sc/user/UI/CUIHeroInfoFightSoulUI.lua:3105-3106`, màn Võ Hồn) gác bằng
+    `if spHero._lua_getBonePosInNode ~= nil then` — mà `__index` của lớp giả lập
+    trả về một hàm cho **mọi** tên, nên phép gác ấy luôn đúng, rồi giá trị trả
+    về là `nil` và `facePosX = headBoneX + offsetX` ném **lỗi Lua thật**. Nội
+    dung: cặp `+0x08` của bản ghi khung với **y đảo dấu** (`(v2, −v3)`), đo trên
+    năm rig; hộp = công thức `hop()` với `(w, h)` = `sourceSize` của ảnh xương
+    ấy vẽ; đổi node đích là phép **đổi không gian** thật (dời `+(140, 43)` theo
+    cocos thì kết quả đổi đúng `−(140, 43)`). Hai lỗi XUẤT lộ ra cùng lượt, đã
+    sửa: hộp của các sprite `_res-44` (0×0 trong atlas nên `spriteFiles` là
+    `null`) **thiếu hẳn** — đo được **2.112/32.395** cặp xương→ảnh (6,52%) ở
+    **171/397** rig — nay có bản đồ `sourceSize` cho mọi tên sprite; và
+    `json.dump` của Python ghi `NaN` làm Godot **từ chối cả file** JSON của
+    `XSJiYouHeTiJi` — nay số không hữu hạn bị thay bằng `0.0` và **đếm lại**
+    (đúng **2** chỗ). **Một chỗ CHƯA KHỚP, ghi rõ:** node đích là **armature**
+    thì bản gốc lệch đúng **1,02** ở **cả hai** hàm nhưng **ngược chiều nhau**
+    (điểm bản dựng **lớn hơn**, hộp bản dựng **nhỏ hơn**), nên 1,02 không thể
+    là một tỉ lệ nằm trên node đích; chủ nhân hệ số ấy chưa biết
+    (`getScale`/`setScale` giết cả tiến trình dò trên máy ảo), bản dựng không
+    nhân nó, và chỗ gọi thật truyền node **thường** nên không dính. Số đo đầy
+    đủ: `ROADMAP.md`, mục "Hai hàm xương".
+
 #### Chiến dịch và sân trận
 
 ```bash

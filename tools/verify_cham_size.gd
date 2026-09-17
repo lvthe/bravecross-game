@@ -13,7 +13,8 @@
 #   A. BANG SO LIEU. `ChamRef` tinh LAI cong thuc tu chinh cac thanh phan no luu
 #      (w, h, rot1, rot2, sx, sy) roi so voi cap so da luu — hai duong doc lap
 #      (Python sinh bang, GDScript tinh lai) phai gap nhau.
-#   B. SO DO TU BAN GOC. Bay phep do tren may ao (`emu_cham.py`), ghi thang so
+#   B. SO DO TU BAN GOC. Chin phep do tren may ao (`emu_cham.py` + ba phep cua
+#      `emu_xuong.py` muc D), ghi thang so
 #      vao day. Voi `rot = 0` phai khop TUNG BIT (ban goc chi nhan `w*sx`);
 #      voi ba rig goc nho khac 0 thi dung sai 3e-4 — xem chu thich dau
 #      `battle/cham_ref.gd`, phan lech ay CHUA RO nguyen nhan va da ghi lai.
@@ -35,11 +36,22 @@ const RIG_CHU_NHAT := "res://assets_ref/ElephantSoldier"
 ## Rig khong co xuong `Collision` — ban goc tra (0, 0), do duoc tren may ao.
 const RIG_KHONG_CHAM := "res://assets_ref/DaQuZhanShi"
 
-## 592 bien the co xuong `Collision` (418 file .xml, 224 bien the mang ten file).
-const SO_BIEN_THE := 592
+## 590 bien the co xuong `Collision` (418 file .xml, 224 bien the mang ten file).
+##
+## KHONG phai 592: tai lieu cu dem bang khung `.xml`, va `LvBuZhanShi_res-44` co
+## `sourceSize` la `0 x 0` nen hop cua hai bien the `LvBuZhanShi_A2` va
+## `LvBuZhanShi_Weapon1` bang khong. Do la he qua cua viec doi nguon khung sang
+## `sourceSize` cua `.plist`, khong phai mot dong bi mat.
+const SO_BIEN_THE := 590
 
-## Bay phep do tren may ao (`emu_cham.py`, ban goc chay trong Android). Gia tri
-## la `rong` roi `cao`; `null` = phep do lan do khong lay duoc so cao.
+## Phep do tren may ao (`emu_cham.py`, ban goc chay trong Android). Gia tri la
+## `rong` roi `cao`; `null` = phep do lan do khong lay duoc so cao.
+##
+## HAI muc cuoi (`BatFlight`, `DragonFlight`) la ba phep do lat nguoc nguon khung
+## (`emu_xuong.py` muc D, do ba rig CHUA TUNG do lan nao). Ca hai deu hop voi
+## `sourceSize` cua `.plist` va deu KHONG hop voi ban ghi `.xml`:
+##   BatFlight     145,00999450684 x 120   (.xml doi ra 290,02 x 240)
+##   DragonFlight  175 x 145               (.xml doi ra 350 x 290)
 const DO_DUOC := {
 	"Hoplite": [163.55999755859, null],
 	"ElephantSoldier": [170.52000427246, 118.5],
@@ -48,9 +60,11 @@ const DO_DUOC := {
 	"YuJin": [140.00547790527, null],
 	"MaYuanYi": [254.65454101562, 189.62301635742],
 	"GongSunZan": [140.01898193359, 185.00645446777],
+	"BatFlight": [145.00999450684, 120.0],
+	"DragonFlight": [175.0, 145.0],
 }
 
-## Ba rig duy nhat trong 592 di qua `sin`/`cos` o goc khac 0 (|rot| <= 0,08 do).
+## Ba rig duy nhat trong 590 di qua `sin`/`cos` o goc khac 0 (|rot| <= 0,08 do).
 ## Moi bien the khac chi co goc 0 hoac 180, va hai goc do khong chay duong luong
 ## giac nao (`|cos 180| = 1`, `|sin 180| = 0`). Dung sai rong hon cho ba rig nay.
 const GOC_NHO := ["YuJin", "MaYuanYi", "GongSunZan"]
@@ -217,7 +231,7 @@ func _init() -> void:
 				% [t, m2.get("rot", "thieu"), m2.get("rot2", "thieu")])
 
 	# --- B. So do tu ban goc -----------------------------------------------
-	print("\nB. Bay phep do tren may ao (emu_cham.py):")
+	print("\nB. Chin phep do tren may ao (emu_cham.py, emu_xuong.py):")
 	for t in DO_DUOC:
 		var m3: Dictionary = bang.get(t, {})
 		if m3.is_empty():

@@ -1041,17 +1041,23 @@ và đo ra thì cả kho chỉ có **9 node** vượt quá ngưỡng ấy nên k
     không vẽ được chứ không vẽ sai.
 
 11. ~~**Hộp chạm của armature — `_lua_CollisionSize`** (6 chỗ gọi)~~ — **xong**,
-    khoá bằng `tools/verify_cham_size.gd` (**42 đạt / 0 hỏng**, `check.py` bộ
+    khoá bằng `tools/verify_cham_size.gd` (**46 đạt / 0 hỏng**, `check.py` bộ
     thứ **35**). Nó trả về **một CẶP số** (rộng, cao), không phải một số — dùng
     để đặt nhãn / mũi tên **lên trên đầu nhân vật**, tức cỡ **thân** chứ không
     phải hộp va chạm vật lý. Công thức, số đo và chỗ **chưa rõ**: `ROADMAP.md`,
     mục "Hộp chạm của armature". Ba điều đáng nhớ:
-    (a) `(w, h)` là khung sprite **trong `.xml`**, **không phải plist** — cùng
-    ảnh `Hoplite_res-44` là 3×3 trong `.xml` nhưng 1×1 trong plist, mà bản gốc
-    trả 3 × 54,52 = 163,56;
-    (b) quét cả **592** biến thể thì chỉ **ba** giá trị góc tồn tại, nên
-    **589/592 khớp máy ảo từng bit**; 3 rig còn lại lệch ≤ 2,2e-4 điểm ảnh và
-    **chưa rõ nguyên nhân** — ghi là chưa rõ, không gán bừa;
+    (a) `(w, h)` là **`sourceSize` của bản ghi `.plist`** (cặp float 12, 13, ở
+    `+0x34`) — **không phải** bản ghi sprite trong `.xml`, dù tài liệu này từng
+    khẳng định thế. Lập luận cũ ("`Hoplite_res-44` là 3×3 trong `.xml`, 1×1
+    trong plist") **không phân biệt được gì**, vì `.plist` khai **ba** cặp cỡ và
+    `sourceSize` của chính ảnh ấy **cũng** là 3×3. Ba phép đo trên máy ảo mới
+    tách được: `BatFlight` 145,00999450684 × 120 (`.xml` đòi 290,02), và
+    `DragonFlight` 175 × 145 (`.xml` 350 × 290) — hai rig **chưa từng đo**;
+    (b) quét cả **590** biến thể thì chỉ **ba** giá trị góc tồn tại, nên
+    **587/590 khớp máy ảo từng bit**; 3 rig còn lại lệch ≤ 2,2e-4 điểm ảnh và
+    **chưa rõ nguyên nhân** — ghi là chưa rõ, không gán bừa. Bảng **590** dòng
+    chứ không phải 592: hai biến thể `LvBuZhanShi_A2`/`_Weapon1` dùng ảnh có
+    `sourceSize` `0 × 0` nên hộp bảng không;
     (c) **cùng lượt ấy lộ ra một lỗi chọn biến thể**, đã sửa: bản dựng chọn nhóm
     nhiều động tác nhất, khi bằng nhau thì lấy nhóm đầu — mà biến thể **mang tên
     file nằm CUỐI** ở **297/304** file. Máy ảo nói thẳng bản gốc dựng biến thể

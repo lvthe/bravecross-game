@@ -368,15 +368,29 @@ shader riêng. Còn `'screen'` thì khớp sẵn: `CanvasItemMaterial.BLEND_MODE
 
 Hộp chạm của armature (`_lua_CollisionSize`) — **XONG**, và nó là một CẶP số
 (rộng, cao) chứ không phải một số: `W = w·sx·|cos rot1| + h·sy·|sin rot1|`,
-`H = h·sy·|cos rot2| + w·sx·|sin rot2|`, với `(w,h)` là khung sprite **trong
-`.xml`** (KHÔNG phải plist: `Hoplite_res-44` là 3×3 trong `.xml`, 1×1 trong plist,
-mà bản gốc trả 3 × 54,52) và `(sx,sy,rot1,rot2)` là khoá 0 của xương `Collision`.
-`|cos|` vì `rot2 = 180` là **cờ lật**, để nguyên dấu thì bề cao ra ÂM. Quét cả
-**592** biến thể: chỉ ba giá trị góc tồn tại (`0` 577, `180` 12, ba rig góc nhỏ),
-nên **589/592 khớp máy ảo từng bit**; 3/592 còn lại lệch ≤ 2,2e-4 điểm ảnh và
-**chưa rõ nguyên nhân** (đã thử mô hình hoá, góc hiệu dụng ra đúng bằng `rot1`).
+`H = h·sy·|cos rot2| + w·sx·|sin rot2|`, với `(sx,sy,rot1,rot2)` là khoá 0 của
+xương `Collision`.
+`|cos|` vì `rot2 = 180` là **cờ lật**, để nguyên dấu thì bề cao ra ÂM.
+
+`(w,h)` là **`sourceSize` của bản ghi `.plist`** (cặp float 12, 13 của bản ghi
+60 byte, ở `+0x34`) — **KHÔNG phải** bản ghi sprite trong `.xml`. Tài liệu này
+từng khẳng định `.xml`, kèm lập luận "`Hoplite_res-44` là 3×3 trong `.xml`, 1×1
+trong plist, mà bản gốc trả 3 × 54,52" — **lập luận ấy không phân biệt được gì**,
+vì `.plist` khai **ba** cặp cỡ chứ không phải một: `f2,f3` là khung ĐÃ CẮT,
+`f9,f10` **lặp lại y hệt** `f2,f3` (đo 13.634/13.634 khung), còn `f11,f12` mới là
+`sourceSize`; và `sourceSize` của `Hoplite_res-44` **cũng** là 3×3. Ba phép đo
+trên máy ảo mới tách được hai nguồn, cả ba đều nói `sourceSize`: `BatFlight`
+**145,00999450684 × 120** (`.xml` đòi ra 290,02 × 240), `DragonFlight` **175 × 145**
+(`.xml` 350 × 290), `DragonFlight` `Head` **64 × 64** (`.xml` 65 × 64) — ba rig
+chưa từng được đo lần nào. Quét cả **590** biến thể: chỉ ba giá trị góc tồn tại
+(`0` 577, `180` 12, ba rig góc nhỏ), nên **587/590 khớp máy ảo từng bit**;
+3/590 còn lại lệch ≤ 2,2e-4 điểm ảnh và **chưa rõ nguyên nhân**.
+Bảng có **590** dòng chứ không phải 592 vì hai biến thể `LvBuZhanShi_A2` /
+`LvBuZhanShi_Weapon1` dùng ảnh `LvBuZhanShi_res-44` mà `sourceSize` của ảnh ấy là
+`0 × 0` (hai biến thể ấy không đo được trên máy ảo — `getSpriteFromSpriteCatch`
+trả `nil` — nên `0 × 0` của chúng là **suy theo cùng một luật**).
 Ghi chú đầy đủ + số đo: `ROADMAP.md`, mục "Hộp chạm của armature";
-khoá bằng `tools/verify_cham_size.gd` (42 đạt / 0 hỏng).
+khoá bằng `tools/verify_cham_size.gd` (46 đạt / 0 hỏng).
 
 **Cùng lượt ấy lộ ra một lỗi chọn biến thể đã sửa:** `_richest_variant()` chọn
 nhóm nhiều động tác nhất, khi bằng nhau thì lấy nhóm **đầu tiên** — mà biến thể

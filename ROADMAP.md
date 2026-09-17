@@ -1590,22 +1590,58 @@ W = w·sx·|cos rot1| + h·sy·|sin rot1|
 H = h·sy·|cos rot2| + w·sx·|sin rot2|
 ```
 
-* `(w, h)` là khung của bản ghi sprite **trong `.xml`** (header 0x60, `+0x08`) của
-  ảnh mà xương đang vẽ. Đây là chỗ dễ sai nhất: cùng ảnh `Hoplite_res-44` là
-  **3×3 trong `.xml` nhưng 1×1 trong `.plist`**, mà bản gốc trả 3 × 54,52 =
-  163,56 — tức đọc theo `.xml`.
+* `(w, h)` là **`sourceSize` của bản ghi `.plist`** — cặp float thứ 12, 13 của bản
+  ghi 60 byte, ở `+0x34` (`sngxml.py` đọc ra dưới tên `sourceSize`). Đó là **ô của
+  sprite theo đúng nghĩa engine dùng** (`CCSpriteFrame::getOriginalSize`).
 * `(sx, sy, rot1, rot2)` là **khoá 0** của xương `Collision` (`+0x10`/`+0x14` và
   `+0x18`/`+0x1c` của bản ghi khung 80 byte).
 * `|cos|` chứ không `cos`: `CaoCao` / `ZhangLiaoDog` / `ShenHaiZhangYu` đặt
   `rot2 = 180` làm **cờ lật**, để nguyên dấu thì bề cao ra **ÂM**
   (`100 × −189,99`). Một cạnh hộp bao không thể âm.
 
-**Độ chính xác, nói đúng mức đã đo.** Quét cả **592** biến thể có xương `Collision`
+#### Nguồn khung ảnh — chỗ tài liệu này TỪNG SAI, và ba phép đo lật lại
+
+Bản trước của mục này kết luận `(w, h)` là khung của **bản ghi sprite trong
+`.xml`**, kèm lập luận: "cùng ảnh `Hoplite_res-44` là 3×3 trong `.xml` nhưng 1×1
+trong `.plist`, mà bản gốc trả 3 × 54,52 = 163,56 — tức đọc theo `.xml`".
+**Kết luận sai, và lập luận ấy không phân biệt được gì**: `.plist` khai **ba**
+cặp cỡ chứ không phải một (`work/khung_nguon.py` in ra ba cặp ấy):
+
+```
+f2,f3   = khung ĐÃ CẮT trong atlas        (`sizeWH`)      13.634/13.634 lệch 0
+f9,f10  = LẶP LẠI y hệt `sizeWH`          (`sizeWH2`)
+f11,f12 = `sourceSize`, khung TRƯỚC KHI CẮT
+```
+
+Phép so cũ lấy nhầm cặp **đã cắt** (`Hoplite_res-44`: 1×1) đem so với `.xml`
+(3×3) — mà `sourceSize` của chính ảnh ấy **cũng là 3×3**. Hai nguồn bằng nhau ở
+**253/256** ảnh `_res-44`, nên phép đo ấy không tách được gì. Ba phép đo trên máy
+ảo mới tách được, và **cả ba đều nói `sourceSize`**:
+
+| rig | đo được trên máy ảo | theo `sourceSize` | theo `.xml` |
+|---|---|---|---|
+| `BatFlight` | **145,00999450684 × 120** | 1 × 145,01 | 2 × 145,01 = 290,02 |
+| `DragonFlight` | **175 × 145** | 1 × 175 | 2 × 175 = 350 |
+| `DragonFlight` `Head` | **64 × 64** | 64 × 64 | 65 × 64 |
+
+Cả ba rig này **chưa từng được đo lần nào** trước lượt ấy. `LvBuZhanShi` cũng đo
+được và trả đúng **0 × 0**.
+
+**Hệ quả lên bảng: 592 → 590 dòng.** Hai biến thể `LvBuZhanShi_A2` và
+`LvBuZhanShi_Weapon1` dùng ảnh `LvBuZhanShi_res-44`, mà `sourceSize` của ảnh ấy
+là `0 × 0` (`.xml` ghi 1×1) nên hộp bảng không; **7** biến thể đổi hộp
+(`BatFlight`, `DragonFlight`, cộng `BatFlight_Fire`, `BatFlight_WeaponNormal`,
+`BatFlight_WeaponWake`, `DragonFlight_IcyRoad`, `DragonFlight_Weapon`). Hai biến
+thể rơi khỏi bảng **không đo được trên máy ảo** —
+`getSpriteFromSpriteCatch("LvBuZhanShi_A2")` trả `nil` — nên `0 × 0` của chúng là
+**suy theo cùng một luật**, không phải số đo; rig `LvBuZhanShi` thì đo được.
+
+**Độ chính xác, nói đúng mức đã đo.** Quét cả **590** biến thể có xương `Collision`
 (418 file `.xml`, 224 biến thể mang tên file): chỉ **ba** giá trị góc xuất hiện —
 `0` (577), `180` (12), và ba rig góc nhỏ `YuJin`/`MaYuanYi`/`GongSunZan`
 (|rot| ≤ 0,08°). Góc `0` khớp máy ảo **từng bit** (lệch ≤ 4e-12); góc `180` **cũng
 từng bit và vì một lý do cấu trúc** (`|cos 180| = 1`, `|sin 180| = 0` — không đi
-qua đường lượng giác nào), nên **589/592 khớp bit**. Chỉ **3/592** thật sự chạy
+qua đường lượng giác nào), nên **587/590 khớp bit**. Chỉ **3/590** thật sự chạy
 `sin`/`cos` ở góc khác 0, và ở đó lệch ≤ **2,2e-4 điểm ảnh**; đã thử mô hình hoá
 phần lệch ấy (coi là sai số của chính GÓC) và **góc hiệu dụng ra đúng bằng `rot1`**
 — tức không phải sai số góc, và dấu thì không nhất quán. Ghi là **CHƯA RÕ**, không
@@ -1659,9 +1695,11 @@ tác nhất; **12** trong số đó có hộp chạm **khác hẳn nhau** giữa
 `XSJieSuoBingZhong`, `XSJieSuoLinTong`, `XSTaoTieChangJing`, `XSYuanJunJiaDao`.
 (Sửa luôn cho `LuaRuntime._tao_rig` — nay nó dựng đúng hình tượng mà bản gốc dựng.)
 
-Khoá bằng `tools/verify_cham_size.gd` (**42 đạt / 0 hỏng**): tầng A tính lại công
+Khoá bằng `tools/verify_cham_size.gd` (**46 đạt / 0 hỏng**): tầng A tính lại công
 thức từ chính các thành phần đã lưu (hai đường độc lập: Python sinh bảng, GDScript
-tính lại) trên cả 592 biến thể; tầng B so với **bảy** phép đo máy ảo; tầng C dựng
+tính lại) trên cả 590 biến thể; tầng B so với **chín** phép đo máy ảo (bảy phép cũ
+cộng `BatFlight` 145,00999450684 × 120 và `DragonFlight` 175 × 145 — ba phép đo
+lật lại nguồn khung); tầng C dựng
 `SngRig` thật, gồm hai ca chọn biến thể và một ca **xin đúng biến thể**; tầng D đi
 **đường Lua thật** (`getSpriteFromSpriteCatch` → `_lua_CollisionSize`, 5 rig) và
 đòi `_lua_CollisionSize` **không** nằm trong bộ đếm `M.missing`.
@@ -2757,7 +2795,7 @@ hơn số lần bộ quét **chạy** bắt gặp vì phần lớn nằm ở mà
 | `initWithSpriteFrameName` / `initWithSpriteFrame` | 66 / 9 | đặt khung hình cho sprite — bản port đặt ảnh bằng đường khác |
 | `setText` | 38 | **đã xong** — cả 38 chỗ đều là `CCEditBox`, xem mục "Ô nhập chữ" |
 | `_ShowShadow` | 20 | **đã xong** — cả 20 đều gọi trên node armature (`getSpriteFromSpriteCatch` → `SngRig`), chỗ làm là `rig/sng_rig.gd`. Kèm theo `_SetSyncShadowPosY` (3 chỗ) và `_UpdateShadowPosY` (0 chỗ) — xem mục "Bóng của armature" |
-| `_lua_CollisionSize` | 6 | **đã xong** — trả về MỘT CẶP số (rộng, cao); công thức và 592 biến thể ở mục "Hộp chạm của armature" |
+| `_lua_CollisionSize` | 6 | **đã xong** — trả về MỘT CẶP số (rộng, cao); công thức và 590 biến thể ở mục "Hộp chạm của armature" |
 | `_Lua_addStarLevelEffect` | 4 | |
 | `setLuaCallbackObjAndFunc` | 3 | **đã xong** — nối ô nhập chữ với hàm Lua, cùng lượt với `setText` |
 | `setSoundStrArr` | 2 | |

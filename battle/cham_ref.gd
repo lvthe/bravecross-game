@@ -8,9 +8,16 @@
 #     hop = (w*sx*|cos rot1| + h*sy*|sin rot1| ,
 #            h*sy*|cos rot2| + w*sx*|sin rot2|)
 #
-#   * `w, h` la khung cua BAN GHI SPRITE TRONG .xml (khong phai khung trong
-#     `.plist`; hai cho khac nhau that — Hoplite_res-44 la 3x3 trong .xml nhung
-#     1x1 trong plist, va ban goc tra 3 x 54,52 = 163,56, tuc theo .xml).
+#   * `w, h` la `sourceSize` cua BAN GHI `.plist` — cap float thu 12, 13 cua ban
+#     ghi 60 byte, o `+0x34` (`sngxml.py` doc ra duoi ten `sourceSize`). Do la o
+#     cua sprite theo dung nghia engine dung (`CCSpriteFrame::getOriginalSize`).
+#     Tai lieu nay TUNG noi "khung cua ban ghi sprite trong .xml" — SAI, va phep
+#     so dung de ket luan ay khong phan biet duoc gi: `Hoplite_res-44` co `.xml`
+#     3x3 va plist 1x1, nhung `sourceSize` cua chinh anh ay CUNG la 3x3. Ba phep
+#     do tren may ao moi tach duoc hai nguon, va ca ba deu noi `sourceSize`:
+#     BatFlight 145,00999450684 x 120 (= 1 x 145,01; `.xml` doi ra 290,02),
+#     DragonFlight 175 x 145 (`.xml` 350 x 290), DragonFlight `Head` 64 x 64
+#     (`.xml` 65 x 64).
 #   * `sx, sy, rot1, rot2` la KHOA 0 cua xuong `Collision` cua bien the.
 #   * `|cos|` chu khong phai `cos`: hinh chu nhat quay goc 180 (co lat) cho
 #     `cos = -1`, de nguyen dau thi be cao ra AM.
@@ -29,13 +36,20 @@
 #     <= 4e-12, tuc chi con sai so bieu dien float32).
 #   * `rot = 180` — cung khop tung bit, va khong phai trung ngau nhien:
 #     `|cos 180| = 1`, `|sin 180| = 0` nen khong co duong luong giac nao chay.
-#     Quet ca 592 bien the thi chi co DUNG BA gia tri goc: 0, 180, va ba rig
-#     duoi day — nen 589/592 bien the roi vao hai ca khop bit.
-#   * Goc nho khac 0 — CHI 3/592 bien the (`YuJin`, `MaYuanYi`, `GongSunZan`,
+#     Quet ca 590 bien the thi chi co DUNG BA gia tri goc: 0, 180, va ba rig
+#     duoi day — nen 587/590 bien the roi vao hai ca khop bit.
+#   * Goc nho khac 0 — CHI 3/590 bien the (`YuJin`, `MaYuanYi`, `GongSunZan`,
 #     |rot| <= 0,08 do): lech toi da 2,2e-4 diem anh. Da thu mo hinh hoa phan
 #     lech nay (coi nhu sai so cua chinh goc, suy nguoc tu so do) va no KHONG
 #     theo mot luat nao — ghi lai la CHUA RO, khong gan cho mot nguyen nhan nao.
 #     Anh huong: duoi 0,0002 diem anh, khong nhin thay duoc.
+#
+# BANG CO 590 DONG, khong phai 592: hai bien the `LvBuZhanShi_A2` va
+# `LvBuZhanShi_Weapon1` dung anh `LvBuZhanShi_res-44`, ma `sourceSize` cua anh
+# ay la `0 x 0` nen hop bang khong. (Hai bien the ay khong do duoc tren may ao —
+# `getSpriteFromSpriteCatch("LvBuZhanShi_A2")` tra `nil` — nen gia tri `0 x 0`
+# cua chung la SUY theo cung mot luat; rig `LvBuZhanShi` thi do duoc va tra dung
+# `0 x 0`.)
 #
 # TRA `(0, 0)` khi armature KHONG co xuong `Collision` — do la so ban goc tra
 # ve (do tren `DaQuZhanShi`), chu khong phai mot mac dinh cua ta. Luu y

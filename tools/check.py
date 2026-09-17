@@ -134,6 +134,17 @@ SUITES = [
     # g_ptWarSoulTBar o 71x297 ma anh 102x324), va duong Lua (setPercentage /
     # setType phai doi dung node, con setOrange phai CON dem duoc la thieu).
     ('tien do',              'script', 'tools/verify_tien_do.gd', False, []),
+
+    # O NHAP CHU (CCEditBox, 40 node trong 22 bo cuc). Truoc luot nay
+    # ui/xgg_layout.gd xep chung vao kind 'label' nen chung thanh NHAN CHU, va
+    # bay phuong thuc cua ma goc roi vao bo dem M.missing ma khong mot loi nao.
+    # Bon tang: du lieu .xgg (40 node / 22 file; ban ghi o nhap khong co
+    # text/alignH/alignV, anh nen 30x30 dung cho o 150x30..410x45 nen ban goc CO
+    # GIAN anh theo o), nam phuong thuc cua CCEditBox doi chieu voi lop Node,
+    # duong nguoi choi (cham -> tieu diem -> go phim that -> bon su kien began /
+    # changed / ended / return ban ra ham Lua da dang ky), va thu tu tren-duoi
+    # giua o nhap voi node co ten cham.
+    ('o nhap',               'script', 'tools/verify_o_nhap.gd',  False, []),
 ]
 
 SCORE = re.compile(r'dat (\d+), hong (\d+)')

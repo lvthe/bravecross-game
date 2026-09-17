@@ -74,7 +74,13 @@ const KIND_OF_TYPE := {
 	"CCLabelTTF": "label",
 	"CCLabelBMFont": "label",
 	"CCRichLabel": "label",
-	"CCEditBox": "label",
+	# O NHAP CHU. Ban ghi cua no la mot kieu rieng (324 byte, lop bind 21) va o
+	# day truoc kia bi xep vao 'label': 40 o nhap trong 22 bo cuc thanh nhung
+	# nhan chu, khong go duoc, va bay phuong thuc cua ma goc (setText, getText,
+	# getTextWithLen, setMaxLength, setLuaCallbackObjAndFunc — nam cai do KHONG
+	# co o lop nao khac trong 132 lop) roi vao bo dem M.missing. Xem
+	# ui/o_nhap.gd va lua/o_nhap.lua.
+	"CCEditBox": "edit",
 	# He hat. Ca 87 node hat trong 296 bo cuc deu mang typeName nay; dinh nghia
 	# hat (plist) nam o truong 'res', khong phai 'img' — xem ui/hat.gd.
 	"CCParticleSystemQuad": "particle",
@@ -396,6 +402,11 @@ static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 				lb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 				lb.clip_text = true
 			node = lb
+		"edit":
+			# O NHAP CHU (CCEditBox). Ban ghi KHONG co `text`, `alignH`, `alignV`
+			# (do ca 40 node: dung 20 truong), nen o luon bat dau RONG va khong
+			# co can chu nao de doc — khac nhan.
+			node = UiONhap.new()
 		"scale9":
 			var np := NinePatchRect.new()
 			np.draw_center = true
@@ -526,8 +537,16 @@ static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 	# kich thuoc thi do duoc: anh cua ho thanh nao cung lech vai diem so voi
 	# o ma nguoi thiet ke go — 362x14 vs 360x15, 13x13 vs 77x13, 27x9 vs
 	# 222x10. Khong nhan thi 314/325 thanh khong co anh nao.
+	#
+	# O nhap chu cung vay, va ly do truot kich thuoc thi DO DUOC: ten anh doc
+	# tu truong rieng cua ban ghi 324 byte (+0xF0), con anh nen nho hon o rat
+	# nhieu — ui_background189.png la 30x30 theo section C cua chinh bon bo cuc
+	# dang dung no (mot CCButton 30x30 'verified'), trong khi cac o dung no la
+	# 150x30, 204x35, 200x90, 260x60, 410x45. Nen 'guess' o day chi co nghia
+	# la "anh khong bap be o", khong phai "ten anh doan ra".
 	if img != "" and (from == "verified" or from == "size"
-			or (from == "guess" and (use_guessed_images or kind == "progress"))):
+			or (from == "guess" and (use_guessed_images or kind == "progress"
+					or kind == "edit"))):
 		node.set_meta("img", img)
 		node.set_meta("img_from", from)
 		if UiFrames.set_frame(node, img):

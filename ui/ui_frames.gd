@@ -186,6 +186,13 @@ static func set_frame(node: Control, name: String) -> bool:
 		(node as TienDo).anh = tex
 		(node as TienDo).queue_redraw()
 		return true
+	# O nhap chu (CCEditBox): cung ly do nhu TienDo, va o day manh hon — anh nen
+	# nho hon o rat nhieu (ui_background189.png 30x30 theo section C, dung cho o
+	# 150x30 .. 410x45), tuc ban goc CO GIAN anh nen theo o. Dat o theo anh thi
+	# o nhap co lai con 30x30 va chu bi cat. Xem ui/o_nhap.gd.
+	if node is UiONhap:
+		(node as UiONhap).dat_nen(tex)
+		return true
 	if node is NinePatchRect:
 		(node as NinePatchRect).texture = tex
 	elif node is TextureRect:

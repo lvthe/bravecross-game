@@ -950,6 +950,43 @@ và đo ra thì cả kho chỉ có **9 node** vượt quá ngưỡng ấy nên k
    armature, đọc từ tên cách trộn ở `+0x38` của bản ghi khung.)
 8. ~~**Chiến dịch: từ Main vào trận rồi về màn kết thúc**~~ — chạy trọn bằng
    đúng đường của bản gốc. Xem mục "Chiến dịch và sân trận" ngay dưới.
+9. ~~**Ô nhập chữ (`CCEditBox`) — 40 ô trong 22 bố cục**~~ — **xong**, khoá bằng
+   `tools/verify_o_nhap.gd` (**67 đạt / 0 hỏng**, `check.py` bộ thứ **34**).
+   Trước lượt này `ui/xgg_layout.gd` xếp `"CCEditBox"` vào `kind "label"`, nên
+   cả 40 ô là **nhãn chữ**: không gõ được, và năm phương thức của mã gốc
+   (`setText`, `getText`, `getTextWithLen`, `setMaxLength`,
+   `setLuaCallbackObjAndFunc`) rơi vào bộ đếm `M.missing` **không một lỗi nào**.
+   Ba chỗ đáng nhớ:
+   * **Năm phương thức ấy chỉ thuộc `CCEditBox`** — `rawget(cocos.Node, 'getText')`
+     là `nil` thật, còn `setHorizontalAlignment` / `setVerticalAlignment` thì có
+     ở `Node` (mọi nhãn đều cần căn chữ). Ghi chú cũ coi `setText` là API **của
+     nhãn** bị thiếu là **sai**.
+   * **`setVerticalAlignment` cũng đang thiếu thật** và nay đã có, nhưng nó
+     **không vẽ được** trên ô nhập: LineEdit của Godot 4.7 **không có căn dọc**
+     nào (đo cả danh sách thuộc tính lẫn phương thức — không tên nào chứa
+     `vertical`); thuộc tính căn ngang tên là `alignment`, hàm đặt là
+     `set_horizontal_alignment`. Bốn chỗ gọi căn dọc của mã gốc đều trên **nhãn**
+     (`CUIBarracks.lua:260,273`, `CUIResearch.lua:170,211`) và đều chạy được.
+   * **Ảnh nền bị CO GIÃN theo ô, không phải ô theo ảnh**:
+     `ui_background189.png` là 30×30 nhưng dùng cho **12** ô với **5** cỡ khác
+     nhau — nhỏ nhất 150×30, lớn nhất 410×45. Nên `UiFrames.set_frame` có nhánh
+     riêng cho ô nhập, y như cho thanh tiến độ.
+   Ba thứ **không khôi phục được**, ghi lại chứ không đoán: chế độ mật khẩu /
+   chữ gợi ý (bản ghi `.xgg` không có trường nào), **đơn vị đếm** của
+   `setMaxLength` (mã gốc cắt thành số nguyên bằng `vcvt.s32.f64` rồi đẩy xuống
+   widget trong, mà cả 973 file mã gốc **không gọi lần nào** — nên chỉ ghi lại
+   số, không cắt chuôi), và căn chữ của ô nhập (bộ đọc `.xgg` của ta không trích
+   trường `alignH`/`alignV` cho `CCEditBox`; **không** ô nhập nào trong 40 ô có
+   hai trường ấy, mà cả 40 ô cũng không có trường `text` — nên ô luôn bắt đầu
+   rỗng là đúng dữ liệu, không phải thiếu).
+   Một **lỗ hổng của lớp offline** đo được nhân đây: bốn hàm `LGG_*` của engine
+   (`LGG_CheckNickName`, `LGG_CheckNickNameByLanguage`,
+   `LGG_CheckNickNameIncludeVI`, `LGG_CheckStringLegal`) **không có mã Lua nào
+   định nghĩa**, nên chúng là **bóng** — mà bóng thì truthy, nên
+   `g_CUIRegisterVerification:CheckNickName` **không bao giờ** chặn vì định
+   dạng tên (`CheckNickName('@@@', 3, nil)` trả `true`). Luật "quá dài" thì
+   **chạy đúng**: đo trên chính mã gốc, `getNickNameMaxLength(nil)` = **16**
+   (nhánh VI), 8 chữ có dấu = **16** đơn vị — vừa đúng trần.
 
 #### Chiến dịch và sân trận
 

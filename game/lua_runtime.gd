@@ -712,6 +712,12 @@ func tick(dt: float) -> int:
 var _goc_cham: Node = null
 var _dang_cham: Control = null
 
+## O nhap chu dang giu tieu diem (nhan chu). Chuyen tiep ban phim cho no thi
+## Godot lo: LineEdit nam trong cay va dang co tieu diem thi nhan duoc phim qua
+## he GUI cua viewport. O day chi can biet dang la o nao de THA khi nguoi choi
+## cham ra ngoai — ban goc cung ket thuc sua dung luc do.
+var _dang_go_o_nhap: UiONhap = null
+
 ## Goc de do cham (mac dinh la UIRootLayer). Nen dat la ca khung, vi lop che
 ## va nut Back cua hop thoai nam ngoai UIRootLayer.
 func set_touch_root(n: Node) -> void:
@@ -743,11 +749,26 @@ func touch_at(pha: String, p: Vector2) -> bool:
 	if pha == "Begin":
 		_dang_cham = null
 		var ds: Array = []
-		_ung_vien(goc, p, ds)
+		# Co ca O NHAP CHU trong danh sach: chung khong bao gio co ten cham (do
+		# ca 40 node trong 22 bo cuc: khong node nao co 'touch' hay 'touchObj'),
+		# nen duong cham thuong khong bao gio voi toi chung. Gop chung mot luot
+		# di cay de THU TU TREN-DUOI giua o nhap va node cham van dung: ai ve
+		# sau thi nam tren.
+		_ung_vien(goc, p, ds, true)
 		for n in ds:
+			if n is UiONhap:
+				# Ban goc: cham vao o nhap la BAT DAU SUA. Tieu diem cua
+				# LineEdit ban ra 'began' qua tin hieu (xem ui/o_nhap.gd).
+				_noi_tin_hieu_o_nhap(n)
+				_dang_go_o_nhap = n
+				if n.o_chu.is_inside_tree():
+					n.o_chu.grab_focus()
+				return true
 			if _goi_cham("Begin", n, c.x, c.y, null):
+				_tha_tieu_diem_o_nhap()
 				_dang_cham = n
 				return true
+		_tha_tieu_diem_o_nhap()
 		return false
 	if _dang_cham == null or not is_instance_valid(_dang_cham):
 		_dang_cham = null
@@ -780,7 +801,10 @@ func _goi_cham(pha: String, n: Node, a, b, c) -> bool:
 ## Moi node nhan cham duoi diem p, tu TREN xuong: con ve sau nam tren con ve
 ## truoc, con nam tren cha. Nhanh bi an thi bo ca nhanh; o cat xen
 ## (clip_contents, vd danh sach cuon) thi diem ngoai o khong cham duoc con.
-func _ung_vien(n: Node, p: Vector2, ds: Array) -> void:
+##
+## `ca_o_nhap` = gom ca o nhap chu (UiONhap) vao danh sach. Duong cham THUONG
+## khong bat no, vi o nhap khong co meta 'touch'.
+func _ung_vien(n: Node, p: Vector2, ds: Array, ca_o_nhap := false) -> void:
 	if n is CanvasItem and not n.visible:
 		return
 	if n is Control and n.clip_contents and not _trung(n, p):
@@ -796,10 +820,61 @@ func _ung_vien(n: Node, p: Vector2, ds: Array) -> void:
 			return zx > zy
 		return x.get_index() > y.get_index())
 	for k in con:
-		_ung_vien(k, p, ds)
-	if n is Control and n.has_meta("touch") and String(n.get_meta("touch")) != "" \
-			and bool(n.get_meta("lua_touch", true)) and _trung(n, p):
+		_ung_vien(k, p, ds, ca_o_nhap)
+	if n is Control and _nhan_duoc(n, p, ca_o_nhap):
 		ds.append(n)
+
+
+func _nhan_duoc(n: Control, p: Vector2, ca_o_nhap: bool) -> bool:
+	if not _trung(n, p):
+		return false
+	if n is UiONhap:
+		return ca_o_nhap
+	return n.has_meta("touch") and String(n.get_meta("touch")) != "" \
+			and bool(n.get_meta("lua_touch", true))
+
+
+## Tha tieu diem cua o nhap dang go (neu co). Ban goc ket thuc sua khi nguoi
+## choi cham ra ngoai o — khong phai khi tha tay.
+func _tha_tieu_diem_o_nhap() -> void:
+	if _dang_go_o_nhap == null:
+		return
+	var o := _dang_go_o_nhap
+	_dang_go_o_nhap = null
+	if is_instance_valid(o) and o.o_chu != null and o.o_chu.has_focus():
+		o.o_chu.release_focus()
+
+
+## Noi bon tin hieu cua o nhap voi ham Lua da dang ky, MOT lan cho moi node.
+## Noi luc cham chu khong luc dung bo cuc: XggLayout khong biet gi ve Lua.
+func _noi_tin_hieu_o_nhap(o: UiONhap) -> void:
+	if o.has_meta("lua_da_noi"):
+		return
+	o.set_meta("lua_da_noi", true)
+	o.doi_chu.connect(func(_chu: String): _su_kien_o_nhap(o, "changed"))
+	o.go_ve.connect(func(_chu: String): _su_kien_o_nhap(o, "return"))
+	o.bat_dau_go.connect(func(): _su_kien_o_nhap(o, "began"))
+	o.ket_thuc_go.connect(func(): _su_kien_o_nhap(o, "ended"))
+
+
+## Ban su kien cua o nhap ra ham Lua. Ham do nhan DUNG MOT doi so — chuoi su
+## kien — va `self` la DOI TUONG TRA THEO TEN TOAN CUC chu khong phai node:
+## CUIBuyDialogEx.lua:113-114 dang ky ("g_CUIBuyDialogEx", "editboxEventHandler")
+## va ham duoc goi la `editboxEventHandler(doiTuong, suKien)`. Bon ten su kien
+## doc tu .rodata 0x7a6a30..0x7a6a90: began, changed, ended, return.
+##
+## Phan tra cuu nam ben Lua (lua/o_nhap.lua, O.su_kien) — cung mot luat voi ban
+## goc. Chua dang ky gi thi thoat NGAY: `setLuaCallbackObjAndFunc` moi la thu
+## dat meta 'lua_cb_obj', nen o nao khong dang ky thi khong ton lan goi Lua.
+func _su_kien_o_nhap(n: Control, su_kien: String) -> void:
+	if state == null or not n.has_meta("lua_cb_obj"):
+		return
+	state.globals["_sk_gd"] = n
+	state.globals["_sk_ten"] = su_kien
+	var r = state.do_string("return require('cocos').o_nhap.su_kien(_sk_gd, _sk_ten)")
+	state.globals["_sk_gd"] = null
+	if _is_error(r):
+		errors.append("o nhap %s: %s" % [su_kien, r])
 
 
 ## p (toa do canvas) co nam trong o cua n khong. Tu nhan bien doi len theo

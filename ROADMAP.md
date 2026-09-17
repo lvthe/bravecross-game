@@ -1306,6 +1306,148 @@ bình thường — nên phép đo theo kiểu **không** hỏi lại kiểu mà
 được vẽ (đổi chỗ `-3000,-3000` → **0 điểm ảnh**).
 
 
+### Ô nhập chữ (`CCEditBox`) — 40 ô trong 22 bố cục
+
+Trước lượt này `ui/xgg_layout.gd` xếp `"CCEditBox"` vào `kind "label"`: cả 40 ô
+nhập là **nhãn chữ** — không gõ được, và **năm** phương thức của mã gốc rơi vào bộ
+đếm `M.missing` mà **không một lỗi nào**. Nay chúng là `ui/o_nhap.gd` (lớp
+`UiONhap`), dựng từ `lua/o_nhap.lua`.
+
+**Bảng lớp bind nói rõ năm phương thức ấy thuộc về ai** (đây là chỗ một ghi chú
+cũ ghi sai — nó coi `setText` là API **của nhãn** bị thiếu):
+
+| tên | có ở `Node`? | có ở `CCEditBox`? |
+|---|---|---|
+| `setText`, `getText`, `getTextWithLen`, `setMaxLength`, `setLuaCallbackObjAndFunc` | **không** (`rawget` ra `nil` thật) | **có**, cả năm |
+| `setHorizontalAlignment`, `setVerticalAlignment` | **có** (`lua/cocos.lua:1277`, `:1307`) | có, nhưng thừa |
+
+Phép thử phải dùng `rawget` chứ không phải `Node.getText`: bảng `Node` có
+metatable trả **hàm đếm** cho mọi tên lạ (đó là cách `M.missing` hoạt động), nên
+`Node.getText` **không bao giờ** `nil` — nó là bóng. Phép kiểm trong
+`tools/verify_o_nhap.gd` đo đúng chỗ ấy: gọi `setText` trên một **nhãn** thì bộ đếm
+`M.missing` tăng đúng 1 và chữ của nhãn **không đổi**; gọi trên ô nhập thì bộ đếm
+đứng yên.
+
+**Dữ liệu, đo lại trên `layout_ref`:** 40 node trong **22** file (UI_Login 6,
+UI_AccountLogin 8, Test_UI 3, UI_Binding_User 3, Main_Dialog_UI 2, UI_ArmyGroup 2,
+16 file × 1). Bản ghi có **hai** hình dạng: **19** trường (**15** node) và **20**
+trường khi có `fix` (**25** node); hợp lại đúng **20** tên. Trong 40 bản ghi
+**không** có `text`, `alignH`, `alignV`, `touch` hay `touchObj` — nên ô nhập luôn
+bắt đầu **rỗng** và **không** có tên chạm nào là đúng dữ liệu, không phải thiếu
+sót của bộ đọc.
+
+**Ảnh nền bị CO GIÃN theo ô, không phải ô theo ảnh** — đo bằng cách đối chiếu ô
+của từng node với cỡ thật của ảnh (`ui_ref/index.json`):
+
+| ảnh | cỡ thật | số ô | các cỡ ô |
+|---|---|---|---|
+| `ui_background189.png` | 30×30 | 12 | 150×30 ×6, 204×35 ×2, 260×60 ×2, 200×90, 410×45 |
+| `v6/login/ui_background402.png` | 59×59 | 7 | 275×45 ×5, 220×59, 100×50 |
+| `ui_button01.png` | 143×61 | 3 | 143×61 ×3 |
+
+Ô nhỏ nhất dùng ảnh 30×30 là **150×30** — rộng gấp **5** lần ảnh. Nên
+`UiFrames.set_frame` có nhánh riêng cho `UiONhap` (như đã có cho `TienDo`): đặt
+ảnh, **không** đổi ô của node. Hàng cuối là ca đối chứng: `ui_button01.png` (ảnh
+**bằng** ô) là cả ba ô được bộ đọc `.xgg` đánh dấu `imgFrom: verified` — tức
+`verified` nghĩa là "có ảnh khớp ô", không phải "đoán đúng tên ảnh".
+
+**Lớp `UiONhap` cố ý KHÔNG kế thừa `LineEdit`**, và đây là quyết định **đo được**
+chứ không phải sở thích: ba hàm của `lua/cocos.lua` (`la_nhan_chuyen_sac`,
+`setString`, `setHorizontalAlignment`) đều hỏi `gd.text == nil` để biết node có
+phải **nhãn** không. Một `LineEdit` ở lớp ngoài trả `text` khác `nil`, nên ô nhập
+sẽ bị coi là nhãn: bị tô màu chữ theo dải và bị `setString` ghi đè. `UiONhap` giữ
+`text` là `nil`, còn chữ thật nằm trong `LineEdit` **con**.
+
+**Bốn sự kiện của bản gốc, và nhịp của chúng khác bản gốc đúng một chỗ.** Bốn tên
+`began` / `changed` / `ended` / `return` đọc từ `.rodata 0x7a6a30..0x7a6a90`; mã
+gốc chỉ dùng `changed` (`CUIBuyDialogEx.lua:84`) và `return`
+(`CUIUserInfoNickName.lua:142`), hai tên kia vẫn bắn ra cho đủ bộ. `self` của hàm
+xử lý là **đối tượng tra theo tên toàn cục**, không phải node
+(`CUIBuyDialogEx.lua:113-114` đăng ký `("g_CUIBuyDialogEx",
+"editboxEventHandler")`). Đo trên `LineEdit` của Godot 4.7.2:
+
+* `began` / `ended` (tiêu điểm) và `return` (Enter) bắn **ngay** trong khung đó;
+* `changed` **đời sang khung sau** (`text_changed_dirty` trong `line_edit.cpp`), và
+  nhiều lần sửa trong **cùng** một khung **gộp** thành **một** lần bắn, mang chữ
+  cuối (gõ `x` rồi `a` trong cùng khung → đúng **một** sự kiện, chữ `xa`);
+* đặt chữ bằng mã (`o_chu.text = ...`) **không bao giờ** bắn, kể cả sau một khung.
+
+Bản gốc bắn `changed` ngay trong hàm xử lý phím, mỗi lần một. Một khung trễ và
+việc gộp lại là khác biệt **có thật** và **không sửa được** nếu không tự viết lại
+phần gõ phím của `LineEdit` — ghi lại ở đầu `ui/o_nhap.gd` để người đọc sau biết
+mà đối chiếu. Hệ quả cho phép kiểm: phải gõ **từng phím một** và **chờ qua khung**
+(`tools/verify_o_nhap.gd`, hàm `_go`), nếu không thì đếm ra thiếu sự kiện.
+
+**Căn chữ: `setVerticalAlignment` đang thiếu thật, và trên ô nhập thì không vẽ
+được.** LineEdit của Godot 4.7 **không có** căn dọc nào — đo cả danh sách thuộc
+tính lẫn danh sách phương thức, không một tên nào chứa `vertical`; còn thuộc tính
+căn ngang tên là `alignment` và hàm đặt tên là `set_horizontal_alignment` (đo cả
+hai danh sách). Ba số của enum khớp nhau (0 trái, 1 giữa, 2 phải) nên ghi thẳng.
+Căn dọc **chỉ ghi lại** vào meta, vì tự thu nhỏ ô chữ rồi đổi chỗ là một luật
+**khác hẳn** luật gốc (bản gốc đẩy xuống vtable `+0x68` của widget trong). Bốn chỗ
+gọi căn dọc của mã gốc đều trên **nhãn** (`CUIBarracks.lua:260,273`,
+`CUIResearch.lua:170,211`) và đều chạy được: `CCLabelTTF` là lớp duy nhất trong
+bốn lớp có căn ngang mà **không** có căn dọc, nên trên nó lời gọi **không làm gì**
+— đúng như đo được, không phải như suy đoán.
+
+**Ba thứ KHÔNG khôi phục được, ghi lại chứ không đoán:**
+
+* **Chế độ mật khẩu / chữ gợi ý** — bản ghi `.xgg` không có trường nào; hợp 20 tên
+  trường của 40 bản ghi không có mục nào tương ứng, và cả 973 file mã gốc **không**
+  gọi phương thức nào của ô nhập để bật chúng.
+* **Đơn vị đếm của `setMaxLength`** — thân hàm (0x2d1bcd) cắt thành số nguyên bằng
+  `vcvt.s32.f64` (cắt về phía 0: 3,7 → 3) rồi đẩy xuống widget trong. Giá trị ấy
+  **không có hàm đọc nào**, và cả 973 file mã gốc **không gọi `setMaxLength` lần
+  nào** (0 chỗ), nên đơn vị đếm của widget trong không khôi phục được. Vì vậy
+  `UiONhap.dat_dai_toi_da` **chỉ ghi lại** số đã cắt, **không** tự cắt chuỗi — cắt
+  theo một luật khác luật gốc thì còn tệ hơn không cắt.
+* **Căn chữ đọc từ `.xgg`** — bộ đọc của ta không trích `alignH`/`alignV` cho
+  `CCEditBox`; nhưng vì **không bản ghi nào** có hai trường ấy (cả 40), đây là
+  chỗ chưa cần chứ không phải chỗ thiếu.
+
+**Và một lỗ hổng của lớp offline, đo được nhân dịp này.** Bốn hàm `LGG_*` của
+engine — `LGG_CheckNickName`, `LGG_CheckNickNameByLanguage`,
+`LGG_CheckNickNameIncludeVI`, `LGG_CheckStringLegal` — **không có mã Lua nào định
+nghĩa** (quét cả `sc/`: **0** chỗ gán), nên chúng là **bóng**, và bóng thì
+**truthy**: `nicknameIsTrue(...) == false` và `if not bLegal` **không bao giờ**
+đúng, tức phép kiểm **định dạng** tên không chặn được ai
+(`CheckNickName('@@@', 1, nil)` trả `true`). Luật **quá dài** thì **chạy đúng**,
+và đo được bằng cách **chạy chính mã gốc**: `getNickNameMaxLength(nil)` = **16**
+(nhánh VI — `GetLanguageName()` trả `'vi'` qua `DEFAULT_LANGUAGE` của
+`share/Setting.lua:14`), `getNickNameMaxLength(9)` = 9, tám chữ có dấu
+(`'ăâđêôơưĐ'`) = **16** đơn vị — **vừa đúng trần**, còn chín chữ = 18 là quá; và
+`CheckNickName(rep('a',20), 20, nil)` trả `false` với lỗi `Register_createNicknameToLong`.
+Chuỗi nạp tối thiểu để chạy được chính mã ấy: `install_cocos()`, `install()`,
+`boot({})`, rồi `require` bốn module (`share.Setting`,
+`user.Globals.user_global`, `user.Public.set`, `user.UI.CUILogin`) — đo **53 ms, 0
+lỗi Lua**. **Hai cái bẫy của chuỗi này, đều đã mắc:** thiếu `boot` thì `class` là
+bóng nên `CUIRegisterVerification` cũng là bóng (`getNickNameMaxLength()` trả về
+`<bong ...>` chứ không lỗi), và `KDebug` cũng là bóng — mà
+`KDebug.ArgIsNumber` chính là thứ `nicknameFindGM` hỏi, nên thiếu `boot` thì
+`nicknameFindGM` trả **true với mọi tên**. Cả hai đều là **tạo tác của chuỗi nạp
+thiếu**, không phải lỗi của bản port; phép kiểm vì thế chạy trên chuỗi đầy đủ và
+đòi **0 lỗi Lua**.
+
+**Kiểm bằng gì:** `tools/verify_o_nhap.gd` — **67 đạt / 0 hỏng**, `check.py` bộ thứ
+**34**, bốn tầng: (1) dữ liệu `.xgg` ở trên; (2) năm phương thức của `CCEditBox`
+đối chiếu với lớp `Node`, thêm bảng trọng số 134 mục của `getTextWithLen` và phép
+đối chiếu với chính `CheckNickName` của bản gốc; (3) **đường người chơi** — chạm
+vào ô (đúng lượt đi cây, `touch_at`), gõ phím **thật** qua `push_input`, rồi đòi
+bốn sự kiện `began` / `changed` / `ended` / `return` bắn ra hàm Lua đã đăng ký,
+kể cả hai ca **không** bắn: cặp `('','')` và tên đối tượng không tồn tại; (4) thứ
+tự **trên–dưới** giữa ô nhập và node có tên chạm (ô nhập **không** có tên chạm
+trong dữ liệu, nên phải đo bằng cây giả có đổi `z_index`).
+
+Một chi tiết **dữ liệu thật** mà phép kiểm bắt được, đáng ghi vì nó dễ bị coi là
+lỗi: ba tầng `lCreate` / `lRegister` / `lLogin` của UI_Login **chồng khít** nhau
+(cả ba 344×400 ở cùng chỗ) và bản ghi **không** ghi `vis`, nên khi
+`respect_visible = false` thì cả sáu ô cùng hiện — đo được `ebRegisterPassword2`
+(y=160,5) **phủ lên** `ebUserLoginPassword` (y=150), cả hai 150×30, nên cú chạm
+vào ô đăng nhập thuộc về ô của tầng đăng ký. Bản gốc chỉ hiện **một** tầng, nên
+phép kiểm tắt hai tầng kia trước khi đo đường gõ — và đòi ô nhập **trên cùng** tại
+điểm chạm đúng là ô đang đo.
+
+
 - [~] Ải vô tận / Epic / SB / COG (11 màn) — **con số 11 sai, và sai kiểu đã
       cảnh báo ở trên**: nó đếm theo đường dẫn file ném lỗi nên gộp **bốn họ
       riêng** (InfiniteLevel 7 màn đăng ký, Epic 6, SB 6, COG 22) với **hai
@@ -2394,13 +2536,14 @@ hơn số lần bộ quét **chạy** bắt gặp vì phần lớn nằm ở mà
 | tên | lần | ghi chú đã kiểm |
 |---|---|---|
 | `initWithSpriteFrameName` / `initWithSpriteFrame` | 66 / 9 | đặt khung hình cho sprite — bản port đặt ảnh bằng đường khác |
-| `setText` | 38 | gồm `CCEditBox`, mà `ui/xgg_layout.gd:77` ánh xạ `"CCEditBox" → "label"` — nhãn thì **không gõ được** |
+| `setText` | 38 | **đã xong** — cả 38 chỗ đều là `CCEditBox`, xem mục "Ô nhập chữ" |
 | `_ShowShadow` | 20 | **cả 20 đều gọi trên node armature** (`getSpriteFromSpriteCatch` → `SngRig`, `lua/bootstrap.lua:553`) — `grep shadow rig/*.gd` ra **0**, tức chỗ làm là `rig/sng_rig.gd` |
 | `_lua_CollisionSize` | 6 | cùng họ `_lua_*` của armature |
 | `_Lua_addStarLevelEffect` | 4 | |
-| `setLuaCallbackObjAndFunc` | 3 | nối ô nhập chữ với hàm Lua |
+| `setLuaCallbackObjAndFunc` | 3 | **đã xong** — nối ô nhập chữ với hàm Lua, cùng lượt với `setText` |
 | `setSoundStrArr` | 2 | |
 
-Hai món đáng làm trước: **ô nhập chữ** (`setText` + `setLuaCallbackObjAndFunc`;
-`ui/xgg_layout.gd` đang biến `CCEditBox` thành `Label` nên không có chỗ gõ) và
-**`_ShowShadow`** (rẻ — chỉ là bật/tắt bóng của armature — mà 20 chỗ gọi).
+Món đáng làm trước nay là **`_ShowShadow`** (rẻ — chỉ là bật/tắt bóng của
+armature — mà 20 chỗ gọi). Hai món `setLuaCallbackObjAndFunc` (3) và `setText`
+(38) **đã xong cùng lượt với ô nhập chữ** — xem mục "Ô nhập chữ" ở phần "Lớp
+giả lập" phía trên.

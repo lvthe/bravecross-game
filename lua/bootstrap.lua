@@ -271,6 +271,13 @@ function M.install_cocos()
 	-- TRUOC khi nap canh dau tien: wrap() chot __index ngay lan boc node dau.
 	c.tien_do = require('tien_do')(c)
 	c.lop_theo_loai['CCProgressTimer'] = c.tien_do
+	-- O NHAP CHU cua engine (typeName 'CCEditBox', lop bind 21; 40 node trong 22
+	-- bo cuc). Bay phuong thuc cua no, trong do nam cai CHI CO o lop nay trong ca
+	-- 132 lop, nen phai la mot bang rieng: `nhan.getText == nil` dung nhu ban goc.
+	-- Cung phai dang ky TRUOC khi nap canh dau tien — wrap() chot __index ngay
+	-- lan boc node dau. Xem lua/o_nhap.lua.
+	c.o_nhap = require('o_nhap')(c)
+	c.lop_theo_loai['CCEditBox'] = c.o_nhap
 	-- BANG danh sach cua engine (CCTableView / CCTableViewCell). Ban goc de
 	-- engine C++ dang ky hai ham `LuaTableView_create` / `LuaTableViewCell_create`
 	-- (khong file Lua nao dinh nghia chung, ca 973 file), nen thieu thi

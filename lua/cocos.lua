@@ -1282,6 +1282,40 @@ function Node:setHorizontalAlignment(n)
 	gd.horizontal_alignment = k
 end
 
+-- Can chu theo chieu DOC. Ban goc goi 4 cho THAT: CUIBarracks.lua:260,273 va
+-- CUIResearch.lua:170,211 (bon cho con lai la chu thich).
+--
+-- THU TU ENUM y nhu `setHorizontalAlignment` va nhu VERTICAL_ALIGNMENT_* cua
+-- Godot: 0 tren, 1 giua, 2 duoi — ba so giong nhau nen ghi thang.
+--
+-- Nhung KHONG phai lop nhan nao cung co ham nay. Bang dang ky phuong thuc cua
+-- chinh engine (`work/binder.py`) noi:
+--
+--   setHorizontalAlignment  4 lop: CCLabelTTF, CCLabelBMFont, Label, CCEditBox
+--   setVerticalAlignment    3 lop: CCLabelBMFont, Label, CCEditBox
+--
+-- CCLabelTTF CO ham ngang nhung KHONG co ham doc. Di qua `Node` thi hai lop
+-- nhan khong phan biet duoc, nen phai hoi chinh `type_name` — va cho
+-- CCLabelTTF thi KHONG LAM GI, dung bang ban goc: o do `ttf.setVerticalAlignment`
+-- la nil nen ca loi goi bi bo, khong loi, khong doi gi.
+--
+-- Bon cho goi that o tren gan vao nut bang `setStringTag` luc chay (nut khong
+-- co ten trong .xgg), nen CHUA doi chieu duoc chung thuoc lop nao; cong theo
+-- lop o day tai tao dung ca hai duong bat ke chung la lop nao.
+--
+-- O nhap chu co ham nay o lop rieng (lua/o_nhap.lua), khong di qua day.
+function Node:setVerticalAlignment(n)
+	local gd = raw(self)
+	if gd.text == nil or type(n) ~= 'number' then return end
+	if gd:has_meta('type_name')
+			and tostring(gd:get_meta('type_name')) == 'CCLabelTTF' then
+		return
+	end
+	local k = math.floor(n)
+	if k < 0 or k > 2 then k = 0 end
+	gd.vertical_alignment = k
+end
+
 -- Chu ----------------------------------------------------------------------
 
 function Node:setString(s)

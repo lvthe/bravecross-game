@@ -1563,6 +1563,109 @@ CaoCao kéo **cả 15** bóng (14 rig lồng nhau) về gốc — phép đo cho 
 `_ShowShadow`, gọi **trần** (không tham số) phải BẬT, gọi trên node không phải rig
 phải **không lỗi**, và ba tên ấy **không** được nằm trong bộ đếm `M.missing`.
 
+### Hộp chạm của armature (`_lua_CollisionSize`)
+
+Sáu chỗ gọi trong mã gốc (`CUIBarracksMain.lua:1043,1091`, `CUICavern.lua:363,408,454`,
+`CUIInfiniteLevelMain.lua:848`) dùng nó để đặt nhãn / mũi tên **lên trên đầu nhân
+vật** (`y*1.3`, `y*1.7`, `setPosition(0, y)`, `convertToWorldSpace(nW/2, nH)`) —
+tức đây là **cỡ thân**, không phải hộp va chạm vật lý.
+
+Nó trả về **một CẶP số** (rộng, cao), không phải một số. Đường tìm ra: bảng bind
+của lớp armature ở `.data` 0x937350 — **95 bản ghi 12 byte (đếm lại; tài liệu cũ
+ghi 81 là do vòng lặp đọc tự cắt), KHÔNG nằm trong 132 lớp của `binder.py`**, nên
+`xref.py` mù và phải dựng `work/blgraph.py` mới lần ra;
+bản ghi trỏ tới `0x2ab932`, thân hàm đọc hai float rồi `lua_pushnumber` **hai
+lần**. Nó gọi `0x2ab860`, mà `.symtab` gọi đúng tên
+`std::map<int, CDFColliderBoneInfo>::operator[]` — nên cặp số nằm trong bản ghi
+`CDFColliderBoneInfo` gắn trên armature ở `+0x27c`, khoá 0. Đuôi bảng bind này
+còn có `_ShowShadow` (`0x419f75`) và `_Lua_addStarLevelEffect` (`0x41ba6d`) —
+cùng một lớp, nên phần bóng đổ ở `battle/bong_ref.gd` và mục API CHƯA LÀM dưới
+đây đều nằm trong bảng này.
+
+**Công thức** (đo, không suy đoán — bảng ở `brave-cross/work/cham_ref.py`, bản
+dựng ở `battle/cham_ref.gd`, đọc qua `SngRig.ho_cham()`):
+
+```
+W = w·sx·|cos rot1| + h·sy·|sin rot1|
+H = h·sy·|cos rot2| + w·sx·|sin rot2|
+```
+
+* `(w, h)` là khung của bản ghi sprite **trong `.xml`** (header 0x60, `+0x08`) của
+  ảnh mà xương đang vẽ. Đây là chỗ dễ sai nhất: cùng ảnh `Hoplite_res-44` là
+  **3×3 trong `.xml` nhưng 1×1 trong `.plist`**, mà bản gốc trả 3 × 54,52 =
+  163,56 — tức đọc theo `.xml`.
+* `(sx, sy, rot1, rot2)` là **khoá 0** của xương `Collision` (`+0x10`/`+0x14` và
+  `+0x18`/`+0x1c` của bản ghi khung 80 byte).
+* `|cos|` chứ không `cos`: `CaoCao` / `ZhangLiaoDog` / `ShenHaiZhangYu` đặt
+  `rot2 = 180` làm **cờ lật**, để nguyên dấu thì bề cao ra **ÂM**
+  (`100 × −189,99`). Một cạnh hộp bao không thể âm.
+
+**Độ chính xác, nói đúng mức đã đo.** Quét cả **592** biến thể có xương `Collision`
+(418 file `.xml`, 224 biến thể mang tên file): chỉ **ba** giá trị góc xuất hiện —
+`0` (577), `180` (12), và ba rig góc nhỏ `YuJin`/`MaYuanYi`/`GongSunZan`
+(|rot| ≤ 0,08°). Góc `0` khớp máy ảo **từng bit** (lệch ≤ 4e-12); góc `180` **cũng
+từng bit và vì một lý do cấu trúc** (`|cos 180| = 1`, `|sin 180| = 0` — không đi
+qua đường lượng giác nào), nên **589/592 khớp bit**. Chỉ **3/592** thật sự chạy
+`sin`/`cos` ở góc khác 0, và ở đó lệch ≤ **2,2e-4 điểm ảnh**; đã thử mô hình hoá
+phần lệch ấy (coi là sai số của chính GÓC) và **góc hiệu dụng ra đúng bằng `rot1`**
+— tức không phải sai số góc, và dấu thì không nhất quán. Ghi là **CHƯA RÕ**, không
+gán cho nguyên nhân nào.
+
+Phép thử **tách được** hai trục: đổi vai `rot1`/`rot2` cho ra 254,489 × 189,845
+(MaYuanYi) và 140,084 × 184,958 (GongSunZan) — lệch 0,165 và 0,065 điểm ảnh, tức
+lớn hơn hẳn phần chưa rõ khoảng **300 lần**, nên phép thử không bị nó làm nhiễu.
+
+**Câu hỏi "hộp tính một lần hay theo từng khung" KHÔNG PHÂN BIỆT ĐƯỢC**, và đây là
+lý do đo được: 223/224 rig có khoá 0 giống nhau ở mọi động tác; rig duy nhất khác
+là `ZhangLiangBao`, khác **0,01 điểm ảnh**. Trên máy ảo cả bốn động tác đều trả
+175 × 227,5, nhưng phép **đối chứng lại ÂM** — `_lua_getBonePosInNode("Collision")`
+trả y nguyên `−88, 227` qua cả bốn, tức trong cùng một đoạn Lua không chứng minh
+được `playAnimation` kịp có tác dụng. Luật đang dùng: **khoá 0 của động tác ĐẦU
+TIÊN có xương `Collision`** — tái tạo đúng mọi phép đo đang có.
+
+`Collision` và `Collision_1` là hai xương **khác nhau** (ElephantSoldier, ADou01,
+ArmorCavalry): bản gốc trả xương `Collision`, đo được 170,52 × 118,5 =
+3 × 56,84 / 39,5 chứ không phải bộ 17,6/35,6 của `Collision_1`.
+
+`(0, 0)` khi armature không có xương `Collision` (đo trên `DaQuZhanShi`).
+**`getContentSize` là đại lượng KHÁC**, không phải hàm này.
+
+#### Lỗi chọn biến thể — đo được, và đã sửa
+
+`_richest_variant()` trước đây chọn nhóm **nhiều động tác nhất**, khi bằng nhau
+thì lấy nhóm **đầu tiên**. Hai điều đo được cho thấy cách ấy sai:
+
+1. Biến thể **mang tên file nằm CUỐI** danh sách nhóm ở **297/304** file (đo trên
+   `assets/map/*.xml`) — nên khi bằng nhau, cách chọn "nhóm đầu" là **tuỳ tiện**.
+2. Máy ảo nói thẳng bản gốc dựng biến thể nào (`emu_cham.py`, mục F). Hai rig bác
+   bỏ **cả hai** cách chọn kia:
+   * `DaQiao` — 7 nhóm, `DaQiao` **cuối**, nhóm nhiều động tác nhất là
+     `DaQiaoReplica` (không có xương `Collision`). Máy ảo:
+     `getSpriteFromSpriteCatch('DaQiao')` → `_lua_CollisionSize` = **85 × 135**,
+     tức hộp của nhóm `DaQiao`. Chọn theo "nhiều động tác nhất" sẽ ra `(0, 0)`.
+   * `CaiWenJiCircle` — nhóm **đầu** (và cũng nhiều động tác nhất) là
+     `_Top`, không có `Collision`; `CaiWenJiCircle` cuối. Máy ảo ra
+     **875,12 × 523,8** — tức **không phải nhóm đầu**.
+
+Nên luật đúng là **khớp TÊN**, đúng như `getSpriteFromSpriteCatch(<tên>)`: tên
+armature quyết định, không phải số động tác. Nay là `SngRig._bien_the_cho()`; đường
+lui về nhóm nhiều động tác nhất **vẫn giữ** cho những file mà tên thư mục không
+phải một biến thể (`PlayerM.xml` chỉ có `PlayerM03W`…).
+
+Ảnh hưởng đã đo: **45** rig có biến thể mang tên file và nó khác nhóm nhiều động
+tác nhất; **12** trong số đó có hộp chạm **khác hẳn nhau** giữa hai biến thể —
+`CaiWenJiCircle`, `CaiWenJiExclusCircle`, `DaQiao`, `DebuffPoisoning`,
+`DebuffSleep`, `StartCartoon`, `XSHeTiJiLiuGuanZhang`, `XSJiYouHeTiJi`,
+`XSJieSuoBingZhong`, `XSJieSuoLinTong`, `XSTaoTieChangJing`, `XSYuanJunJiaDao`.
+(Sửa luôn cho `LuaRuntime._tao_rig` — nay nó dựng đúng hình tượng mà bản gốc dựng.)
+
+Khoá bằng `tools/verify_cham_size.gd` (**42 đạt / 0 hỏng**): tầng A tính lại công
+thức từ chính các thành phần đã lưu (hai đường độc lập: Python sinh bảng, GDScript
+tính lại) trên cả 592 biến thể; tầng B so với **bảy** phép đo máy ảo; tầng C dựng
+`SngRig` thật, gồm hai ca chọn biến thể và một ca **xin đúng biến thể**; tầng D đi
+**đường Lua thật** (`getSpriteFromSpriteCatch` → `_lua_CollisionSize`, 5 rig) và
+đòi `_lua_CollisionSize` **không** nằm trong bộ đếm `M.missing`.
+
 
 - [~] Ải vô tận / Epic / SB / COG (11 màn) — **con số 11 sai, và sai kiểu đã
       cảnh báo ở trên**: nó đếm theo đường dẫn file ném lỗi nên gộp **bốn họ
@@ -2654,7 +2757,7 @@ hơn số lần bộ quét **chạy** bắt gặp vì phần lớn nằm ở mà
 | `initWithSpriteFrameName` / `initWithSpriteFrame` | 66 / 9 | đặt khung hình cho sprite — bản port đặt ảnh bằng đường khác |
 | `setText` | 38 | **đã xong** — cả 38 chỗ đều là `CCEditBox`, xem mục "Ô nhập chữ" |
 | `_ShowShadow` | 20 | **đã xong** — cả 20 đều gọi trên node armature (`getSpriteFromSpriteCatch` → `SngRig`), chỗ làm là `rig/sng_rig.gd`. Kèm theo `_SetSyncShadowPosY` (3 chỗ) và `_UpdateShadowPosY` (0 chỗ) — xem mục "Bóng của armature" |
-| `_lua_CollisionSize` | 6 | cùng họ `_lua_*` của armature |
+| `_lua_CollisionSize` | 6 | **đã xong** — trả về MỘT CẶP số (rộng, cao); công thức và 592 biến thể ở mục "Hộp chạm của armature" |
 | `_Lua_addStarLevelEffect` | 4 | |
 | `setLuaCallbackObjAndFunc` | 3 | **đã xong** — nối ô nhập chữ với hàm Lua, cùng lượt với `setText` |
 | `setSoundStrArr` | 2 | |

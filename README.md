@@ -1040,6 +1040,25 @@ và đo ra thì cả kho chỉ có **9 node** vượt quá ngưỡng ấy nên k
     `push_warning` kèm đúng lệnh ấy, còn `SngRig` thì cảnh báo một lần — bóng
     không vẽ được chứ không vẽ sai.
 
+11. ~~**Hộp chạm của armature — `_lua_CollisionSize`** (6 chỗ gọi)~~ — **xong**,
+    khoá bằng `tools/verify_cham_size.gd` (**42 đạt / 0 hỏng**, `check.py` bộ
+    thứ **35**). Nó trả về **một CẶP số** (rộng, cao), không phải một số — dùng
+    để đặt nhãn / mũi tên **lên trên đầu nhân vật**, tức cỡ **thân** chứ không
+    phải hộp va chạm vật lý. Công thức, số đo và chỗ **chưa rõ**: `ROADMAP.md`,
+    mục "Hộp chạm của armature". Ba điều đáng nhớ:
+    (a) `(w, h)` là khung sprite **trong `.xml`**, **không phải plist** — cùng
+    ảnh `Hoplite_res-44` là 3×3 trong `.xml` nhưng 1×1 trong plist, mà bản gốc
+    trả 3 × 54,52 = 163,56;
+    (b) quét cả **592** biến thể thì chỉ **ba** giá trị góc tồn tại, nên
+    **589/592 khớp máy ảo từng bit**; 3 rig còn lại lệch ≤ 2,2e-4 điểm ảnh và
+    **chưa rõ nguyên nhân** — ghi là chưa rõ, không gán bừa;
+    (c) **cùng lượt ấy lộ ra một lỗi chọn biến thể**, đã sửa: bản dựng chọn nhóm
+    nhiều động tác nhất, khi bằng nhau thì lấy nhóm đầu — mà biến thể **mang tên
+    file nằm CUỐI** ở **297/304** file. Máy ảo nói thẳng bản gốc dựng biến thể
+    nào (`DaQiao` → 85 × 135, `CaiWenJiCircle` → 875,12 × 523,8), và hai phép đo
+    ấy bác bỏ **cả hai** cách chọn kia: luật đúng là **khớp tên**, như
+    `getSpriteFromSpriteCatch(<tên>)`. **12** rig đổi kết quả.
+
 #### Chiến dịch và sân trận
 
 ```bash

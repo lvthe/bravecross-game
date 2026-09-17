@@ -27,7 +27,7 @@ từ bản đã dịch ngược. Hai repo, nằm cạnh nhau:
 ## Trước khi làm gì
 
 ```bash
-python tools/check.py          # 34 bộ, phải xanh hết
+python tools/check.py          # 39 bộ, phải xanh hết
 ```
 
 Kéo `brave-cross` mới về thì dựng lại `ui_ref` + `layout_ref` + tag (README,
@@ -365,6 +365,29 @@ Godot không có chế độ tương ứng `(GL_DST_COLOR, GL_ONE_MINUS_SRC_ALPH
 `'multiply'` (`BLEND_MODE_MUL` là `dst*src`, khác hẳn) — gặp thật thì phải viết
 shader riêng. Còn `'screen'` thì khớp sẵn: `CanvasItemMaterial.BLEND_MODE_ADD`
 = `GL_SRC_ALPHA, GL_ONE`.
+
+Hộp chạm của armature (`_lua_CollisionSize`) — **XONG**, và nó là một CẶP số
+(rộng, cao) chứ không phải một số: `W = w·sx·|cos rot1| + h·sy·|sin rot1|`,
+`H = h·sy·|cos rot2| + w·sx·|sin rot2|`, với `(w,h)` là khung sprite **trong
+`.xml`** (KHÔNG phải plist: `Hoplite_res-44` là 3×3 trong `.xml`, 1×1 trong plist,
+mà bản gốc trả 3 × 54,52) và `(sx,sy,rot1,rot2)` là khoá 0 của xương `Collision`.
+`|cos|` vì `rot2 = 180` là **cờ lật**, để nguyên dấu thì bề cao ra ÂM. Quét cả
+**592** biến thể: chỉ ba giá trị góc tồn tại (`0` 577, `180` 12, ba rig góc nhỏ),
+nên **589/592 khớp máy ảo từng bit**; 3/592 còn lại lệch ≤ 2,2e-4 điểm ảnh và
+**chưa rõ nguyên nhân** (đã thử mô hình hoá, góc hiệu dụng ra đúng bằng `rot1`).
+Ghi chú đầy đủ + số đo: `ROADMAP.md`, mục "Hộp chạm của armature";
+khoá bằng `tools/verify_cham_size.gd` (42 đạt / 0 hỏng).
+
+**Cùng lượt ấy lộ ra một lỗi chọn biến thể đã sửa:** `_richest_variant()` chọn
+nhóm nhiều động tác nhất, khi bằng nhau thì lấy nhóm **đầu tiên** — mà biến thể
+**mang tên file nằm CUỐI** danh sách nhóm ở **297/304** file, nên cách chọn ấy tuỳ
+tiện với **45** rig. Máy ảo nói thẳng bản gốc dựng biến thể nào: `DaQiao` →
+**85 × 135** (nhóm `DaQiao`; `DaQiaoReplica` không có `Collision` nên "nhiều động
+tác nhất" sẽ ra `(0,0)`), và `CaiWenJiCircle` → **875,12 × 523,8** trong khi nhóm
+**đầu** là `_Top` — hai phép đo bác bỏ **cả hai** cách chọn kia. Luật đúng là khớp
+**TÊN**, như `getSpriteFromSpriteCatch(<tên>)`; nay là `SngRig._bien_the_cho()`,
+vẫn lui về nhóm nhiều động tác nhất khi tên thư mục không phải một biến thể
+(`PlayerM.xml` chỉ có `PlayerM03W`…). **12** rig đổi kết quả.
 
 Ô chữ của nhãn: `getContentSize` **không phải** kích thước node. Bản gốc giữ ba
 trường riêng — ô (`+0x2c4/+0x2c8`, `getDimensions` đọc), cặp trả lời

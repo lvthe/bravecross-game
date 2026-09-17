@@ -55,6 +55,24 @@ const DO_DUOC := {
 ## giac nao (`|cos 180| = 1`, `|sin 180| = 0`). Dung sai rong hon cho ba rig nay.
 const GOC_NHO := ["YuJin", "MaYuanYi", "GongSunZan"]
 
+## Do tren may ao (`emu_cham.py`, muc F): PHEP CHON BIEN THE. Ban goc dung nhom
+## MANG DUNG TEN duoc hoi, khong phai nhom nhieu dong tac nhat. Khoa la ten dem
+## hoi `getSpriteFromSpriteCatch`, gia tri la (bien the phai chon, rong, cao).
+##
+## Hai rig nay bac bo ca hai cach chon "hop ly" kia:
+##   DaQiao          7 nhom, `DaQiao` CUOI; nhieu dong tac nhat la `DaQiaoReplica`
+##                   — ma no KHONG co xuong `Collision` nen se ra (0, 0).
+##   CaiWenJiCircle  nhom DAU (cung la nhieu dong tac nhat) la `_Top`, cung khong
+##                   co `Collision`; `CaiWenJiCircle` nam CUOI.
+const DO_BIEN_THE := {
+	"DaQiao": ["DaQiao", 85.0, 135.0],
+	"CaiWenJiCircle": ["CaiWenJiCircle", 875.1199951171875, 523.7999877929688],
+}
+
+## Ten THU MUC khong phai mot bien the: `PlayerM.xml` khong co nhom nao ten
+## `PlayerM` (cac nhom la `PlayerM03W`...). Duong lui phai chay, khong duoc ra null.
+const KHONG_CO_NHOM_TRUNG_TEN := "res://assets_ref/PlayerM"
+
 const _BOOT := """
 	local boot = require('bootstrap')
 	boot.install_cocos()
@@ -65,18 +83,22 @@ const _BOOT := """
 	return true
 """
 
-## Do bon rig qua DUONG CUA BAN GOC (`getSpriteFromSpriteCatch`), tra ve chuoi
+## Do nam rig qua DUONG CUA BAN GOC (`getSpriteFromSpriteCatch`), tra ve chuoi
 ## "x,y" noi bang ';'. `tostring` cua Lua in 14 chu so — du de so sanh chat.
 ##
 ## `ElephantSoldier` duoc chon de kiem THU TU hai so: 170,52 va 118,5 khac nhau
 ## du xa, con mot rig vuong thi doi cho hai so cung khong ai thay.
+##
+## `DaQiao` la ca CHON BIEN THE di qua duong Lua: thu muc `DaQiao` ton tai nen
+## `LuaRuntime._tao_rig` khong xin bien the nao, va `_bien_the_cho()` phai chon
+## nhom `DaQiao` (85 x 135) chu khong phai `DaQiaoReplica` ((0, 0)).
 const _LUA_DO := """
 	local c = require('cocos')
 	_G['_SAN'] = c.wrap(_root)
 	local cha = c.new_node('layer')
 	_SAN:addChild(cha)
 	local ra = {}
-	for _, t in ipairs({'Hoplite','ElephantSoldier','ZhangLiangBao','DaQuZhanShi'}) do
+	for _, t in ipairs({'Hoplite','ElephantSoldier','ZhangLiangBao','DaQuZhanShi','DaQiao'}) do
 		local sp = getSpriteFromSpriteCatch(t)
 		cha:addChild(sp)
 		local x, y = sp:_lua_CollisionSize()
@@ -257,6 +279,43 @@ func _init() -> void:
 				"DaQuZhanShi ho_cham() = %s, co_ho_cham() = %s — rig co that nhung khong co xuong Collision"
 				% [rig_kc.ho_cham(), rig_kc.co_ho_cham()])
 
+	# CHON BIEN THE nao (xem DO_BIEN_THE). Day la phan khoa cua `_bien_the_cho()`.
+	for ten in DO_BIEN_THE:
+		var mong: Array = DO_BIEN_THE[ten]
+		var r := SngRig.build("res://assets_ref/%s" % ten)
+		if r == null:
+			_ghi_chu(false, "khong dung duoc rig tu %s" % ten)
+			continue
+		nen.add_child(r)
+		_ghi_chu(r.variant == String(mong[0]),
+				"%-16s chon bien the '%s' (may ao: ban goc dung '%s')"
+				% [ten, r.variant, mong[0]])
+		_ghi_chu(r.ho_cham() == Vector2(float(mong[1]), float(mong[2])),
+				"%-16s ho_cham() = %s (may ao do %s x %s)"
+				% [ten, r.ho_cham(), mong[1], mong[2]])
+
+	# Xin DUNG bien the thi phai duoc dung bien the do: duong nay duoc dung that
+	# (`LuaRuntime._tao_rig` tim thu muc theo tien to roi xin dung ten bien the).
+	var rig_xin := SngRig.build("res://assets_ref/DaQiao", "DaQiaoReplica")
+	if rig_xin == null:
+		_ghi_chu(false, "khong dung duoc DaQiao voi bien the xin dung")
+	else:
+		nen.add_child(rig_xin)
+		_ghi_chu(rig_xin.variant == "DaQiaoReplica" and rig_xin.ho_cham() == Vector2.ZERO,
+				"xin dung 'DaQiaoReplica' thi dung no (%s) va ra (0, 0) vi khong co xuong Collision"
+				% rig_xin.variant)
+
+	# Thu muc khong trung ten bien the nao: van phai dung ra mot rig, khong null.
+	var rig_lui := SngRig.build(KHONG_CO_NHOM_TRUNG_TEN)
+	if rig_lui == null:
+		_ghi_chu(false, "duong lui hong: %s ra null" % KHONG_CO_NHOM_TRUNG_TEN)
+	else:
+		nen.add_child(rig_lui)
+		_ghi_chu(rig_lui.variant != "" and rig_lui.animations().size() > 0,
+				"ten thu muc khong phai bien the ('%s') -> lui ve '%s', %d dong tac"
+				% [KHONG_CO_NHOM_TRUNG_TEN.get_file(), rig_lui.variant,
+					rig_lui.animations().size()])
+
 	# --- D. Duong Lua ------------------------------------------------------
 	print("\nD. lua/cocos.lua — Node:_lua_CollisionSize:")
 	var lua := LuaRuntime.new()
@@ -284,7 +343,7 @@ func _init() -> void:
 	var r = _chay(_LUA_DO, "do _lua_CollisionSize tren bon rig")
 	if r != null:
 		var o := (r as String).split(";")
-		_ghi_chu(o.size() == 4, "doan Lua tra ve %d muc (phai la 4)" % o.size())
+		_ghi_chu(o.size() == 5, "doan Lua tra ve %d muc (phai la 5)" % o.size())
 		for muc in o:
 			var p := (muc as String).split("=")
 			if p.size() != 2:

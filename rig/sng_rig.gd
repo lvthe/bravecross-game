@@ -17,7 +17,8 @@
 #     Archer                 bo xuong chinh, 19 dong tac
 #     Archer_Dong/Evil/Shi   cung bo xuong, khac bo sprite  -> trang phuc
 #     Archer_WeaponNormal    bo xuong rieng cua vu khi, 1 dong tac
-# build() lay bien the nhieu dong tac nhat neu khong chi dinh.
+# build() lay bien the MANG DUNG TEN thu muc, dung nhu ban goc; ten thu muc khong
+# phai mot bien the thi moi lay nhom nhieu dong tac nhat — xem _bien_the_cho().
 @tool
 class_name SngRig
 extends Node2D
@@ -125,7 +126,7 @@ static func _make(src: Dictionary, dir_path: String, node_name: String,
 	rig.data = src
 	rig.source_dir = dir_path
 	rig.name = node_name
-	rig.variant = want_variant if want_variant != "" else rig._richest_variant()
+	rig.variant = want_variant if want_variant != "" else rig._bien_the_cho(node_name)
 	if rig.variant == "":
 		return null
 	rig._chain = chain.duplicate()
@@ -218,12 +219,10 @@ func plug(idx: int) -> Node2D:
 ## Tra theo BIEN THE DANG DUNG (`variant`), vi do moi la hinh tuong that su duoc
 ## dung ra — mot file `.xml` chua nhieu armature voi co rieng.
 ##
-## HE QUA da do: co 47 rig ma `_richest_variant()` chon KHAC bien the mang ten
-## file, va trong 15 rig do chi bien the mang ten file moi co `Collision` (DaQiao
-## → `DaQiaoReplica`, XiaHouDun → `XiaHouDunGhost`, TenAttendants → `_Boss`...).
-## 15 rig ay se tra (0, 0) cho toi khi `_richest_variant()` duoc sua. Day la he
-## qua cua LOI CHON BIEN THE, khong phai cua ham nay: tra theo ten file o day
-## thi hop cham se thuoc mot hinh tuong khac voi hinh dang duoc ve.
+## HE QUA da do, va da SUA: **45** rig co bien the mang ten file khac nhom nhieu
+## dong tac nhat, va **12** trong so do co hop cham KHAC HAN nhau giua hai bien
+## the. Truoc khi `_bien_the_cho()` ra doi, 12 rig ay tra (0, 0) hoac sai so.
+## Bang chung chon dung bien the nao: xem chu thich `_bien_the_cho`.
 func ho_cham() -> Vector2:
 	return ChamRef.ho_cham(variant)
 
@@ -237,6 +236,43 @@ func co_ho_cham() -> bool:
 
 # ------------------------------------------------------------------ noi bo
 
+## Bien the dung khi nguoi goi khong chi dinh: nhom MANG DUNG TEN duoc hoi.
+##
+## Ban goc dung bien the mang dung ten ay — DO, khong suy. Mot file `.xml` chua
+## nhieu armature, va bien the mang ten file nam CUOI danh sach nhom o 297/304
+## file (do tren `assets/map/*.xml`), nen hai cach chon "hop ly" kia deu sai:
+##
+##   DaQiao          7 nhom: `DaQiao` CUOI, nhieu dong tac nhat la `DaQiaoReplica`
+##                   (nhom thu 2). May ao goi `getSpriteFromSpriteCatch('DaQiao')`
+##                   roi `_lua_CollisionSize()` ra **85 x 135** = hop cua nhom
+##                   `DaQiao`; `DaQiaoReplica` KHONG co xuong `Collision` nen
+##                   "nhieu dong tac nhat" se ra (0, 0).
+##   CaiWenJiCircle  6 nhom: nhom DAU la `CaiWenJiCircle_Top` (cung la nhieu dong
+##                   tac nhat, khong co `Collision`), `CaiWenJiCircle` CUOI. May
+##                   ao ra **875,12 x 523,8** — tuc khong phai nhom dau.
+##
+## Hai rig nay bac bo ca hai cach chon kia, va chi con lai mot luat khop: khop
+## TEN. Do la ham `getSpriteFromSpriteCatch(<ten>)` cua ban goc: ten armature
+## quyet dinh, khong phai so dong tac.
+##
+## Anh huong da do: **45** rig co bien the mang ten file VA no khac nhom nhieu
+## dong tac nhat; **12** trong so do co hop cham KHAC HAN nhau giua hai bien the
+## (CaiWenJiCircle, CaiWenJiExclusCircle, DaQiao, DebuffPoisoning, DebuffSleep,
+## StartCartoon, XSHeTiJiLiuGuanZhang, XSJiYouHeTiJi, XSJieSuoBingZhong,
+## XSJieSuoLinTong, XSTaoTieChangJing, XSYuanJunJiaDao).
+##
+## Ten file khong phai luc nao cung la mot bien the (`Player000.xml` khong co
+## nhom nao ten `Player000` — cac nhom la `Player000W03W`...), nen van phai co
+## duong lui ve nhom nhieu dong tac nhat.
+func _bien_the_cho(want: String) -> String:
+	for g in data.get("groups", []):
+		if String(g.get("variant", "")) == want:
+			return want
+	return _richest_variant()
+
+
+## Nhom nhieu dong tac nhat. Chi con dung lam DUONG LUI khi ten file khong phai
+## la mot bien the (xem `_bien_the_cho`) va trong `_group()`.
 func _richest_variant() -> String:
 	var best := ""
 	var best_n := -1

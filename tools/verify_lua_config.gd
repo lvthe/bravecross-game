@@ -93,13 +93,15 @@ func _init() -> void:
 		end
 		out['bong engine'] = table.concat(bong, ' ')
 
-		-- toAnimationName: bang tra rut tu <sAnimation> cua cau hinh sprite ban
-		-- goc (data_ref/anim_ref.json, sinh bang brave-cross/work/anim_ref.py).
-		-- Ba phep thu: so dong bang tra, mot ten CO ghi de, va hai ten KHONG co
-		-- (phai tra ve nguyen ten — day la phan chua do duoc cua ham C++, xem
-		-- chu thich o lua/bootstrap.lua).
+		-- toAnimationName: bang tra rut tu cau hinh sprite ban goc
+		-- (data_ref/anim_ref.json, sinh bang brave-cross/work/anim_ref.py), va
+		-- luat da DO bang cach chay chinh ham do trong may ao
+		-- (brave-cross/work/emu_anim.py, 50 ten). Bon phep thu: so dong bang tra,
+		-- mot ten co <sAnimation> truc tiep, mot ten chi co <sBaseItem> (ke thua),
+		-- va hai ten KHONG toi <sAnimation> nao — phai tra ve nguyen ten.
 		out['anim ref'] = tostring(boot.so_anim_ref)
 		out['anim ghi de'] = tostring(toAnimationName('Archer_VampirE'))
+		out['anim ke thua'] = tostring(toAnimationName('Archer_Evil'))
 		out['anim nguyen ten'] = tostring(toAnimationName('Archer_WeaponNormal'))
 		out['anim ten thuong'] = tostring(toAnimationName('ZhangJiao'))
 
@@ -149,13 +151,18 @@ func _init() -> void:
 	t("khong ham engine nao bi lam bong",
 			String(r.get("bong engine", "?")) == "",
 			String(r.get("bong engine", "?")))
-	# 13 dong: dung so do cua ban goc (work/anim_ref.py in ra 'muc co
-	# <sAnimation>: 13' va dung 13 dong ghi de).
-	t("bang doi ten armature nap du 13 dong",
-			int(r.get("anim ref", 0)) == 13, String(r.get("anim ref", "?")))
-	t("toAnimationName doi dung ten ghi de",
+	# 103 dong: 13 muc co <sAnimation> truc tiep + 90 muc chi co <sBaseItem> tro
+	# toi mot trong 13 muc do. So do cua ban goc, va may ao xac nhan ca hai loat
+	# (brave-cross/work/emu_anim.py: Archer_VampirE -> Archer, Archer_Evil ->
+	# Archer, ArcherN_Weapon_Normal2 -> nguyen ten).
+	t("bang doi ten armature nap du 103 dong",
+			int(r.get("anim ref", 0)) == 103, String(r.get("anim ref", "?")))
+	t("toAnimationName doi theo <sAnimation> truc tiep",
 			String(r.get("anim ghi de", "?")) == "Archer",
 			String(r.get("anim ghi de", "?")))
+	t("toAnimationName ke thua qua <sBaseItem>",
+			String(r.get("anim ke thua", "?")) == "Archer",
+			String(r.get("anim ke thua", "?")))
 	t("toAnimationName tra nguyen ten khi khong co ghi de",
 			String(r.get("anim nguyen ten", "?")) == "Archer_WeaponNormal",
 			String(r.get("anim nguyen ten", "?")))

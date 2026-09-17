@@ -1476,18 +1476,29 @@ Hai chỗ tìm ra khi dựng hình:
 * ~~Còn thiếu: `toAnimationName`, `ClientReachAchieve`,
   `G_MysteriousStoreLogic.ClientRefresh`~~ — **xong cả ba.**
   * `toAnimationName` (có trong `libgame.so`, dùng lập danh sách armature nạp
-    trước): hàm C++ **không đọc ra được** (con trỏ hàm nằm trong bảng nạp lúc
-    chạy), nên bảng tra rút từ **dữ liệu mà hàm đó đọc** — sáu file cấu hình
-    sprite của bản gốc: 1968 mục `sName`, `<sAnimation>` có đúng **13 mục**
-    (toàn trong `evil_config.xml`, `Archer_VampirE → Archer`, …) và cả 13 giá
-    trị đều là armature có thật. Phần còn lại trả **nguyên tên**, và đúng như
-    vậy: lớp nạp armature đã tự phân giải tiền tố dài nhất (`_tao_rig`), kết quả
-    của 13 dòng ghi đè **trùng** kết quả phân giải đó. Sinh lại:
+    trước): thân hàm C++ **không đọc ra được** (con trỏ hàm nằm trong bảng nạp
+    lúc chạy), nhưng **luật thì đã đo được** — bằng cách chạy chính hàm đó
+    trong máy ảo (`brave-cross/work/emu_anim.py`, **50 tên**, kết quả lưu ở
+    `brave-cross/work/emu_anim.json`):
+    * mục có `<sAnimation>` → trả giá trị đó. Đúng **13 mục**, toàn trong
+      `evil_config.xml` (`Archer_VampirE → Archer`, …), cả 13 giá trị đều là
+      armature có thật;
+    * mục **không** có `<sAnimation>` → đi theo `<sBaseItem>`: **90 mục** như
+      vậy (mười gốc lính × chín biến thể `_Dong`, `_Evil`, `_Shi`, `_Skeleton`,
+      `_VampirEBoss`…), và máy ảo xác nhận kế thừa thật: `Archer_Evil → Archer`,
+      dù chính nó không có `<sAnimation>` riêng;
+    * không tới một `<sAnimation>` nào → trả **nguyên tên** (764 mục; máy ảo
+      cũng trả nguyên tên với cả chuỗi dài 2–3 bước như
+      `ArcherN_Weapon_Normal2`).
+    Bảng tra vì thế có **103 dòng**; sinh lại bằng
     `python ../brave-cross/work/anim_ref.py --json data_ref/anim_ref.json`.
-    Chỗ **chưa đo được**: `<sBaseItem>` (867 mục) có phải là kế thừa
-    `<sAnimation>` không — chuỗi của nó kết thúc ở tên **không** phải armature
-    (`Silk`, `weapon_throw`, `Player03`), nên luật "đi tới gốc" đã bị chính dữ
-    liệu bác bỏ.
+    Hai luật **đã bị số đo bác bỏ**, ghi lại: "đi theo `<sBaseItem>` tới **gốc**
+    rồi lấy tên gốc" (chuỗi thường kết thúc ở tên không phải armature — `Silk`,
+    `weapon_throw`, `Player03`), và "mục không có `<sAnimation>` thì trả nguyên
+    tên". Còn **một chỗ không phân biệt được**: trên dữ liệu này số bước
+    `<sBaseItem>` phải đi **tối đa là 1**, nên "đi một bước" và "đi tới khi
+    gặp" cho ra cùng một hàm — mã đi tới khi gặp (có chặn vòng lặp) và ghi rõ
+    là chưa phân biệt được.
   * `ClientReachAchieve` → `sc/offline/handlers/achieve.lua`;
     `G_MysteriousStoreLogic.ClientRefresh` → `sc/offline/handlers/mysterious.lua`.
 

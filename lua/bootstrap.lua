@@ -571,26 +571,32 @@ function M.install_cocos()
 	-- danh sach rong.
 	--
 	-- Ten nay CO trong libgame.so (binding toan cuc, dang ky o 0x20c0ba — ngay
-	-- giua giveBackToSpriteCatch va updateSettingFile), nhung HAM C++ KHONG DOC
-	-- RA DUOC: con tro ham nam trong bang nap luc chay. Nen bang tra o day rut
-	-- tu DU LIEU ma ham do doc — sau file cau hinh sprite cua ban goc
-	-- (map/{hero,heroex,player,sprite,boss,evil}_config.xml), qua
-	-- brave-cross/work/anim_ref.py:
+	-- giua giveBackToSpriteCatch va updateSettingFile), va THAN HAM C++ KHONG DOC
+	-- RA DUOC: con tro ham nam trong bang nap luc chay. Nhung LUAT thi do duoc,
+	-- bang cach chay chinh no trong may ao (brave-cross/work/emu_anim.py, 50 ten,
+	-- 2026-09-18):
 	--
-	--   * 1968 muc co <sName>; `<sAnimation>` chi co o **13 muc**, tat ca trong
-	--     evil_config.xml, va moi gia tri deu la armature CO THAT trong map/:
+	--   * muc co `<sAnimation>` -> tra ve gia tri do. Do duoc 13 muc, tat ca
+	--     trong evil_config.xml, moi gia tri deu la armature CO THAT trong map/:
 	--     Archer_VampirE -> Archer, Cavalry_VampirE -> Cavalry, ...
-	--   * `<sBaseItem>` (867 muc) la ke thua truong cho toc/ao/vu khi
-	--     (ZhangJiao_Hair -> Silk_Short); chuoi cua chung ket thuc o ten KHONG
-	--     phai armature (Silk, weapon_throw, Player03), nen luat "di den goc"
-	--     bi chinh du lieu bac bo — khong phai luat cua ham.
+	--   * muc KHONG co `<sAnimation>` -> di theo `<sBaseItem>`: muc no tro toi co
+	--     `<sAnimation>` thi tra gia tri do. Do duoc 90 muc — muoi goc linh nhan
+	--     chin bien the (_Dong, _DongBoss, _Evil, _EvilBoss, _Shi, _ShiBoss,
+	--     _Skeleton, _SkeletonBoss, _VampirEBoss). May ao xac nhan: Archer_Evil
+	--     -> Archer, du chinh no khong co `<sAnimation>` rieng.
+	--   * khong toi mot `<sAnimation>` nao -> tra NGUYEN TEN. Con 764 muc co
+	--     `<sBaseItem>` ma chuoi khong toi dau: toc/ao/vu khi (ZhangJiao_Hair ->
+	--     Silk_Short) va cac chuoi dai 2-3 buoc (ArcherN_Weapon_Normal2), may ao
+	--     cung tra nguyen ten.
 	--
-	-- Con lai tra ve NGUYEN TEN. Do khong phai suy dien suong: lop nap armature
-	-- cua ban goc (`LuaRuntime._tao_rig`) tu phan giai ten bien the ra armature
-	-- bang TIEN TO DAI NHAT co du lieu (Archer_WeaponNormal -> Archer,
-	-- Player004M03F -> Player004) — do tren 3142 armature cua assets_ref. Va ca
-	-- 13 gia tri ghi de deu DUNG BANG ket qua phep phan giai do, nen hoi them
-	-- ham C++ lam gi thi armature duoc nap cung khong doi.
+	-- Bang tra vi vay co 103 dong (13 + 90), rut tu sau file cau hinh sprite cua
+	-- ban goc bang brave-cross/work/anim_ref.py. Mot cho KHONG phan biet duoc va
+	-- ghi ro: tren du lieu nay so buoc `<sBaseItem>` phai di toi da la 1, nen
+	-- "mot buoc" va "di toi khi gap" cho ra cung mot ham.
+	--
+	-- Luat "di theo `<sBaseItem>` den GOC roi lay ten goc" la SAI — so do bac bo
+	-- no: chuoi thuong ket thuc o ten KHONG phai armature (Silk, weapon_throw,
+	-- Player03). Luot doc du lieu dau tien tuong luat "den goc" la luat cua ham.
 	local anim_doi_ten = {}
 	local function nap_anim_ref()
 		if _godot_doc_file == nil then return 0 end

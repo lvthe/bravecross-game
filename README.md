@@ -951,7 +951,9 @@ và đo ra thì cả kho chỉ có **9 node** vượt quá ngưỡng ấy nên k
 8. ~~**Chiến dịch: từ Main vào trận rồi về màn kết thúc**~~ — chạy trọn bằng
    đúng đường của bản gốc. Xem mục "Chiến dịch và sân trận" ngay dưới.
 9. ~~**Ô nhập chữ (`CCEditBox`) — 40 ô trong 22 bố cục**~~ — **xong**, khoá bằng
-   `tools/verify_o_nhap.gd` (**67 đạt / 0 hỏng**, `check.py` bộ thứ **34**).
+   `tools/verify_o_nhap.gd` (**67 đạt / 0 hỏng**, `check.py` bộ thứ **33** — con
+   số "34" ghi ở đây trước kia là **sai một đơn vị**, đếm lại trên `HEAD`: lúc
+   thêm nó `SUITES` có **33** mục và nó là mục cuối).
    Trước lượt này `ui/xgg_layout.gd` xếp `"CCEditBox"` vào `kind "label"`, nên
    cả 40 ô là **nhãn chữ**: không gõ được, và năm phương thức của mã gốc
    (`setText`, `getText`, `getTextWithLen`, `setMaxLength`,
@@ -987,6 +989,56 @@ và đo ra thì cả kho chỉ có **9 node** vượt quá ngưỡng ấy nên k
    dạng tên (`CheckNickName('@@@', 3, nil)` trả `true`). Luật "quá dài" thì
    **chạy đúng**: đo trên chính mã gốc, `getNickNameMaxLength(nil)` = **16**
    (nhánh VI), 8 chữ có dấu = **16** đơn vị — vừa đúng trần.
+
+10. ~~**Bóng của armature — `_ShowShadow` / `_SetSyncShadowPosY` /
+    `_UpdateShadowPosY`** (23 chỗ gọi: 20 / 3 / 0)~~ — **xong**, khoá bằng
+    `tools/verify_bong.gd` (**62 đạt / 0 hỏng**, `check.py` bộ thứ **34**).
+    Ba tên này trước lượt này **không hề tồn tại** ở lớp giả lập (rơi vào
+    `__index`, trả về hàm đếm rồi `nil`) nên chúng là **bóng im lặng** —
+    đúng loại với `_godot_zsort`. Ghi chú cũ xếp việc này là "rẻ — chỉ là
+    bật/tắt bóng", và **chỗ ấy sai**: đọc mã máy `libgame.so` ra ba điều khác
+    hẳn, cả ba đều thành phép kiểm được. (1) Bóng **chỉ tồn tại khi có ai gọi**
+    `_ShowShadow(true)` — nhánh `true` gọi hàm tạo bóng **trước tiên**, không có
+    đường nào khác dựng nó, nên một rig vừa dựng xong **không** có bóng. (2)
+    `false` **XOÁ HẲN** (`removeFromParentAndCleanup(true)` + `release()` + trả
+    con trỏ về 0) chứ không làm mờ đi — lần `true` sau tạo **đối tượng mới** (đo
+    được: `instance_id` khác). (3) Armature đang ẩn thì bóng **vẫn được tạo**
+    nhưng ở lại trạng thái ẩn, và `_UpdateShadowPosY` đi **đệ quy** xuống con.
+    Bóng là **một ảnh dùng chung** `Shadow.png` (chuỗi hằng trong mã máy, không
+    theo tên sprite) ở `zOrder −10`, neo (0,5; 0,5).
+    Số thì lấy từ **cấu hình gốc**, không bịa: `fShadowScaleRate` mặc định
+    **0,9** (`global_config.xml`, khối `<stage>` dưới chú thích `阴影`) và **7**
+    sprite ghi riêng (0,7 ×3, 0,8 ×2, 0,76, 1,0); `fShadowOpacity` **2** chỗ
+    (DragonFlight / BatFlight, 0,8); `fShadowOffsetRate` **8** chỗ;
+    `nShadowSize` **7** chỗ. Tên tài nguyên `sShadow` có ở **120** khối
+    `<limbs>` và **119/120** đúng dạng `<Tướng>Shadow` — mẫu lệ `DaQiao` →
+    `DaQiaoReplica` là phép thử phân biệt "đọc bảng" với "ghép chuỗi". Ảnh đo
+    trên chính file PNG: **164×22**, alpha giữa **112/255 = 0,439**, **elip
+    đặc viền cứng** nội tiếp trong ô (hàng giữa 164 điểm, hàng đầu = hàng cuối
+    = 66) — ghi chú "elip mờ dần" ở lượt trước là **sai**, và hệ quả là độ đậm
+    nằm ở chính ảnh còn `fShadowOpacity` nhân thêm lên trên.
+    **Không khôi phục được**, ghi rõ chứ không đoán: `nShadowSize` ánh xạ sang
+    tỉ lệ nào (cả 7 giá trị trong dữ liệu đều là `2`; bộ đọc cấu hình của engine
+    tra khoá bằng **chỉ số tên**, quét cả file không có chỗ nào trỏ tới địa chỉ
+    chuỗi ấy) — nên bản port **không dùng** nó, và cũng không dùng
+    `fSmallShadowScale` 0,6 / `fBigShadowScale` 1,5 vì không biết tiêu chí phân
+    loại; `fShadowOffsetRate` nhân với cái gì (giữ trong bảng để đối chiếu,
+    **không áp**); và **tài nguyên `sShadow` không được ship** (không file nào,
+    không plist nào tên đó) — tra thì tra, vẽ thì vẽ bằng chính `Shadow.png`
+    như engine. Chỗ **ĐẶT** duy nhất: bóng nằm tại **gốc rig** (bản gốc đọc ô
+    `+0x49c` của armature, ghi lúc đặt nó xuống mặt đất, không có hằng số nào
+    đối chiếu ngược). Một **bẫy dữ liệu** cũng bắt được ở đây, ghi lại vì nó
+    im lặng: `hero_config.xml` **không** có "một `<item>` bọc một tướng" —
+    `<sprites>` (và `<exclusive>` của `heroex_config.xml`) chứa một **danh sách
+    phẳng** các khối anh em (**801** khối cấp 1 cho **119** `item`), nên
+    `<item>(.*?)</item>` **đứt** ở `</item>` lồng bên trong `<lsAdapt>` và gộp
+    `<item>` với `<limbs>` thì gán sai chủ — đúng loại bẫy đã mắc với `ptLayout`.
+    Bảng và ảnh **không** commit (`data_ref/`, `assets_ref/` nằm trong
+    `.gitignore`); sinh lại bằng một lệnh:
+    `python ../brave-cross/work/bong_ref.py --json data_ref/bong_ref.json
+    --anh assets_ref/bong`. Không có bảng thì `BongRef` **không** im lặng: nó
+    `push_warning` kèm đúng lệnh ấy, còn `SngRig` thì cảnh báo một lần — bóng
+    không vẽ được chứ không vẽ sai.
 
 #### Chiến dịch và sân trận
 

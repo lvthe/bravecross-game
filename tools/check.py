@@ -145,6 +145,20 @@ SUITES = [
     # changed / ended / return ban ra ham Lua da dang ky), va thu tu tren-duoi
     # giua o nhap voi node co ten cham.
     ('o nhap',               'script', 'tools/verify_o_nhap.gd',  False, []),
+
+    # BONG cua armature (_ShowShadow / _SetSyncShadowPosY / _UpdateShadowPosY,
+    # 23 cho goi: 20 / 3 / 0). Truoc luot nay ba ten ay khong co trong bang Node
+    # nen roi vao __index va chi bi dem lai — khong loi, chi la khong bao gio co
+    # bong. Do ba khang dinh doc tu ma may cua ban goc: bong chi TON TAI khi co
+    # nguoi goi `true` (khong dung san), `false` XOA HAN chu khong lam mo (lan
+    # `true` sau tao doi tuong MOI), va armature dang an thi bong van duoc tao
+    # nhung o lai trang thai an. So lieu (ti le / do dam / ten tai nguyen) doi
+    # chieu voi phep dem tho tren cau hinh goc, va anh bong kiem bang chinh file
+    # PNG: phai ra mot ELIP DAC vien cung, alpha phang 112/255 = 0,439 trong long
+    # hinh (do lai: ca anh khong diem nao qua 115/255) — khong phai gradient mem.
+    # Do la phep thu cho thuat toan tach alpha cua ETC1: doc sai mat na thi khong
+    # ra hinh doi xung gon gang nhu vay.
+    ('bong armature',        'script', 'tools/verify_bong.gd',   False, []),
 ]
 
 SCORE = re.compile(r'dat (\d+), hong (\d+)')

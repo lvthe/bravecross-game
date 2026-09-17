@@ -1429,7 +1429,8 @@ thiếu**, không phải lỗi của bản port; phép kiểm vì thế chạy t
 đòi **0 lỗi Lua**.
 
 **Kiểm bằng gì:** `tools/verify_o_nhap.gd` — **67 đạt / 0 hỏng**, `check.py` bộ thứ
-**34**, bốn tầng: (1) dữ liệu `.xgg` ở trên; (2) năm phương thức của `CCEditBox`
+**33** (con số "34" ghi ở đây trước kia là **sai một đơn vị**; đếm lại trên `HEAD`:
+lúc thêm nó `SUITES` có **33** mục và nó là mục cuối), bốn tầng: (1) dữ liệu `.xgg` ở trên; (2) năm phương thức của `CCEditBox`
 đối chiếu với lớp `Node`, thêm bảng trọng số 134 mục của `getTextWithLen` và phép
 đối chiếu với chính `CheckNickName` của bản gốc; (3) **đường người chơi** — chạm
 vào ô (đúng lượt đi cây, `touch_at`), gõ phím **thật** qua `push_input`, rồi đòi
@@ -1446,6 +1447,121 @@ lỗi: ba tầng `lCreate` / `lRegister` / `lLogin` của UI_Login **chồng kh�
 vào ô đăng nhập thuộc về ô của tầng đăng ký. Bản gốc chỉ hiện **một** tầng, nên
 phép kiểm tắt hai tầng kia trước khi đo đường gõ — và đòi ô nhập **trên cùng** tại
 điểm chạm đúng là ô đang đo.
+
+
+### Bóng của armature (`_ShowShadow` / `_SetSyncShadowPosY` / `_UpdateShadowPosY`)
+
+Ba tên này có **23 chỗ gọi** trong mã gốc (**20 / 3 / 0**) và trước lượt này
+**không hề tồn tại** ở lớp giả lập: tên không có trong bảng `Node` nên rơi vào
+`__index`, trả về một hàm đếm rồi trả `nil` — không một lỗi nào, chỉ là bóng không
+bao giờ hiện. Cùng loại với `_godot_zsort` và ba hàm điểm gắn.
+
+**Bản ghi cũ xếp việc này là "rẻ — chỉ là bật/tắt bóng", và chỗ ấy SAI.** Đọc mã
+máy của `libgame.so` (Thumb) ra ba khẳng định khác hẳn, và cả ba đều thành phép
+kiểm được:
+
+* `_ShowShadow` (`0x419f74`) mở đầu bằng `movs r1, #1 ; bl 0x23c17c` — đúng hàm
+  `tobool(co, mặc định 1)` mà `setIsSwallowInBegan` đã dùng. Nhánh thật gọi
+  `0x419de6(self, 1)`; nhánh giả gọi `0x417e14(self)`.
+* `0x419de6` gọi **trước tiên** `0x419668` (tạo bóng), rồi `cmp r0,#0 ; beq` —
+  vẫn `nil` thì về luôn; sau đó chỉ khi `self visible` **và** bóng đang ẩn mới:
+  sắp bóng về `zOrder −10`, đặt chỗ theo `x` của armature và `Y` mặt đất
+  (`self+0x49c`), rồi `setVisible(true)`. Tức **bóng chỉ TỒN TẠI khi có ai đó gọi
+  `true`** — không hề được dựng sẵn lúc nạp sprite, và armature đang ẩn thì bóng
+  vẫn được tạo nhưng ở lại trạng thái ẩn.
+* `0x417e14` là `removeFromParentAndCleanup(true)` + `release()` +
+  `self[0xa04] = 0` — **XOÁ HẲN**, không phải làm mờ đi. Lần `true` sau đó tạo lại
+  từ đầu, tức là một **đối tượng mới**.
+
+Ba chi tiết còn lại của đường vẽ, cũng đọc từ mã máy:
+
+| thứ | đo được |
+|---|---|
+| hàm dựng bóng `0x3ca9a8` | một `CCSprite` 0x1c0 byte, `setAnchorPoint(0.5, 0.5)` (hai hằng `0x3f000000`), giữ tham chiếu ngược tới armature ở `+0x17c` |
+| tên ảnh | chuỗi hằng `"Shadow.png"` ở `0x7beccd` — **một ảnh dùng chung**, không theo tên sprite |
+| `_UpdateShadowPosY` (`0x417ddc` → `0x417d9e`) | truyền float `−1.0` (`0xbf800000`) làm dấu "lấy Y của chính armature" (`*(float*)(self->vtbl[0x78]() + 4)`), rồi đi **đệ quy** xuống con (`0x3c93c0`). **0 chỗ gọi bằng Lua** — vẫn làm cho đủ bảng bind |
+| `_SetSyncShadowPosY` (`0x417df9` → `0x417dec`) | `shadow[0x1a6] = tobool(co, 1)`. Trong `.text` **không có chỗ nào đọc** `+0x1a6`, và chỗ gọi `false` duy nhất (`CUIArmyGroupCampsite.lua:738`) đi kèm `_ShowShadow(false)` ngay trên — nên ca "hai cờ khác nhau" **không quan sát được ở bản gốc**. Cách hiểu của bản port vì thế là **ĐẶT**, ghi rõ trong `rig/sng_rig.gd` |
+
+**Số thì có sẵn trong cấu hình gốc, không phải bịa:**
+
+* `map/global_config.xml`, khối `<stage>` dưới chú thích `阴影`: `fShadowScaleRate`
+  **0,9** (ngay trên nó là chú thích "mặc định 0.9"), `fSmallShadowScale` 0,6,
+  `fBigShadowScale` 1,5.
+* Sáu file `map/{hero,heroex,player,sprite,boss,evil}_config.xml`: **19** khối ghi
+  số bóng. `fShadowScaleRate` **7** chỗ (0,7 ×3 Hoplite / FengYaoJi / BaiHuZi;
+  0,8 ×2 ZhangLiangBao / DongZhuoEvil; 0,76 MaYuanYi; 1,0 ElephantSoldier),
+  `fShadowOpacity` **2** (DragonFlight, BatFlight — đều 0,8; chú thích trong
+  `evil_config.xml` ghi `阴影不透明度`), `fShadowOffsetRate` **8**, `nShadowSize`
+  **7** (cả 7 đều là `2`).
+* `sShadow` — tên tài nguyên bóng riêng — có ở **120** khối `<limbs>` (hero 6,
+  heroex 1, player 113), tên khối là `limbs_<Tướng>` và giá trị **119/120** đúng
+  dạng `<Tướng>Shadow`. Một mẫu lệ: `DaQiao` → `DaQiaoReplica`. Chính mẫu lệ ấy là
+  phép thử phân biệt "đọc bảng" với "ghép chuỗi `<Tướng>Shadow`".
+
+**Một bẫy về cây XML đã làm hỏng lượt trích đầu tiên, ghi lại vì nó im lặng.**
+`hero_config.xml` **không** có "một `<item>` bọc hết một tướng": `<sprites>` (còn
+`heroex_config.xml` thì `<exclusive>`) chứa một **danh sách phẳng các khối anh
+em** — đo được **801** khối cấp 1 cho **119** `item` (`fight` 224, `weapon` 109,
+`silk` 72, `adapt` 67, `pause` 65, `limbs` 51, `move` 35, `prop` 34…). Nên
+`<item>(.*?)</item>` **đứt** ở `</item>` lồng bên trong `<lsAdapt>`, và gộp
+`<item>` với `<limbs>` thì **gán sai chủ**. Bộ đọc trong
+`brave-cross/work/bong_ref.py` vì thế dựng cây thật rồi lấy khối theo luật **độc
+lập với tên phần tử chứa**: một phần tử **có `<sName>` và có ít nhất một khoá
+bóng**. Đúng loại bẫy đã mắc với `ptLayout` (xem `CLAUDE.md`).
+
+**Ảnh bóng đã đo, và nó KHÔNG phải gradient mềm.** `png/ribbon/Shadow.pkm`
+(ETC1, nửa trên màu — nửa dưới lấy kênh đỏ làm alpha, đúng thủ thuật `sprites.py`
+đang dùng) ra **164×22**, và đo trên chính file PNG xuất ra: alpha giữa
+**112/255 = 0,439**, bốn góc **0**, và alpha **PHẲNG** trong lòng hình (cả ảnh
+không điểm nào quá **115/255**) — tức một **elip đặc viền cứng nội tiếp trong ô**:
+bề ngang hàng giữa **164** (chạm cả hai mép), hàng đầu **66** = hàng cuối **66**,
+hẹp dần đều ra hai đầu. Ghi chú cũ ở lượt trước gọi nó là "elip mờ dần" là **sai**;
+số đo nói nó đặc. Hệ quả cho bản port: **độ đậm nằm ở chính ảnh**, còn
+`fShadowOpacity` **nhân thêm** lên trên (`Sprite2D.modulate.a` nhân vào alpha của
+texture) — nên `modulate.a = do_mo(tên)` là đúng chỗ.
+
+**Không khôi phục được (ghi ra, không bịa):**
+
+* `nShadowSize` ánh xạ sang tỉ lệ nào — cả 7 chỗ trong dữ liệu đều là `2`, mà bộ
+  đọc cấu hình của engine tra khoá bằng **chỉ số tên** chứ không bằng địa chỉ
+  chuỗi (quét cả file không có chỗ nào trỏ tới địa chỉ của chuỗi `nShadowSize`),
+  nên không lần ra được bằng tính. Bản port vì thế **không dùng** `nShadowSize`,
+  và cũng không dùng `fSmallShadowScale` / `fBigShadowScale` — hai số ấy đi với
+  việc phân loại nhỏ/lớn mà **không biết tiêu chí**.
+* `fShadowOffsetRate` **nhân với cái gì**. 8 sprite ghi (0,017…0,235); bản port
+  giữ trong bảng để đối chiếu chứ **không áp**.
+* **Tài nguyên `sShadow`** — tra thì tra, nhưng **không được ship**: không file
+  `.xml` nào tên đó, không plist nào chứa nó. Đường dựng bóng của engine cũng chỉ
+  dùng **một** ảnh chung `Shadow.png`, nên bản port vẽ bằng chính ảnh ấy.
+
+**Chỗ ĐẶT duy nhất của phần này:** bóng nằm tại **gốc rig**. Bản gốc đặt `y` theo
+`self+0x49c` — ô đó được ghi lúc đặt armature xuống mặt đất, và **không có hằng số
+nào** để đối chiếu ngược, nên đây là điểm suy luận, không phải điểm đo.
+
+**Bản port.** `rig/sng_rig.gd` thêm `bong` + `hien_bong` / `dong_bo_bong_y` /
+`cap_nhat_bong_y`; bóng **chỉ được tạo khi có người hỏi** (đúng như bản gốc, nhờ
+vậy 20 chỗ gọi không làm đổi một màn nào đang chạy), `false` thì `queue_free` và
+quên con trỏ, `z_index = −10`, ảnh lấy qua `BongRef` (`battle/bong_ref.gd` +
+`data_ref/bong_ref.json`), tỉ lệ `BongRef.ti_le(tên)` (không khai thì **0,9** của
+chính cấu hình), độ đậm `BongRef.do_mo(tên)`. `lua/cocos.lua` thêm ba phương thức
+cho lớp `Node`, thiếu tham số thì **BẬT** (đúng `movs r1, #1` của bản gốc —
+`0`/`''` của Lua là truthy, khớp `tobool` mặc định 1), và **im lặng bỏ qua** khi
+node không có rig, vì bản gốc cũng có thể trỏ nhầm. Sinh bảng + ảnh:
+`python ../brave-cross/work/bong_ref.py --json data_ref/bong_ref.json --anh
+assets_ref/bong` (bảng và ảnh **không** commit — `data_ref/`, `assets_ref/` nằm
+trong `.gitignore`).
+
+**Kiểm bằng gì:** `tools/verify_bong.gd` — **62 đạt / 0 hỏng**, `check.py` bộ thứ
+**34**, ba tầng: (A) bảng và ảnh đối chiếu với **phép đếm thô trên chuỗi** của sáu
+file cấu hình (19 / 120 / 7 / 2, đúng bảy tên sprite ghi tỉ lệ), ảnh kiểm bằng
+chính file PNG (164×22, alpha giữa 0,439, elip đặc, đối xứng trên–dưới); (B)
+`SngRig` — rig vừa dựng **không** có bóng, `true` tạo với `z = −10` và tỉ lệ 0,7
+của Hoplite, `false` **xoá hẳn**, lần `true` sau cho **`instance_id` khác**,
+armature đang ẩn thì bóng có mà không hiện, và **một** lần gọi trên rig cha của
+CaoCao kéo **cả 15** bóng (14 rig lồng nhau) về gốc — phép đo cho đệ quy
+`0x3c93c0`; (C) đường Lua thật: `getSpriteFromSpriteCatch('Hoplite')` +
+`_ShowShadow`, gọi **trần** (không tham số) phải BẬT, gọi trên node không phải rig
+phải **không lỗi**, và ba tên ấy **không** được nằm trong bộ đếm `M.missing`.
 
 
 - [~] Ải vô tận / Epic / SB / COG (11 màn) — **con số 11 sai, và sai kiểu đã
@@ -2537,13 +2653,16 @@ hơn số lần bộ quét **chạy** bắt gặp vì phần lớn nằm ở mà
 |---|---|---|
 | `initWithSpriteFrameName` / `initWithSpriteFrame` | 66 / 9 | đặt khung hình cho sprite — bản port đặt ảnh bằng đường khác |
 | `setText` | 38 | **đã xong** — cả 38 chỗ đều là `CCEditBox`, xem mục "Ô nhập chữ" |
-| `_ShowShadow` | 20 | **cả 20 đều gọi trên node armature** (`getSpriteFromSpriteCatch` → `SngRig`, `lua/bootstrap.lua:553`) — `grep shadow rig/*.gd` ra **0**, tức chỗ làm là `rig/sng_rig.gd` |
+| `_ShowShadow` | 20 | **đã xong** — cả 20 đều gọi trên node armature (`getSpriteFromSpriteCatch` → `SngRig`), chỗ làm là `rig/sng_rig.gd`. Kèm theo `_SetSyncShadowPosY` (3 chỗ) và `_UpdateShadowPosY` (0 chỗ) — xem mục "Bóng của armature" |
 | `_lua_CollisionSize` | 6 | cùng họ `_lua_*` của armature |
 | `_Lua_addStarLevelEffect` | 4 | |
 | `setLuaCallbackObjAndFunc` | 3 | **đã xong** — nối ô nhập chữ với hàm Lua, cùng lượt với `setText` |
 | `setSoundStrArr` | 2 | |
 
-Món đáng làm trước nay là **`_ShowShadow`** (rẻ — chỉ là bật/tắt bóng của
-armature — mà 20 chỗ gọi). Hai món `setLuaCallbackObjAndFunc` (3) và `setText`
-(38) **đã xong cùng lượt với ô nhập chữ** — xem mục "Ô nhập chữ" ở phần "Lớp
-giả lập" phía trên.
+Món đáng làm trước nay là **`_ShowShadow`** — và **đã xong**, cùng lượt với
+`_SetSyncShadowPosY` / `_UpdateShadowPosY`. Ghi chú cũ ở đây gọi nó là "rẻ — chỉ
+là bật/tắt bóng": **sai**, xem mục "Bóng của armature" (nó **tạo** bóng khi `true`
+và **xoá hẳn** khi `false`, bóng là một `Shadow.png` dùng chung ở `zOrder −10`, và
+phần `y` mặt đất đi theo một ô của armature). Hai món `setLuaCallbackObjAndFunc`
+(3) và `setText` (38) **đã xong cùng lượt với ô nhập chữ** — xem mục "Ô nhập chữ"
+ở phần "Lớp giả lập" phía trên.

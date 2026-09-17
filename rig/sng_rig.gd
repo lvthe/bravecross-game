@@ -339,7 +339,12 @@ func _is_marker(bone: String) -> bool:
 
 
 func _load_texture(rel: String) -> Texture2D:
-	var path := source_dir.path_join(rel)
+	return nap_anh(source_dir.path_join(rel))
+
+
+## Nap anh theo duong dan res:// bat ky (rig dung cho anh cua chinh no, bong
+## dung cho anh dung chung nam ngoai thu muc rig).
+func nap_anh(path: String) -> Texture2D:
 	if ResourceLoader.exists(path):
 		var res := ResourceLoader.load(path)
 		if res is Texture2D:
@@ -559,6 +564,111 @@ func _add_track(anim: Animation, bone: String, prop: String) -> int:
 	anim.value_track_set_update_mode(idx, Animation.UPDATE_CONTINUOUS)
 	anim.track_set_interpolation_type(idx, Animation.INTERPOLATION_LINEAR)
 	return idx
+
+
+# ------------------------------------------------------------------ bong
+
+## Bong duoi chan. Ban goc KHONG dung san: `_ShowShadow(true)` moi TAO
+## (`libgame.so` 0x419f74 → 0x419de6, goi 0x419668 truoc tien), con
+## `_ShowShadow(false)` thi XOA HAN va quen di (0x417e14:
+## `removeFromParentAndCleanup(true)` + `release()` + `self[0xa04] = 0`) — lan
+## `true` sau do tao lai tu dau. Do la ly do 20 cho goi trong ma goc deu la
+## bat/tat han chu khong phai chinh do dam.
+##
+## So do: `battle/bong_ref.gd` (ti le + do dam) va anh dung chung
+## `assets_ref/bong/Shadow.png` (164x22) — duong tao bong cua engine cung nap
+## thang mot chuoi "Shadow.png" (0x7beccd) chu khong theo ten sprite.
+var bong: Sprite2D = null
+
+## zOrder cua bong: do duoc -10 (`0x419de6` sap lai bong ve -10 truoc khi hien).
+## Am hon moi xuong (xuong mang z 0..N) nen bong luon nam duoi chan nhan vat.
+const Z_BONG := -10
+
+var _bong_dong_bo_y := true
+var _da_canh_bao_bong := false
+
+
+func co_bong() -> bool:
+	return bong != null
+
+
+## `_ShowShadow(co)`. `co` gian thi xoa bong; `co` that thi tao (neu chua co),
+## sap ve z -10 va hien.
+func hien_bong(co: bool) -> void:
+	if not co:
+		if bong != null:
+			bong.queue_free()
+			bong = null
+		return
+	if bong == null and not _tao_bong():
+		return
+	# Do lai: 0x419de6 chi sap lai va hien khi CHINH armature dang hien VA bong
+	# dang an (`self visible && !shadow visible`). Armature an thi bong o lai
+	# trang thai an — no VAN duoc tao, vi cua kiem ay nam sau buoc tao.
+	if not visible or bong.visible:
+		return
+	bong.z_index = Z_BONG
+	_dat_bong_y()
+	bong.visible = true
+
+
+## `_SetSyncShadowPosY(co)`: co bat thi bong bam theo Y cua armature.
+##
+## Do duoc: `shadow[0x1a6] = tobool(co, 1)` (0x417df9) — KHONG tim thay cho doc
+## co ay trong `.text`, va lan goi `false` duy nhat cua ma goc
+## (`CUIArmyGroupCampsite.lua:738`) di ngay sau `_ShowShadow(false)`, tuc bong da
+## bi xoa. Nen nhanh `false` khong quan sat duoc o ban goc; o day hieu la "thoi
+## cap nhat Y" va ghi lai la DAT.
+func dong_bo_bong_y(co: bool) -> void:
+	_bong_dong_bo_y = co
+	_dat_bong_y()
+
+
+## `_UpdateShadowPosY()` — ma goc goi 0 lan trong Lua, nhung ham co that:
+## 0x417ddc truyen hang so -1,0 xuong `setShadowPosY`, va -1,0 la sentinel nghia
+## "lay Y cua chinh armature" (`0x417d9e` doc `vtbl[0x78]()+4`), roi di de quy
+## xuong cac con (0x3c93c0).
+func cap_nhat_bong_y() -> void:
+	_dat_bong_y()
+	for r in find_children("", "SngRig", true, false):
+		if r != self:
+			r.cap_nhat_bong_y()
+
+
+## Bong nam tai GOC cua rig. Ban goc lay x cua armature va Y mat dat
+## (`self+0x49c`), con duong `_UpdateShadowPosY` thi dung thang Y cua armature.
+## Goc cua rig trong ban dung CHINH LA cho dat chan, nen Y = 0 — day la cho DUY
+## NHAT phai suy: truong +0x49c duoc ghi luc dat armature xuong dat, khong co
+## hang so nao trong `.text` de doi chieu.
+func _dat_bong_y() -> void:
+	if bong == null or not _bong_dong_bo_y:
+		return
+	bong.position = Vector2.ZERO
+
+
+## Tao bong lan dau. Neo (0.5, 0.5) va ti le/anh lay theo so do cua ban goc
+## (xem chu thich dau `battle/bong_ref.gd`).
+func _tao_bong() -> bool:
+	var tex := nap_anh(BongRef.ANH)
+	if tex == null:
+		if not _da_canh_bao_bong:
+			_da_canh_bao_bong = true
+			push_warning(("SngRig: chua co %s — xuat bang: python "
+					+ "../brave-cross/work/bong_ref.py --anh assets_ref/bong")
+					% BongRef.ANH)
+		return false
+	var ten := _ten_armature()
+	var s := Sprite2D.new()
+	s.name = "Bong"
+	s.texture = tex
+	s.centered = true
+	s.z_index = Z_BONG
+	s.scale = Vector2.ONE * BongRef.ti_le(ten)
+	s.modulate.a = BongRef.do_mo(ten)
+	s.visible = false
+	add_child(s)
+	bong = s
+	return true
 
 
 # --------------------------------------------------------------- tieng dong

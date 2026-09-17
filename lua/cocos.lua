@@ -1932,6 +1932,35 @@ function Node:_lua_setOpacity(o)
 	end
 end
 
+-- Bong duoi chan cua armature -------------------------------------------------
+-- Ba ham, 23 cho goi: `_ShowShadow` 20, `_SetSyncShadowPosY` 3 (ca ba deu di
+-- ngay sau mot `_ShowShadow`), `_UpdateShadowPosY` 0.
+--
+-- KHONG phai "bat/tat do dam": ban goc TAO bong trong lan `true` dau tien va
+-- XOA HAN trong lan `false` (libgame.so 0x419f74 → 0x419de6 / 0x417e14). Xem
+-- rig/sng_rig.gd. Phep doi so o day theo dung khuon `setIsSwallowInBegan`:
+-- tham so vang thi ra BAT (ban goc truyen mac dinh 1 ngay trong ma may,
+-- `movs r1, #1; bl 0x23c17c`), con moi gia tri khac di qua truthiness cua Lua —
+-- nen `0` va `''` la BAT, khong phai `co ~= false`.
+function Node:_ShowShadow(co)
+	local r = _rig_cua(raw(self))
+	if r == nil or not r:has_method('hien_bong') then return end
+	if co == nil then co = true end
+	r:hien_bong(co and true or false)
+end
+
+function Node:_SetSyncShadowPosY(co)
+	local r = _rig_cua(raw(self))
+	if r == nil or not r:has_method('dong_bo_bong_y') then return end
+	if co == nil then co = true end
+	r:dong_bo_bong_y(co and true or false)
+end
+
+function Node:_UpdateShadowPosY()
+	local r = _rig_cua(raw(self))
+	if r ~= nil and r:has_method('cap_nhat_bong_y') then r:cap_nhat_bong_y() end
+end
+
 -- Diem gan cua armature (plug) --------------------------------------------
 -- Ba ham, 48 cho goi: _lua_addChildToPlugIn 33, _lua_clearPlugIn 10,
 -- _lua_getPlugInPositionInNode 5. Day la cach ban goc treo mot node Lua (nhan

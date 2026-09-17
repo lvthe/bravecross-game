@@ -749,14 +749,64 @@ thành 353, và 105 màn mở được thành 244.
   (`CloseImmediately` không đặt lại) và hàng đợi hoạt cảnh (`InsertAnimation`
   chỉ chạy ngay khi hàng đợi đang rỗng).
 
-* **Chạm: `EndEx` không đi sau `End`.** 33/66 hàm `onTouchEndEx_*` tự gọi lại
-  `onTouchEnd_*(node, false)` của chính nó (vd `CUIAchieve.lua:597`) — engine mà
-  gọi cả hai thì `End` chạy hai lần. Nên `EndEx` là lối ra khi chạm bị cướp
-  (danh sách cuộn), và chưa gọi vì chưa có cuộn bằng chạm. Giá trị trả về của
-  `Begin` cũng **không** quyết định có nhận chạm: `End` tự kiểm lại đúng điều
-  kiện của `Begin`, và 42 lớp chỉ có `Begin`. Hai điều này **suy từ mã Lua,
-  chưa đo trên engine** — đọc hàm phát chạm trong `libgame.so` cần
-  `work/armdis.py`, mà nó cần `capstone` + `pyelftools`.
+* **Chạm: `EndEx` không đi sau `End` — đã đo trên engine, không còn suy từ Lua.**
+  Chỗ duy nhất dựng tên cho pha `End` là `libgame.so` `0x2c92dc`, và nó có **hai
+  nhánh loại trừ nhau**:
+  - cờ `[node+0xd]` (cờ Ex) bật **và** cổng `0x2c92c0` đúng → **chỉ** `EndEx`:
+    `0x2c96a8` gọi thunk `0x2c967c` (nạp tiền tố `onTouchEndEx`) rồi vào `0x2c92dc`
+    với tiền tố khác 0 → `sprintf(buf, "%s_%s", tiền_tố, tên)` tại `0x2c933e`
+    (dạng chuỗi `%s_%s` ở `0x7ad3af`, chuỗi `onTouchEndEx` ở `0x7ad3b5`);
+  - không thì cờ `[node+0xc]` (cờ End) bật → **chỉ** `End`: `0x2c96b6` vào cùng
+    `0x2c92dc` với tiền tố 0 → `sprintf(buf, "onTouchEnd_%s", tên)` tại `0x2c9358`
+    (dạng chuỗi ở `0x7ad382`);
+  - cả hai cờ tắt → không gọi gì.
+
+  Hàm `0x2c9688` là một hàm ảo của lớp `lua_CCTouchProxy` (vtable `0x88f4e0`,
+  typeinfo `0x88f550`, tên `16lua_CCTouchProxy`) — **máy C++ quyết định, không
+  phải Lua**: node đi đường `EndEx` khi lớp C++ đã cướp cử chạm. Cổng `0x2c92c0`
+  = `[node+0x10] ? pred(0x2c0604) : ([node+0x14] ? 0x2246ac([node+0x14]) : 0)`,
+  nên bật cờ Ex chưa đủ. Vì vậy **`End` và `EndEx` loại trừ nhau** — engine chọn
+  một trong hai cho mỗi node, không bao giờ gọi cả cặp. (Cách suy cũ từ mã Lua:
+  62/64 hàm `onTouchEndEx_*` có một hàm `End` **cùng hậu tố** trong cùng lớp, nên
+  gọi cả hai thì `End` chạy hai lần; trước đây ghi "33/66" và "68 hàm" — đo lại
+  trên `sc/` được **64** hàm `onTouchEndEx_*`.)
+
+  **Giá trị trả về của `Begin` cũng không quyết định có nhận chạm** — nhưng phải
+  nói cho đúng từng nhánh, vì hai nhánh tra tên khác nhau:
+  - node **có** đối tượng nhận: `lua_getfield(L, -1, tên)` (`0x23c6ac`, gọi ở
+    `0x2c8c0c`) trên giá trị mà bộ lấy đối tượng `0x49bb68` đẩy lên; ngay sau đó
+    là `lua_type(L, -1)` (`0x2c8c10`) rồi `r7 = 1` (`0x2c8c3a`) → kết quả là
+    **"có hàm hay không"**, giá trị hàm trả về **không** được dùng. Đó là nhánh
+    mọi màn của bản gốc đi qua.
+  - node **không** có đối tượng: bản gốc tra **tên đầy đủ của hàm như một biến
+    toàn cục** (`lua_getglobal`, `0x2c8b7e`) và lấy **giá trị hàm trả về** làm kết
+    quả (`0x2c8be4..0x2c8bf2`, `lua_toboolean`). Nhánh này **không bao giờ chạy**
+    với mã đã ship: bốn chỗ duy nhất định dùng nó (`sc/system/Share.lua:49-59`,
+    `_G["onTouchBegin_g_itemQQweibo"] = QQweiboOnBegin` …) **nằm trong khối chú
+    thích `--[[ … --]]`**, và ở pha `End` nó còn bị một cờ trong `.bss` gạt lại
+    (`0x2c9392`, đọc qua GOT `0x92AA60`, mặc định 0). Bản dịch chưa làm nhánh này.
+
+  Bộ lấy đối tượng `0x49bb68` đọc `std::string` tên đối tượng của node (`+0x144`)
+  rồi `lua_getglobal` (`0x49bbc0`), hoặc đọc theo **khoá số nguyên** của node
+  (`+0x148`) trong bảng register; nó chỉ nhận giá trị kiểu table / userdata /
+  lightuserdata (`0x49bb88..0x49bb98`).
+
+  **Cuộn bằng chạm đã có** (`lua/cuon.lua`, ngưỡng 12 px) — dòng "chưa có cuộn
+  bằng chạm" trước đây đã cũ. Chỗ còn thiếu là **lối báo**: khi lớp cuộn nuốt pha
+  `End` (kéo quá ngưỡng, không tính là một cú bấm nữa) thì node đã nhận `Begin`
+  không bao giờ thấy `End` của nó. Nay `lua/cuon.lua` trả về node bị cướp và
+  `lua/cocos.lua` gọi `onTouchEndEx_<tên>` trên node đó (`goi_pha(..., 'EndEx')`),
+  đúng như nhánh C++ ở trên; `tools/verify_bang.gd` đòi kéo quá ngưỡng → `EndEx`
+  chạy **đúng một lần** và `End` **không** chạy, còn một cú bấm thì ngược lại.
+  Đo trên `sc/`: **không hàm `EndEx` nào đọc tham số của nó** (37 hàm khai
+  `(obj, x, y)` mà không dùng `x`/`y`; 24 hàm khai tham số thứ hai kiểu boolean mà
+  không đọc) — chúng chỉ dọn dẹp, nên bản dịch gọi `EndEx` với toạ độ thật `(b, c)`
+  như bản gốc, dù giá trị đó không được dùng.
+* **2.005 node có tên chạm trong `.xgg`: 1.880 (93,8%) khớp một hàm
+  `onTouch*_<hậu tố>` có thật trong `sc/`** — đó là phép đối chứng cho cách đọc
+  trường `+0x0C`. 168 node có tên chạm mà **không** có tên đối tượng; 125 tên còn
+  lại không khớp hàm nào và phần lớn là tên lớp do Studio điền sẵn
+  (`OnCCScale9Sprite`, `CCLayerColorRoundRect`, `CCSprite`…).
 * **Kéo `brave-cross` mới thì dựng lại `ui_ref` và `layout_ref`** (bước 2 và
   2b ở đầu README). Dữ liệu cũ không báo lỗi mà hỏng lặng lẽ: trên một máy
   mới, `layout_ref` dựng trước khi `layout.py` ghi `zOrder` làm 4 bộ kiểm đỏ,
@@ -862,9 +912,12 @@ và đo ra thì cả kho chỉ có **9 node** vượt quá ngưỡng ấy nên k
 
 ### Việc tiếp theo, theo thứ tự
 
-1. ~~**Nối chạm**~~ — xong (xem trên). Còn lại của phần chạm: cuộn danh sách
+1. ~~**Nối chạm**~~ — xong (xem trên). ~~Còn lại của phần chạm: cuộn danh sách
    bằng chạm (kèm `onTouchEndEx`), và đo hàm phát chạm trong `libgame.so` để
-   thay hai điều đang suy bằng số đo.
+   thay hai điều đang suy bằng số đo.~~ — xong: cuộn bằng chạm đã có từ trước
+   (`lua/cuon.lua`), nay nối được lối báo `onTouchEndEx_*` khi cú chạm bị cướp
+   (`tools/verify_bang.gd` giữ), và cả hai điều suy từ mã Lua đã thay bằng số đo
+   trong `libgame.so` (`0x2c92dc`, `0x2c9688`, `0x2c8b00`; xem mục "Chạm" ở trên).
 2. ~~**Dựng cảnh `Main`**~~ — phần engine xong. Chạy đúng dòng của bản gốc,
    `g_CSceneManager:RepaleceScene("Main")` (`ClientActivitiesLogic.lua:104`),
    và coroutine đổi cảnh đi hết: nạp `UI_Main_960_640` lên sân khấu, khung hộp

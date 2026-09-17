@@ -442,7 +442,13 @@ return function(C)
 		end
 		-- NUOT pha End: da la mot lan keo thi khong tinh la mot cu bam nua.
 		-- Khong nuot thi nha vao nut ma keo se vua cuon vua mo man.
-		return true
+		--
+		-- Tra ve kem node da nhan BEGIN (khong phai node dang tha tay): cu cham
+		-- bi CUOP, va cocos.lua phai bao cho node do biet — do la ham
+		-- `onTouchEndEx_<ten>` cua ban goc (libgame.so 0x2c933e). Khong co loi
+		-- bao nay thi node nhan Begin khong bao gio thay pha End cua no, va
+		-- khung no mo ra luc Begin con nguyen tren man.
+		return true, node_bat
 	end
 
 	-- Phuong thuc cua lop ---------------------------------------------------

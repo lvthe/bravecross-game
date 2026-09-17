@@ -2333,6 +2333,36 @@ tướng không bị cướp, cấp 5 thay cấp 3, cấp 1 xoá sạch); D **ch
    mỗi lần kẹp biên hay nhả về biên là gốc **trôi**, và lần kẹp sau sai tiếp.
    Nay `day_lech(gd, t, mới)` đọc gốc theo độ lệch **đang áp** rồi mới ghi.
 
+   **Lối báo khi cú chạm bị cướp — `onTouchEndEx_*` (lượt sau, 2026-09-17).**
+   Trước đây ghi "chưa có cuộn bằng chạm nên chưa gọi `EndEx`" — sai hai lần:
+   cuộn bằng chạm **đã có** (`cuon.lua`, ngưỡng 12 px), và `EndEx` là **nhánh
+   C++ loại trừ với `End`**, không phải thứ Lua tự gọi. Đo trên `libgame.so`:
+   chỗ duy nhất dựng tên pha `End` là `0x2c92dc`; hàm `0x2c9688` (hàm ảo của
+   `lua_CCTouchProxy`, vtable `0x88f4e0`) rẽ theo **cờ trong đối tượng chạm** —
+   `[node+0xd]` (Ex) bật **và** cổng `0x2c92c0` đúng thì **chỉ** gọi `EndEx`
+   (`0x2c96a8` → thunk `0x2c967c` → `sprintf("%s_%s", "onTouchEndEx", tên)` ở
+   `0x2c933e`), không thì `[node+0xc]` (End) bật thì **chỉ** gọi `End`
+   (`0x2c96b6` → `sprintf("onTouchEnd_%s", tên)` ở `0x2c9358`); hai cờ tắt thì
+   không gọi gì. Nên **`End`/`EndEx` loại trừ nhau**, và bên quyết định là lớp
+   C++ đã cướp cử chạm — đúng chỗ `cuon.lua` đang đứng.
+   Bản dịch nay nối lối báo ấy: `S.cham` trả về **node đã nhận `Begin`** khi pha
+   `End` bị nuốt vì kéo quá ngưỡng, và `cocos.lua` gọi `onTouchEndEx_<tên>` trên
+   node đó (`goi_pha(..., 'EndEx')`, toạ độ thật `(b, c)`). `verify_bang.gd` giữ:
+   kéo quá ngưỡng → `EndEx` **đúng một lần**, `End` **không** chạy; cú bấm thì
+   ngược lại (**47 đạt / 0 hỏng**, trước là 43). Hai điều từng **suy từ mã Lua**
+   nay là **số đo**: (i) pha `Begin` trả về **"có hàm hay không"** — `lua_type`
+   ngay sau phép tra tên rồi `r7 = 1` (`0x2c8c10`, `0x2c8c3a`), giá trị hàm trả
+   về không được dùng; (ii) tên hàm tra bằng `lua_getfield` trên đối tượng
+   (`0x2c8c0c`) khi node **có** đối tượng, còn khi **không** có thì bản gốc tra
+   tên đầy đủ như một **biến toàn cục** (`lua_getglobal`, `0x2c8b7e`) và lấy giá
+   trị hàm làm kết quả — nhánh ấy **không bao giờ chạy** với mã đã ship (bốn chỗ
+   định dùng nó ở `sc/system/Share.lua:49-59` nằm trong khối chú thích, và ở pha
+   `End` còn bị một cờ `.bss` gạt lại ở `0x2c9392`), nên bản dịch chưa làm.
+   Ngoài ra: đếm lại trên `sc/` được **64** hàm `onTouchEndEx_*` (trước ghi 68),
+   **không hàm nào đọc tham số của nó**, và **1.880/2.005 (93,8%)** tên chạm
+   trong `.xgg` khớp một hàm `onTouch*_<hậu tố>` có thật — phép đối chứng cho
+   cách đọc trường `+0x0C`.
+
 7. ~~**Đường vẽ theo `zOrder`**~~ — **xong, và đây là việc lộ ra muộn nhất mà
    đáng giá nhất.** `lua/cocos.lua` gọi `_godot_zsort` ở hai chỗ nhưng **chưa
    từng viết hàm ấy**: tên rơi vào `_G` giả lập → trả **bóng** → bóng gọi được →

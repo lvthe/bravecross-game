@@ -309,9 +309,9 @@ end
 
 -- Cham ---------------------------------------------------------------------
 -- Engine ban goc goi ham xu ly theo khuon ten co san trong chinh libgame.so:
--- 'onTouchEnd_%s', 'onTouchBegin_%s', 'onTouchMove_%s', va '%s_%s' ghep voi
--- 'onTouchEndEx' (chuoi o 0x7b10fd..0x7b1130). Ten cham va doi tuong nhan
--- den tu hai cho:
+-- 'onTouchBegin_%s', 'onTouchMove_%s', 'onTouchEnd_%s', va 'onTouchEndEx_%s'
+-- (bon chuoi lien nhau o .rodata 0x7ad382..0x7ad3ba; ban goc la Lua 5.2 —
+-- chuoi 'Lua 5.2' o 0x7a7af0). Ten cham va doi tuong nhan den tu hai cho:
 --   * ban ghi node trong .xgg (+0x0C ten cham, +0x14 TEN BIEN TOAN CUC cua
 --     doi tuong — xem work/xgg.py), 2.005 node; XggLayout gan thanh meta
 --     'touch' va 'touch_obj';
@@ -321,15 +321,50 @@ end
 --   onTouchBegin_X(node)                 203 ham
 --   onTouchMove_X(node, bTrongO, x, y)    11 ham
 --   onTouchEnd_X(node, bTouchInSide)     cap tren 1.500 ham
---   onTouchEndEx_X(node, x, y)            68 ham
--- EndEx KHONG goi sau End: 33/66 ham EndEx tu goi lai End(node, false) cua
--- chinh no (vd CUIAchieve.lua:597) — neu engine goi ca hai thi End chay hai
--- lan. Nen EndEx la loi ra khi cham bi tuot mat (danh sach cuon cuop cham),
--- khong phai khi tha tay. Ta chua co cuon bang cham nen chua goi EndEx.
+--   onTouchEndEx_X(node, x, y)            64 ham
 --
--- Gia tri tra ve cua Begin KHONG quyet dinh co nhan cham hay khong: ham End
--- tu kiem lai dung dieu kien ma Begin da kiem (CUIAchieve.lua:532 va :569),
--- va 42 lop chi co Begin ma khong co End.
+-- DO TREN MAY (doc thang libgame.so, Thumb-2 — khong con suy tu ma Lua):
+--   * Cho DUY NHAT dung ten cho pha End la 0x2c92dc, va no co HAI NHANH LOAI
+--     TRU NHAU, chon bang CO TRONG DOI TUONG cham cua chinh node:
+--       - `[node+0xd]` (co Ex) bat VA cong 0x2c92c0 dung -> CHI EndEx: 0x2c96a8
+--         goi thunk 0x2c967c (nap tien to 'onTouchEndEx') roi vao 0x2c92dc voi
+--         tien to khac 0 -> `sprintf(buf, "%s_%s", tien_to, ten)` (0x2c933e;
+--         hai dang chuoi o 0x7ad3af va 0x7ad3b5).
+--       - khong thi `[node+0xc]` (co End) bat -> CHI End: 0x2c96b6 vao cung
+--         0x2c92dc voi tien to 0 -> `sprintf(buf, "onTouchEnd_%s", ten)`
+--         (0x2c9358; dang chuoi 0x7ad382).
+--       - ca hai co tat -> khong goi gi.
+--     Ham 0x2c9688 la mot ham ao cua lop `lua_CCTouchProxy` (vtable @0x88f4e0,
+--     typeinfo @0x88f550 ten '16lua_CCTouchProxy'), tuc **may C++ chu khong phai
+--     Lua quyet dinh** node nao di duong EndEx — do la lop da CUOP cu cham.
+--     Cong 0x2c92c0 = `[node+0x10] ? pred(0x2c0604) : ([node+0x14] ?
+--     0x2246ac([node+0x14]) : 0)`: bat co Ex khong du, con phai qua phep kiem
+--     nay (cho phan biet bam voi keo nam o day).
+--     Nen **EndEx KHONG BAO GIO di sau End** — engine chon MOT trong hai cho
+--     moi node, va chon tu ben C++. (Truoc day dieu nay chi suy tu ma Lua:
+--     62/64 ham EndEx co mot ham End CUNG HAU TO trong cung lop.)
+--   * Tra ten: node CO doi tuong nhan thi `lua_getfield(L, -1, ten)` (0x23c6ac,
+--     goi o 0x2c8c0c cho pha Begin) tren gia tri ma bo lay doi tuong 0x49bb68
+--     day len; bo lay do doc std::string cua node (+0x144) roi `lua_getglobal`
+--     (0x49bbc0), hoac doc theo KHOA SO nguyen cua node (+0x148) trong bang
+--     register — va no chi nhan gia tri kieu table / userdata / lightuserdata
+--     (0x49bb88..0x49bb98).
+--   * Pha Begin tra ve "CO HAM HAY KHONG" khi node CO doi tuong: ngay sau phep
+--     tra ten la `lua_type(L, -1)` (0x2c8c10) roi `r7 = 1` (0x2c8c3a) — gia tri
+--     ham tra ve KHONG duoc dung. Khi node KHONG co doi tuong thi ban goc tra
+--     TEN DAY DU cua ham nhu mot BIEN TOAN CUC (0x2c8b7e) va lay GIA TRI ham
+--     lam ket qua (0x2c8be4..0x2c8bf2, `lua_toboolean`). Nhanh do khong bao gio
+--     chay voi ma goc da ship: **khong mot file Lua nao dat ham vao _G** — bon
+--     cho duy nhat trong sc/system/Share.lua:49-59 nam trong khoi chu thich
+--     `--[[ ... --]]`, va o pha End no con bi mot co trong .bss gat lai
+--     (0x2c9392 doc qua GOT 0x92AA60, mac dinh 0). Ta chua lam nhanh nay.
+--
+-- EndEx la loi ra khi cu cham bi TUOT MAT: lop cuon cuop pha End (keo qua
+-- nguong), nen node da nhan Begin khong bao gio thay pha End cua no. Do tren ca
+-- 64 ham EndEx: **khong ham nao DOC tham so cua no** (37 ham khai (obj, x, y)
+-- ma khong dung x/y; 24 ham khai tham so thu hai kieu boolean ma khong doc) —
+-- chung chi don dep. Nen o day goi EndEx voi TOA DO THAT (b, c) dung nhu ban
+-- goc, du gia tri do khong duoc dung.
 
 M.doi_tuong_cham = {}   -- id node Godot -> doi tuong Lua (gan luc chay)
 M.nhat_ky_cham = {}     -- ten ham da goi (toi da 64), de phep kiem doc lai
@@ -445,42 +480,73 @@ function Node:setIsSwallowInBegan(b)
 	raw(self):set_meta('swallow_begin', b and true or false)
 end
 
+-- Goi MOT pha tren MOT node. Tra ve true neu node CO ham cho pha do — dung
+-- phep kiem cua ban goc (lua_type ngay sau phep tra ten), khong phai gia tri
+-- ma ham do tra ve.
+--
+-- `pha` la 'Begin' | 'Move' | 'End' | 'EndEx'; ten ham ghep ra tu do
+-- ('onTouch' .. pha .. '_' .. ten) nen 'EndEx' ra dung 'onTouchEndEx_<ten>'.
+local function goi_pha(gd, pha, a, b, c)
+	local ten = gd:has_meta('touch') and tostring(gd:get_meta('touch')) or ''
+	if ten == '' then return false end
+	local obj = doi_tuong_cua(gd)
+	if type(obj) ~= 'table' then return false end
+	local k = 'onTouch' .. pha .. '_' .. ten
+	-- pcall: lop cua ban goc co the dat __index nem loi khi thieu khoa.
+	local co, f = pcall(function() return obj[k] end)
+	if not (co and type(f) == 'function') then return false end
+	local sender = wrap(gd)
+	local ok, err
+	if pha == 'Begin' then
+		ok, err = pcall(f, obj, sender)
+	elseif pha == 'Move' then
+		ok, err = pcall(f, obj, sender, a, b, c)
+	elseif pha == 'End' then
+		ok, err = pcall(f, obj, sender, a)
+	else
+		-- EndEx: ban goc khai (node, x, y) — toa do that nam o b, c.
+		ok, err = pcall(f, obj, sender, b, c)
+	end
+	if #M.nhat_ky_cham >= 64 then table.remove(M.nhat_ky_cham, 1) end
+	M.nhat_ky_cham[#M.nhat_ky_cham + 1] = k
+	if not ok then
+		M.loi_cham[#M.loi_cham + 1] = k .. ': ' .. tostring(err)
+	end
+	return true
+end
+
 -- Goi tu GDScript (LuaRuntime.touch_at) khi node gd bi cham. Tra ve true neu
 -- node co doi tuong nhan — tuc engine co dang ky no — du doi tuong co ham cho
 -- pha nay hay khong: node da dang ky thi nuot cham, nen nut o duoi khong an.
 function M.cham(pha, gd, a, b, c)
 	local ten = gd:has_meta('touch') and tostring(gd:get_meta('touch')) or ''
 	if ten == '' then return false end
+	-- Node co TEN CHAM ma khong co doi tuong nhan thi khong nuot cham. Ban goc
+	-- con co duong thu hai cho truong hop nay: tra TEN DAY DU cua ham nhu mot
+	-- bien toan cuc (`lua_getglobal`, 0x2c8b7e) — do la duong ma
+	-- sc/system/Share.lua:49-59 dinh dung, nhung bon cho do NAM TRONG KHOI CHU
+	-- THICH, va ca ma goc khong con cho nao khac dat ham vao _G, nen duong do
+	-- khong bao gio tra ra gi. Ta chua lam (xem dau file).
+	if type(doi_tuong_cua(gd)) ~= 'table' then return false end
 	-- Lop cuon nhan truoc. No co the NUOT pha End: mot lan keo da qua nguong
 	-- thi khong tinh la mot cu bam nua, neu khong thi nha vao nut ma keo se
 	-- vua cuon vua mo man. Pha Begin thi lop cuon KHONG nuot — nut van phai
 	-- nhan Begin thi moi biet duoc nguoi choi dang cham vao dau.
-	if M.cuon ~= nil and M.cuon.cham(pha, gd, a, b, c) then
-		return true
-	end
-	local obj = doi_tuong_cua(gd)
-	if type(obj) ~= 'table' then return false end
-	local k = 'onTouch' .. pha .. '_' .. ten
-	-- pcall: lop cua ban goc co the dat __index nem loi khi thieu khoa.
-	local co, f = pcall(function() return obj[k] end)
-	if co and type(f) == 'function' then
-		local sender = wrap(gd)
-		local ok, err
-		if pha == 'Begin' then
-			ok, err = pcall(f, obj, sender)
-		elseif pha == 'Move' then
-			ok, err = pcall(f, obj, sender, a, b, c)
-		elseif pha == 'End' then
-			ok, err = pcall(f, obj, sender, a)
-		else
-			ok, err = pcall(f, obj, sender, a, b)
-		end
-		if #M.nhat_ky_cham >= 64 then table.remove(M.nhat_ky_cham, 1) end
-		M.nhat_ky_cham[#M.nhat_ky_cham + 1] = k
-		if not ok then
-			M.loi_cham[#M.loi_cham + 1] = k .. ': ' .. tostring(err)
+	if M.cuon ~= nil then
+		local nuot, bi_cuop = M.cuon.cham(pha, gd, a, b, c)
+		if nuot then
+			-- Pha End bi nuot = cu cham bi CUOP. Ban goc co nhanh rieng cho dung
+			-- tinh huong nay: `onTouchEndEx_<ten>` (0x2c933e), va no goi tren node
+			-- da nhan BEGIN chu khong phai node dang tha tay — do la node ma lop
+			-- cuon giu lai. Khong co loi bao nay thi node do khong bao gio thay
+			-- pha End cua no (khung no mo ra luc Begin con nguyen tren man).
+			if pha == 'End' and bi_cuop ~= nil then
+				goi_pha(bi_cuop, 'EndEx', b, c, nil)
+			end
+			return true
 		end
 	end
+	goi_pha(gd, pha, a, b, c)
 	-- Node DA DANG KY thi nuot cham ke ca khi no khong co ham cho pha nay:
 	-- ccTouchBegan cua no tra true (doi tuong khong co onTouchBegin_ thi khong
 	-- co gi de goi, nhung cham VAN bi giu) — nen nut o DUOI khong nhan duoc

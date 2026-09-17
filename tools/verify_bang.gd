@@ -20,6 +20,9 @@
 #        cuon duoc, khong phai cua be cao noi dung (CUISign.lua:905).
 #      * Mot cu BAM vao o phai goi `tableCellTouched(tableView, cell)` dung o
 #        DUOI NGON TAY.
+#      * Mot lan KEO qua nguong thi cu cham bi CUOP: node nhan Begin phai duoc
+#        bao bang `onTouchEndEx_<ten>`, va KHONG duoc nhan `onTouchEnd_<ten>`
+#        (ban goc: libgame.so 0x2c933e — hai nhanh loai tru nhau).
 #      * `dequeueCell(tag)` tra o tu kho; kho rong thi tra nil (duong dung that
 #        cua CUITableViewZ_Helper.getOrCreateCell:89).
 #
@@ -124,11 +127,23 @@ const _UY_QUYEN := """
 		_g_tao_o = _g_tao_o + 1
 		return tao_o_goc(tag)
 	end
-	_g_bang_log = { size = {}, cell = {}, touched = {} }
+	_g_bang_log = { size = {}, cell = {}, touched = {}, ex = {}, end_tv = {} }
 	local D = {}
 	function D:tableCellSizeForIndex(tv, idx)
 		_g_bang_log.size[#_g_bang_log.size + 1] = idx
 		return 200, 40
+	end
+	-- Hai loi vao cua cung mot cu cham: tha tay binh thuong thi chay
+	-- `onTouchEnd_<ten>`, con khi cu cham bi CUOP (lop cuon keo qua nguong nuot
+	-- pha End) thi ban goc goi duong rieng `onTouchEndEx_<ten>` — libgame.so
+	-- 0x2c933e, hai nhanh loai tru nhau chu khong phai mot cap. Ghi lai ca hai
+	-- de phep kiem doi chieu.
+	function D:onTouchEnd_tableView(tv, trong)
+		_g_bang_log.end_tv[#_g_bang_log.end_tv + 1] = tostring(trong)
+	end
+	function D:onTouchEndEx_tableView(tv, x, y)
+		_g_bang_log.ex[#_g_bang_log.ex + 1] = string.format('%.1f, %.1f',
+			x or -1, y or -1)
 	end
 	function D:tableCellAtIndex(tv, idx)
 		_g_bang_log.cell[#_g_bang_log.cell + 1] = idx
@@ -366,6 +381,30 @@ func _bam_o() -> void:
 		return table.concat(s, ',')
 	""", "doc nhat ky cham"))
 	t("keo thi khong goi tableCellTouched", r == "", r)
+
+	# Mot lan KEO cung khong duoc de node nhan Begin "im lang": cu cham bi cuop
+	# thi phai bao cho no bang `onTouchEndEx_<ten>` (libgame.so 0x2c933e) — neu
+	# khong thi khung mo ra luc Begin con nguyen tren man.
+	lua.run("_g_bang_log.ex = {} _g_bang_log.end_tv = {} return true", "xoa nhat ky")
+	_cham("Begin", _p(cx, cy))
+	_cham("Move", _p(cx, cy + 40.0))
+	_cham("End", _p(cx, cy + 40.0))
+	_tick(20)
+	var ex := _ex()
+	t("keo qua nguong -> node nhan Begin duoc bao EndEx dung 1 lan",
+			ex != "" and not ex.contains(" | "),
+			"EndEx '%s' | End '%s' | ten ham da goi: %s"
+					% [ex, _end_tv(), _nhat_ky()])
+	t("keo qua nguong -> KHONG chay onTouchEnd cua node do", _end_tv() == "", _end_tv())
+
+	# Cu BAM (khong keo) thi nguoc lai: End chay, EndEx khong.
+	lua.run("_g_bang_log.ex = {} _g_bang_log.end_tv = {} return true", "xoa nhat ky")
+	_cham("Begin", _p(cx, cy))
+	_cham("End", _p(cx, cy))
+	t("bam (khong keo) -> chay onTouchEnd",
+			_end_tv() != "", "End '%s' | ten ham da goi: %s" % [_end_tv(), _nhat_ky()])
+	t("bam (khong keo) -> KHONG chay EndEx", _ex() == "", _ex())
+
 	lua.run("_g_bang:scrollTo(0) return true", "ve dau")
 	_tick(2)
 
@@ -486,6 +525,22 @@ func _keo(x0: float, y0: float, buoc: float, so_buoc: int = 4) -> void:
 	for i in range(1, so_buoc + 1):
 		_cham("Move", _p(x0, y0 + buoc * i / so_buoc))
 	_cham("End", _p(x0, y0 + buoc))
+
+
+## Cac lan `onTouchEndEx_tableView` da chay, va cac lan `onTouchEnd_tableView`.
+func _ex() -> String:
+	return str(lua.run("return table.concat(_g_bang_log.ex, ' | ')", "doc nhat ky EndEx"))
+
+
+func _end_tv() -> String:
+	return str(lua.run("return table.concat(_g_bang_log.end_tv, ' | ')", "doc nhat ky End"))
+
+
+## Ten cac ham cham da duoc goi trong ca phien (cocos.nhat_ky_cham) — de khi mot
+## phep kiem ve EndEx sai thi con doc duoc node nao da nhan Begin.
+func _nhat_ky() -> String:
+	return str(lua.run("return table.concat(require('cocos').nhat_ky_cham, ',')",
+			"doc nhat ky cham"))
 
 
 func _cham(pha: String, p: Vector2) -> void:

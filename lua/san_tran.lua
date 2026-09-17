@@ -192,6 +192,14 @@ return function(C)
 			return false
 		end
 		ghi('dua linh ' .. tostring(khoa) .. ' x' .. tostring(n))
+		if kb ~= nil and type(kb.bao_dua_linh) == 'function' then kb:bao_dua_linh(khoa) end
+		-- Ban goc: `g_DramaSystem:EnableGoNextWhenPutSoldiers(true)` (kich ban
+		-- `sc/plot/drama_L_N_01_01.lua:208`) KHONG phai cho theo dong ho — engine
+		-- cho kich ban chay tiep NGAY khi nguoi choi dat duoc quan (dong chi dan
+		-- "cham vao tuong linh", `SetHighlightBattle(btnDefender, ...)`), roi tat
+		-- co ay di o `:228`. Cho theo dong ho la cua ta va lam kich ban tre.
+		-- Bao o day; `kich_ban.lua` tu bo qua khi kich ban khong cho dung su kien.
+		if kb ~= nil and type(kb.dat_linh_xong) == 'function' then kb:dat_linh_xong() end
 		if not mien_phi then
 			T.ld = T.ld - gia
 			goi('updateLeaderShip', T.ld)

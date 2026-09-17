@@ -2334,6 +2334,21 @@ tướng không bị cướp, cấp 5 thay cấp 3, cấp 1 xoá sạch); D **ch
       thích 9/0 → 6/3; nguyên nhân vẫn là **đồng hồ kịch bản** ở trên. Phần còn
       lại của (b): cho bộ đo **tuân theo** cờ ấy — khi đó `bam_cam` khác 0 mới là
       lỗi của bộ đo, còn bây giờ nó là số đo.
+      **Cùng lượt, một lỗi im lặng nữa của bộ đo đã vá, và vá xong thì ĐO ĐƯỢC.**
+      `g_DramaSystem:EnableGoNextWhenPutSoldiers(true)` (`drama_L_N_01_01.lua:208`)
+      nghĩa là "đứng đây chờ **người chơi đặt quân**", không phải chờ đồng hồ:
+      bản gốc cho chờ vô hạn, và `g_CUIGame.tArmyIcons[1]` chính là nút binh chủng
+      trong trận (`:77`, `:206` — dòng chỉ dẫn "chạm vào tượng lính",
+      `SetHighlightBattle(btnDefender, …)`). Nay `san_tran.lua:dua_linh` báo
+      `dat_linh_xong` khi **thật sự đưa được quân**, và `kich_ban.lua` để lại vết
+      kèm **giờ trận** cho cả hai đường thoát (`dat linh xong @…` / `qua gio
+      dat_linh @…`). Số đo lượt này: cửa sổ mở rồi đóng ở **@13,5**, còn ba lần
+      đưa quân rơi vào **@22,2 / @23,2 / @40,2** — **không lần nào vào trong cửa
+      sổ**, nên `--kichban` vẫn đi bằng đường "quá giờ" và **chu kỳ không đổi**
+      (thử nới trần lên 30 giây: vẫn 10/0, nhưng kịch bản ùn 24 giây vô ích, nên
+      trả về 6 giây). Vì sao bộ đo không bấm kịp thì **chưa đo** — nghi là lúc ấy
+      trận chưa chạy nên `dua_linh` thoát ngay. Phép kiểm mới khoá điều đáng khoá:
+      **không còn đường thoát nào im lặng** (`kich ban tran (Lua)` 11/0).
       **Còn CHƯA rõ (ghi rõ, không bịa số):** (1) người **đầu tiên** của toán
       đứng **ngay** mốc hay lệch **nửa toán** — engine có `X -= fArmyLength ×
       0.5 × cỡ ô` = 200 px ở `0x41b538` (hàm mà địa chỉ ấy thuộc về được `bl`
@@ -2630,7 +2645,12 @@ tướng không bị cướp, cấp 5 thay cấp 3, cấp 1 xoá sạch); D **ch
    `0x462308`, trả 0 trừ khi `[drama+0x37c] == 1`). Nay `lua/kich_ban.lua` giữ cờ
    thật ấy và `lua/san_tran.lua` **đếm** số lần bấm trong lúc bị cấm — đo được
    **0 lần** (lệnh cấm nằm gần cuối kịch bản, sau khi quân đã ra hết), nên lời
-   giải thích cũ "bộ đo bấm nút kể cả trong cửa sổ bị cấm" **sai**. Còn chưa rõ
+   giải thích cũ "bộ đo bấm nút kể cả trong cửa sổ bị cấm" **sai**. Lượt này vá
+   thêm một lỗi im lặng của bộ đo: bước "chờ người chơi **đặt quân**"
+   (`EnableGoNextWhenPutSoldiers`) nay có tín hiệu thật (`san_tran.lua:dua_linh`
+   báo `dat_linh_xong`) và cả hai đường thoát đều để lại vết kèm giờ trận — đo
+   được cửa sổ đóng ở **@13,5** còn ba lần đưa quân ở **@22,2 / @23,2 / @40,2**,
+   nên chu kỳ không đổi (`kich ban tran (Lua)` 11/0). Còn chưa rõ
    (ghi rõ, không bịa): người đầu tiên có lệch nửa toán không (`0x41b538` có
    `vsub.f32` = `X ∓ fArmyLength × 0.5 × cỡ ô` = 200 px; dấu do `0x414912` quyết
    định), và nhịp cách giữa các **toán** đưa ra. Ba sự thật mới của `.so` cùng

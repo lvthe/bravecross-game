@@ -359,6 +359,8 @@ func _init() -> void:
 			print("  so thoai: %d" % so)
 			print("  chuoi thoai: %s" % (str(kb.get("thoai", "")) if kb != null else ""))
 			print("  nhat ky kich ban: %s" % (str(kb.get("nk", "")) if kb != null else ""))
+			print("  nhat ky san tran: %s" % str(lua.run(
+					"return table.concat(require('cocos').nhat_ky_tran or {}, ' > ')", "nkt")))
 			print("  loi kich ban: %s" % loikb)
 			# Nut binh chung bi kich ban cam: co that cua `SeDispatchButtonDisable`
 			# (dao khi ghi vao `drama+0x390`). `bam_cam` dem so lan may do VAN bam
@@ -411,6 +413,14 @@ func _init() -> void:
 						da.begins_with("true"), da],
 				["lop phu mau va rung man dang chay", da.contains("phu ") and
 						not da.ends_with("rung 0.00"), da],
+				# Buoc "cho nguoi choi dat quan" (`EnableGoNextWhenPutSoldiers`,
+				# `drama_L_N_01_01.lua:208`) thoat bang MOT TRONG HAI duong, va nay
+				# ca hai deu de lai VET co kem gio tran: `dat linh xong @` khi
+				# `san_tran.lua:dua_linh` bao su kien, `qua gio dat_linh @` khi het
+				# tran cho. Khong con duong thoat nao im lang.
+				["buoc 'cho dat quan' ghi ro duong thoat (su kien hoac qua gio)",
+						nk.contains("qua gio dat_linh @") or nk.contains("dat linh xong @"),
+						nk],
 			]
 			var dat := 0
 			for e in dskb:

@@ -166,6 +166,14 @@ gốc (không chỉnh số). Tuyệt chiêu kịch bản (`SetRoleChangeFight` "
 `tuyet_chieu` AoE, sát thương THẬT, số đòn ĐẶT), quân vào trận từ mép, camera
 lia (`CameraMoveBy` -> `lia_camera`), khớp boss chính-xác-trước cũng đã làm.
 Toàn bộ 60/60 lệnh `g_DramaSystem` đã có (xem mục "Canh điện ảnh").
+Bước "chờ người chơi **đặt quân**" (`EnableGoNextWhenPutSoldiers`,
+`drama_L_N_01_01.lua:208`) **không phải chờ đồng hồ**: bản gốc cho chờ vô hạn cho
+tới khi người chơi bấm nút binh chủng (`tArmyIcons[1]`). Nay `san_tran.lua:dua_linh`
+báo `dat_linh_xong` khi **thật sự đưa được quân**, và `kich_ban.lua` ghi vết kèm
+**giờ trận** cho cả hai đường thoát (`dat linh xong @…` / `qua gio dat_linh @…`) —
+đo được trong `--kichban`: cửa sổ đóng ở **@13,5** còn ba lần đưa quân ở
+**@22,2 / @23,2 / @40,2**, nên chu kỳ KHÔNG đổi; phép kiểm `kich ban tran (Lua)`
+khoá điều đáng khoá là **không còn đường thoát nào im lặng** (11/0).
 Còn ghi-lại: lớp phủ `g_CGuideLogical`.
 (`--kiem`; chụp giữa trận: `--chup=tran.png`, thêm `--cam=2500` để thấy nền
 trôi; chơi thử một trận: `--xem`; hai chế độ sau chạy KHÔNG `--headless`).

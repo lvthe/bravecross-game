@@ -1424,7 +1424,13 @@ hồ trận — xem `san_tran_ve.dua_linh`). Còn mốc của toán thì là **s
 `RepaleceScene`, xem `work/emu_tran.py`). "Binh lực 20/20" chưa làm — không có số trong dữ
 liệu. Kiểm (`--kiem`): hai lần `TouchArrmy(1)` thả 2 × 4 người (quân 11 → 19),
 thống soái 6 → 0, lần ba bị từ chối; bấm THẬT vào tâm nút (qua `touch_at`) sau
-khi hồi đủ 3 thì thêm 4 người, trừ 3.
+khi hồi đủ 3 thì thêm 4 người, trừ 3. Bước kịch bản "chờ người chơi đặt quân"
+(`EnableGoNextWhenPutSoldiers`) cũng nói về nút này — bản gốc cho chờ **vô hạn**
+cho tới khi người chơi bấm, không phải chờ đồng hồ; nay `dua_linh` báo
+`dat_linh_xong` khi thật sự đưa được quân, và cả hai đường thoát đều để lại vết
+kèm **giờ trận** (`dat linh xong @…` / `qua gio dat_linh @…`) — nhờ vậy đo được
+trong `--kichban` là không lần đưa quân nào rơi vào cửa sổ (đóng ở @13,5; ba lần
+đưa ở @22,2 / @23,2 / @40,2), nên chu kỳ không đổi.
 
 **Kỹ năng thức tỉnh.** Luật của từng kỹ năng nằm trong C++ (`libgame.so` có
 hàng loạt lớp hành vi `CDFSpriteFight*Wake`, nút là `CDFWakeButton`); dữ liệu

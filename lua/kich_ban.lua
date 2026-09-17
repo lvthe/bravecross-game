@@ -39,6 +39,15 @@ return function(c)
 
 	local CHO_THOAI = 0.4      -- giay tu di tiep sau mot cau thoai (probe)
 	local CHO_TOI_DA = 6.0     -- giay cho toi da mot thong bao truoc khi bo qua
+	-- `dat_linh` (kich ban cho nguoi choi DAT quan, `EnableGoNextWhenPutSoldiers`)
+	-- cung dung tran nay. Ban goc cho VO HAN (khong ai bam thi dung mai), ta phai
+	-- co tran. Do duoc trong luot `--kichban` (moi muc nhat ky co kem gio tran):
+	-- cua so mo roi dong o @13,5, con ba lan dua quan roi vao @22,2 / @23,2 /
+	-- @40,2 — tuc KHONG lan nao roi vao cua so, nen buoc nay luon di bang duong
+	-- "qua gio". Duong SU KIEN (`san_tran.lua:dua_linh` bao `dat_linh_xong`) chi
+	-- xay ra voi nguoi choi that bam duoc trong cua so. Nen chu ky KHONG doi so
+	-- voi truoc; con vi sao bo do khong bam kip thi CHUA do (do dang nghi: luc
+	-- ay tran chua chay nen `dua_linh` thoat ngay — xem `nhat ky san tran`).
 
 	local KB = {}
 	KB.__index = function(t, k)
@@ -523,7 +532,21 @@ return function(c)
 		if self._cho and self._cho.kieu == 'thuc_tinh' then self:_tiep() end
 	end
 	function KB:dat_linh_xong()
-		if self._cho and self._cho.kieu == 'dat_linh' then self:_tiep() end
+		if self._cho and self._cho.kieu == 'dat_linh' then
+			-- Ghi lai de phan biet duoc "kich ban cho theo SU KIEN" voi "cho het
+			-- gio" (`qua gio dat_linh`) — hai duong rat khac nhau ve nhip.
+			self._nhat_ky[#self._nhat_ky + 1] = 'dat linh xong @'
+				.. string.format('%.1f', self._gio or 0.0)
+			self:_tiep()
+		end
+	end
+	-- Moi lan bo do THUC SU dua duoc quan (tu `san_tran.lua:dua_linh`). Ghi lai
+	-- gio tran: de doi chieu duoc voi cua so `dat_linh` — neu co lan dua nao roi
+	-- VAO cua so ma kich ban van di bang duong "qua gio" thi day la loi that.
+	function KB:bao_dua_linh(khoa)
+		self._nhat_ky[#self._nhat_ky + 1] = 'dua ' .. tostring(khoa) .. ' @'
+			.. string.format('%.1f', self._gio or 0.0)
+		return true
 	end
 	-- Ep qua cau thoai hien tai (probe / nguoi choi cham).
 	function KB:di_tiep()
@@ -532,6 +555,7 @@ return function(c)
 
 	-- --- buoc theo thoi gian tran --------------------------------------------
 	function KB:buoc(dt)
+		self._gio = (self._gio or 0.0) + dt
 		if self._co == nil then return end
 		local ch = self._cho
 		if ch == nil then return end
@@ -545,7 +569,10 @@ return function(c)
 			-- khong bao trong CHO_TOI_DA giay thi tu qua, danh dau qua gio.
 			self._doi = self._doi + dt
 			if self._doi >= CHO_TOI_DA then
+				-- Kem gio tran: de biet duoc buoc nay cho BAO LAU va no roi vao
+				-- luc nao (bo do chi dua duoc quan khi thong soai hoi du).
 				self._nhat_ky[#self._nhat_ky + 1] = 'qua gio ' .. tostring(ch.kieu)
+					.. ' @' .. string.format('%.1f', self._gio)
 				self:_tiep()
 			end
 		end

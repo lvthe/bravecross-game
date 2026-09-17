@@ -171,9 +171,32 @@ Bước "chờ người chơi **đặt quân**" (`EnableGoNextWhenPutSoldiers`,
 tới khi người chơi bấm nút binh chủng (`tArmyIcons[1]`). Nay `san_tran.lua:dua_linh`
 báo `dat_linh_xong` khi **thật sự đưa được quân**, và `kich_ban.lua` ghi vết kèm
 **giờ trận** cho cả hai đường thoát (`dat linh xong @…` / `qua gio dat_linh @…`) —
-đo được trong `--kichban`: cửa sổ đóng ở **@13,5** còn ba lần đưa quân ở
-**@22,2 / @23,2 / @40,2**, nên chu kỳ KHÔNG đổi; phép kiểm `kich ban tran (Lua)`
-khoá điều đáng khoá là **không còn đường thoát nào im lặng** (11/0).
+đo được trong `--kichban`: **`dua Troop_1 @8,2 > dat linh xong @8,2`**, tức đường
+SỰ KIỆN nay được dùng thật; phép kiểm `kich ban tran (Lua)` khoá điều đáng khoá là
+**không còn đường thoát nào im lặng** (11/0).
+Hai lỗi thật đã lộ ra khi truy cho tới cùng (2026-09-18), cả hai đã vá:
+1. **`dua_linh` gác oan theo cờ TẠM DỨNG.** `T.dung` là cờ `_Lua_PauseGame` của
+   bản gốc (xem `nhan('dung')` trong `san_tran.lua`), mà đoạn phim mở đầu ải
+   hướng dẫn **tạm dừng trận rồi mới đòi người chơi đặt quân**
+   (`drama_L_N_01_01.lua:96` dừng, `:208` đòi, `:257` chạy lại). Gác theo cờ ấy
+   làm **chạm vào tượng linh trong cửa sổ chỉ dẫn không ra quân** — đúng cái mà
+   kịch bản đang chờ. Đo: trong cửa sổ, gọi thẳng `dispatch` trả `false` suốt
+   (`ld = 6`, `T.dang = true`, `T.tran ~= nil`, `T.dung = true`) trong khi
+   `tran_nut:dua_linh('Troop_1')` trả **4 ngay từ khung 0**. Đó là lời giải cho
+   câu "vì sao bộ đo không bấm kịp" mà bản ghi trước để là *chưa đo*.
+2. **Đồng hồ trận tắt thì kịch bản chết theo.** `dung_tran` gọi `T.hen:stop()`,
+   mà chính `hen:buoc` là chỗ **bước kịch bản** (`kb:buoc`) — nên thắng sớm là
+   kịch bản đứng giữa đường (đo: nhật ký kết ở `ChangeFight LvBuEvil Fight`,
+   thiếu hẳn `MoveThenDo`/`SetArmyWaiting`, 4 phép kiểm đỏ). Nay `dung_tran` chỉ
+   đặt `T.ket`; `hen:buoc` thôi bước trận nhưng vẫn bước kịch bản cho tới khi
+   kịch bản diễn xong rồi mới tắt đồng hồ.
+Bộ đo cũng đã đổi cho giống người thật (`do_chien_dich.gd`): **lần chạm đầu chờ
+đúng lúc kịch bản chỉ** (`UnlockArmyByPlugin XSJieSuoBingZhong` cho nút hiện,
+`:193`, rồi `EnableGoNextWhenPutSoldiers(true)`), và **không chạm khi kịch bản
+đang cấm nút** (`SeDispatchButtonDisable` — bản thân cổng game chưa gác cờ này,
+xem `ROADMAP.md` mục 8b). Trước đó bộ đo bấm từ khung 15 (0,5 giây, lúc nút còn
+ẩn): không ai chơi vậy, và chính cái bấm sớm ấy làm ta thắng trước khi kịch bản
+diễn hết.
 Còn ghi-lại: lớp phủ `g_CGuideLogical`.
 (`--kiem`; chụp giữa trận: `--chup=tran.png`, thêm `--cam=2500` để thấy nền
 trôi; chơi thử một trận: `--xem`; hai chế độ sau chạy KHÔNG `--headless`).

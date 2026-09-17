@@ -2342,13 +2342,46 @@ tướng không bị cướp, cấp 5 thay cấp 3, cấp 1 xoá sạch); D **ch
       `SetHighlightBattle(btnDefender, …)`). Nay `san_tran.lua:dua_linh` báo
       `dat_linh_xong` khi **thật sự đưa được quân**, và `kich_ban.lua` để lại vết
       kèm **giờ trận** cho cả hai đường thoát (`dat linh xong @…` / `qua gio
-      dat_linh @…`). Số đo lượt này: cửa sổ mở rồi đóng ở **@13,5**, còn ba lần
-      đưa quân rơi vào **@22,2 / @23,2 / @40,2** — **không lần nào vào trong cửa
-      sổ**, nên `--kichban` vẫn đi bằng đường "quá giờ" và **chu kỳ không đổi**
-      (thử nới trần lên 30 giây: vẫn 10/0, nhưng kịch bản ùn 24 giây vô ích, nên
-      trả về 6 giây). Vì sao bộ đo không bấm kịp thì **chưa đo** — nghi là lúc ấy
-      trận chưa chạy nên `dua_linh` thoát ngay. Phép kiểm mới khoá điều đáng khoá:
-      **không còn đường thoát nào im lặng** (`kich ban tran (Lua)` 11/0).
+      dat_linh @…`). Phép kiểm mới khoá điều đáng khoá: **không còn đường thoát
+      nào im lặng** (`kich ban tran (Lua)` 11/0).
+      **Lượt sau truy cho tới cùng thì ra HAI LỖI THẬT, cả hai đã vá
+      (2026-09-18).** Lúc ấy câu "vì sao bộ đo không bấm kịp" còn để là *chưa
+      đo*, kèm phỏng đoán "chắc lúc ấy trận chưa chạy" — **phỏng đoán ấy SAI**:
+      đo ra `T.dang = true`, `T.tran ~= nil`, `ld = 6` suốt cửa sổ.
+      1. **`dua_linh` gác oan theo cờ TẠM DỨNG.** `T.dung` chính là cờ
+         `_Lua_PauseGame` của bản gốc (`san_tran.lua`, `nhan('dung')`), mà đoạn
+         phim mở đầu ải hướng dẫn **tạm dừng trận rồi mới đòi người chơi đặt
+         quân**: `drama_L_N_01_01.lua:96` gọi `_Lua_PauseGame(true, false)`, bước
+         `EnableGoNextWhenPutSoldiers(true)` ở `:208` nằm **giữa** `:96` và `:257`
+         (`_Lua_PauseGame(false, false)`). Bản gốc tạm dừng chỉ để dừng **mô
+         phỏng**; nó không chặn việc ghi danh quân — engine chỉ gác nút bằng cờ
+         riêng `SeDispatchButtonDisable`. Gác theo `T.dung` nên **chạm vào tượng
+         linh trong cửa sổ chỉ dẫn không ra quân**, đúng cái mà kịch bản đang
+         chờ. **Đo:** trong cửa sổ, gọi thẳng `tArmyIcons[1].dispatch()` trả
+         `false` suốt (không có `ghi_loi`, tức thoát ở cổng đầu), trong khi gọi
+         thẳng `tran_nut:dua_linh('Troop_1')` trả **4 ngay từ khung 0**; `loi_hen`
+         vẫn rỗng. Số cũ "ba lần đưa quân ở @22,2 / @23,2 / @40,2, không lần nào
+         vào cửa sổ" là **hệ quả của cổng oan này**, không phải chuyện nhịp.
+      2. **Đồng hồ trận tắt thì kịch bản chết theo.** `dung_tran` gọi
+         `T.hen:stop()`, mà chính `hen:buoc` là chỗ **bước kịch bản**
+         (`kb:buoc`) — nên thắng sớm là kịch bản đứng giữa đường. **Đo:** bỏ
+         cổng trên mà chưa vá chỗ này thì thắng (11 phép kiểm còn 10/1 và
+         7/4 ở lượt khác) nhưng nhật ký kịch bản **kết ở `ChangeFight LvBuEvil
+         Fight`**, thiếu hẳn `MoveThenDo` / `SetArmyWaiting`. Nay `dung_tran` chỉ
+         đặt `T.ket`; `hen:buoc` thôi bước trận, vẫn bước kịch bản tới khi kịch
+         bản diễn xong rồi mới tắt đồng hồ.
+      Bộ đo cũng đã đổi cho giống người thật (`do_chien_dich.gd`): **lần chạm đầu
+      chờ đúng lúc kịch bản chỉ** (`UnlockArmyByPlugin XSJieSuoBingZhong` cho nút
+      hiện — `:161` rồi `:193` — và `EnableGoNextWhenPutSoldiers(true)`), và
+      **không chạm khi kịch bản đang cấm nút** (`SeDispatchButtonDisable`; bản
+      thân cổng game chưa gác cờ này — xem mục 8b). Trước đó bộ đo bấm từ khung 15
+      (0,5 giây, lúc nút còn ẩn): không ai chơi vậy, và chính cái bấm sớm ấy làm ta
+      thắng trước khi kịch bản diễn hết (đo được: 4 phép kiểm đỏ).
+      **Số đo lượt cuối:** `--kichban` **11/0**, nhật ký kịch bản
+      **`dua Troop_1 @8,2 > dat linh xong @8,2`** — đường **SỰ KIỆN** nay được
+      dùng thật (trước đây chỉ có đường "quá giờ"), kịch bản đi hết tới
+      `FinishGame`, và cả lượt chỉ tốn **1379 khung** (trước: 1536, vì phải chờ
+      hết 6 giây vô ích).
       **Còn CHƯA rõ (ghi rõ, không bịa số):** (1) người **đầu tiên** của toán
       đứng **ngay** mốc hay lệch **nửa toán** — engine có `X -= fArmyLength ×
       0.5 × cỡ ô` = 200 px ở `0x41b538` (hàm mà địa chỉ ấy thuộc về được `bl`
@@ -2648,9 +2681,18 @@ tướng không bị cướp, cấp 5 thay cấp 3, cấp 1 xoá sạch); D **ch
    giải thích cũ "bộ đo bấm nút kể cả trong cửa sổ bị cấm" **sai**. Lượt này vá
    thêm một lỗi im lặng của bộ đo: bước "chờ người chơi **đặt quân**"
    (`EnableGoNextWhenPutSoldiers`) nay có tín hiệu thật (`san_tran.lua:dua_linh`
-   báo `dat_linh_xong`) và cả hai đường thoát đều để lại vết kèm giờ trận — đo
-   được cửa sổ đóng ở **@13,5** còn ba lần đưa quân ở **@22,2 / @23,2 / @40,2**,
-   nên chu kỳ không đổi (`kich ban tran (Lua)` 11/0). Còn chưa rõ
+   báo `dat_linh_xong`) và cả hai đường thoát đều để lại vết kèm giờ trận.
+   **Lượt sau truy cho tới cùng ra hai lỗi thật nữa, đã vá:** `dua_linh` gác oan
+   theo cờ TẠM DỨNG (`T.dung` = `_Lua_PauseGame`, mà đoạn phim mở đầu ải hướng
+   dẫn dừng trận **rồi mới** đòi người chơi đặt quân — `drama_L_N_01_01.lua:96`
+   dừng, `:208` đòi, `:257` chạy lại), nên chạm vào tượng linh trong cửa sổ chỉ
+   dẫn **không ra quân** (đo: `dispatch()` trả `false` suốt, `ld = 6`,
+   `T.dang = true`, trong khi `tran_nut:dua_linh('Troop_1')` trả **4 từ khung 0**);
+   và `dung_tran` gọi `T.hen:stop()` — mà `hen:buoc` chính là chỗ **bước kịch
+   bản** — nên thắng sớm là kịch bản đứng giữa đường (đo: nhật ký kết ở
+   `ChangeFight LvBuEvil Fight`, thiếu `MoveThenDo` / `SetArmyWaiting`). Nay nhật
+   ký `--kichban` ghi `dua Troop_1 @8,2 > dat linh xong @8,2` — đường SỰ KIỆN
+   được dùng thật — và `kich ban tran (Lua)` **11/0**. Còn chưa rõ
    (ghi rõ, không bịa): người đầu tiên có lệch nửa toán không (`0x41b538` có
    `vsub.f32` = `X ∓ fArmyLength × 0.5 × cỡ ô` = 200 px; dấu do `0x414912` quyết
    định), và nhịp cách giữa các **toán** đưa ra. Ba sự thật mới của `.so` cùng

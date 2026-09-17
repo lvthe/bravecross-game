@@ -336,10 +336,22 @@ func _init() -> void:
 		if kichban and b[0] == "bam tan cong":
 			for i in 3000:
 				lua.tick(KHUNG)
-				# Nguoi choi cung dua linh nhu binh thuong: du 3 thong soai thi bam.
-				# Cong dong minh kich ban + boss bi rut -> ben ta don sach.
+				# Nguoi choi cham tuong linh DUNG NHU MOT NGUOI CHOI THAT:
+				#   * nut da HIEN (`UnlockArmyByPlugin XSJieSuoBingZhong`,
+				#     `drama_L_N_01_01.lua:161` -> `:193`),
+				#   * kich ban da CHI lan nao (`EnableGoNextWhenPutSoldiers(true)`,
+				#     `:208` — lan dau cham cua nguoi that di theo chi dan),
+				#   * kich ban chua CAM nut (`SeDispatchButtonDisable`),
+				#   * va du 3 thong soai.
+				# Truoc day bo do bam ngay tu khung 15 (0,5 giay, luc nut con an va
+				# chua ai chi): khong ai choi vay, va cai bam som do lam ben ta
+				# thang truoc khi kich ban dien het (do duoc: 4 phep kiem do).
 				if i % 30 == 15 and int(lua.run("return (g_BattleField:_thong_soai())", "ts")) >= 3:
-					lua.run("g_CUIGame:TouchArrmy(1)", "dua linh")
+					var mo := str(lua.run("return tostring(g_DramaSystem:nut_linh_mo())", "mo"))
+					var cam := str(lua.run("return tostring(g_DramaSystem:nut_linh_cam())", "cam"))
+					var hoi := str(lua.run("return tostring(g_DramaSystem:da_chi_dat_linh())", "hoi"))
+					if mo == "true" and cam != "true" and hoi == "true":
+						lua.run("g_CUIGame:TouchArrmy(1)", "dua linh")
 				# Nguoi choi that con BAM THUC TINH khi no day — day la mot phan cua cach
 				# thang ai 1 chu khong phai meo cua bo do. Bam bang DUONG THAT: cham
 				# vao nut tren thanh ky nang cua CUIGame.

@@ -41,13 +41,24 @@ return function(c)
 	local CHO_TOI_DA = 6.0     -- giay cho toi da mot thong bao truoc khi bo qua
 	-- `dat_linh` (kich ban cho nguoi choi DAT quan, `EnableGoNextWhenPutSoldiers`)
 	-- cung dung tran nay. Ban goc cho VO HAN (khong ai bam thi dung mai), ta phai
-	-- co tran. Do duoc trong luot `--kichban` (moi muc nhat ky co kem gio tran):
-	-- cua so mo roi dong o @13,5, con ba lan dua quan roi vao @22,2 / @23,2 /
-	-- @40,2 — tuc KHONG lan nao roi vao cua so, nen buoc nay luon di bang duong
-	-- "qua gio". Duong SU KIEN (`san_tran.lua:dua_linh` bao `dat_linh_xong`) chi
-	-- xay ra voi nguoi choi that bam duoc trong cua so. Nen chu ky KHONG doi so
-	-- voi truoc; con vi sao bo do khong bam kip thi CHUA do (do dang nghi: luc
-	-- ay tran chua chay nen `dua_linh` thoat ngay — xem `nhat ky san tran`).
+	-- co tran. Do duoc trong luot `--kichban`:
+	--   * cua so `dat_linh` @7,5–13,5 (truoc 2026-09-18: ba lan dua quan roi vao
+	--     @22,2 / @23,2 / @40,2 — khong lan nao vao cua so, buoc nay luon di bang
+	--     duong "qua gio");
+	--   * VI SAO khong lan nao vao cua so: `san_tran.lua:dua_linh` gac theo
+	--     `T.dung`, ma `T.dung` = co TAM DUNG cua ban goc (`_Lua_PauseGame`) —
+	--     xem `nhan('dung')` trong `san_tran.lua` va `drama_L_N_01_01.lua:96/257`.
+	--     Trong cua so do cu cham vao tuong linh tra ve `false` (do bang bo do:
+	--     goi thang `dispatch` trong cua so, `ld` = 6, `T.dang` = true,
+	--     `T.tran ~= nil`, `T.dung` = true), trong khi
+	--     `tran_nut:dua_linh('Troop_1')` tra 4 ngay tu khung 0. Nay da bo gac do.
+	-- Nay bo do cham theo dung nguoi that (xem `do_chien_dich.gd`), nen duong
+	-- SU KIEN (`san_tran.lua:dua_linh` bao `dat_linh_xong`) duoc dung that:
+	-- `dua Troop_1 @8,2 > dat linh xong @8,2`.
+	-- Con 6,0 giay la so DO chu khong phai so chon: noi tran len 30 giay thi
+	-- `--kichban` van 10/0 nhu cu, chi khac la kich ban ngoi khong 24 giay vo
+	-- ich — nen tra ve 6,0. Nay duong SU KIEN da chay that (@8,2 < 6,0 giay ke
+	-- tu luc mo cua so @7,5) nen tran nay chi con la luoi an toan.
 
 	local KB = {}
 	KB.__index = function(t, k)
@@ -83,6 +94,8 @@ return function(c)
 			_loi = nil,         -- loi coroutine (neu co)
 			_cam_dat = false,   -- kich ban dang CAM nut binh chung (xem SeDispatchButtonDisable)
 			_cam_bam = 0,       -- so lan nguoi choi BAM trong luc bi cam (do, khong chan)
+			_nut_mo = false,    -- kich ban da MO nut binh chung (xem UnlockArmyByPlugin)
+			_da_hoi = false,    -- kich ban da CHI nguoi choi dat quan (xem EnableGoNextWhenPutSoldiers)
 		}, KB)
 	end
 
@@ -406,7 +419,7 @@ return function(c)
 	end
 	for _, ten in ipairs({
 		'SetArmyWaiting', 'SetStateImmunity', 'SetRoleIgnoreOrder', 'AddPlugin',
-		'RemovePlugin', 'UnlockArmyByPlugin', 'SetPlugsOnBattleMapVisible',
+		'RemovePlugin', 'SetPlugsOnBattleMapVisible',
 		'ChangeWakeFuryFlag',
 		'RelateWakeButton', 'EnableRemoveInstructWhenTouchWakeButton',
 		'SetBloodAndShadowVisible', 'SetSpriteZorder', 'SetEnemyAllUnitRebel',
@@ -414,6 +427,25 @@ return function(c)
 	}) do
 		KB[ten] = ghi(ten)
 	end
+
+	-- `UnlockArmyByPlugin(XSJieSuoBingZhong, ...)` (`drama_L_N_01_01.lua:161`) la
+	-- lenh MO nut binh chung; ngay sau do kich ban cho tuong linh HIEN ra
+	-- (`:193`) va to sang (`:214`). Nguoi choi that khong the cham vao mot nut
+	-- chua hien — nen bo do phai biet moc nay, va moc nay la CO THAT cua lop
+	-- drama chu khong phai lenh ghi nhat ky. Truoc day bo do bam ngay tu khung
+	-- 15 (0,5 giay): khong ai choi vay, va chinh cai bam som do lam ben ta thang
+	-- truoc khi kich ban dien het (do duoc: 4 phep kiem do).
+	local ghi_unlock = ghi('UnlockArmyByPlugin')
+	function KB:UnlockArmyByPlugin(ten, ...)
+		if ten == 'XSJieSuoBingZhong' then self._nut_mo = true end
+		return ghi_unlock(self, ten, ...)
+	end
+	-- Nut binh chung da hien (kich ban da mo) / dang bi kich ban cam.
+	function KB:nut_linh_mo() return self._nut_mo == true end
+	function KB:nut_linh_cam() return self._cam_dat == true end
+	-- Kich ban da CHI nguoi choi cham tuong linh lan nao chua (lan dau cham cua
+	-- nguoi that di theo dung chi dan).
+	function KB:da_chi_dat_linh() return self._da_hoi == true end
 
 	-- HAI lenh nay KHONG phai lenh trang thai vo nghia — chung ghi CO "nut bam
 	-- duoc" cua lop drama, nen ghi nhat ky khong la du. Doc `.so` (ban vn:
@@ -517,6 +549,10 @@ return function(c)
 		end
 	end
 	function KB:EnableGoNextWhenPutSoldiers(bat)
+		-- Kich ban VUA CHI nguoi choi cham tuong linh (`drama_L_N_01_01.lua:214`
+		-- to sang nut). Truoc moc nay khong ai bao nguoi choi ve cai nut ay —
+		-- bo do dung moc nay lam "lan dau cham" cho giong nguoi that.
+		if bat then self._da_hoi = true end
 		if bat then self._cho = { kieu = 'dat_linh' }
 		elseif self._cho and self._cho.kieu == 'dat_linh' then self._cho = nil end
 	end
@@ -545,6 +581,14 @@ return function(c)
 	-- VAO cua so ma kich ban van di bang duong "qua gio" thi day la loi that.
 	function KB:bao_dua_linh(khoa)
 		self._nhat_ky[#self._nhat_ky + 1] = 'dua ' .. tostring(khoa) .. ' @'
+			.. string.format('%.1f', self._gio or 0.0)
+		return true
+	end
+	-- Moc cua san tran (vd `_Lua_StartGame`) theo gio kich ban — de biet duoc
+	-- kich ban dang cho o mot buoc ma TRAN CHUA CHAY hay khong. Khong co moc nay
+	-- thi "vi sao bo do khong bam kip" chi la phong doan.
+	function KB:bao_moc(ten)
+		self._nhat_ky[#self._nhat_ky + 1] = tostring(ten) .. ' @'
 			.. string.format('%.1f', self._gio or 0.0)
 		return true
 	end

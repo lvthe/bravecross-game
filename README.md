@@ -1428,9 +1428,19 @@ khi hồi đủ 3 thì thêm 4 người, trừ 3. Bước kịch bản "chờ ng
 (`EnableGoNextWhenPutSoldiers`) cũng nói về nút này — bản gốc cho chờ **vô hạn**
 cho tới khi người chơi bấm, không phải chờ đồng hồ; nay `dua_linh` báo
 `dat_linh_xong` khi thật sự đưa được quân, và cả hai đường thoát đều để lại vết
-kèm **giờ trận** (`dat linh xong @…` / `qua gio dat_linh @…`) — nhờ vậy đo được
-trong `--kichban` là không lần đưa quân nào rơi vào cửa sổ (đóng ở @13,5; ba lần
-đưa ở @22,2 / @23,2 / @40,2), nên chu kỳ không đổi.
+kèm **giờ trận** (`dat linh xong @…` / `qua gio dat_linh @…`). Truy cho tới cùng
+thì ra **hai lỗi thật** (đã vá 2026-09-18): `dua_linh` gác oan theo cờ TẠM DỨNG
+(`T.dung` = `_Lua_PauseGame`) — mà đoạn phim mở đầu ải hướng dẫn **dừng trận rồi
+mới** đòi người chơi đặt quân (`drama_L_N_01_01.lua:96` dừng, `:208` đòi, `:257`
+chạy lại) — nên chạm vào tượng linh trong cửa sổ chỉ dẫn **không ra quân** (đo:
+`dispatch()` trả `false` suốt cửa sổ với `ld = 6` và `T.dang = true`, trong khi
+gọi thẳng `tran_nut:dua_linh('Troop_1')` trả **4 ngay từ khung 0**); và
+`dung_tran` gọi `T.hen:stop()` — mà `hen:buoc` chính là chỗ **bước kịch bản** —
+nên thắng sớm là kịch bản **đứng giữa đường** (đo: nhật ký kết ở `ChangeFight
+LvBuEvil Fight`, thiếu `MoveThenDo` / `SetArmyWaiting`). Nay `--kichban` ghi
+`dua Troop_1 @8,2 > dat linh xong @8,2` — đường **sự kiện** được dùng thật — và
+bộ đo chạm nút như người thật (chờ nút hiện + kịch bản chỉ, không chạm khi kịch
+bản cấm nút).
 
 **Kỹ năng thức tỉnh.** Luật của từng kỹ năng nằm trong C++ (`libgame.so` có
 hàng loạt lớp hành vi `CDFSpriteFight*Wake`, nút là `CDFWakeButton`); dữ liệu

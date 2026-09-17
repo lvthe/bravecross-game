@@ -28,7 +28,7 @@ return function(C)
 	local T
 	local function dat_lai()
 		T = { cb = {}, ta = '', dich = '', roi = '', hat = 0, dang = false,
-		      dung = false, song = 0, kq = nil, tran = nil, hen = nil,
+		      dung = false, ket = false, song = 0, kq = nil, tran = nil, hen = nil,
 		      ld = 0, ld_max = 0, ld_hoi = 0, ld_dem = 0, ld_chay = false,
 		      tt_ds = {}, nut_tt = {}, cho_tt = {} }
 	end
@@ -74,8 +74,17 @@ return function(C)
 
 	-- Dung buoc tran co hinh; tran chua co ket qua (het gio, showGameEnd) thi
 	-- chot ngay tai cho.
+	--
+	-- KHONG tat dong ho o day nua. `hen` khong chi buoc TRAN — no con buoc KICH
+	-- BAN (`kb:buoc`, xem `hen:buoc`), va ban goc coi hai viec do DOC LAP: he
+	-- thong kich ban nam trong engine C++, khong chet theo dong ho tran. Tat
+	-- dong ho o day lam kich ban dung giua duong khi ben ta thang TRUOC khi
+	-- kich ban dien het — do duoc: thang som thi nhat ky kich ban ket o
+	-- `ChangeFight LvBuEvil Fight`, thieu han `MoveThenDo`/`SetArmyWaiting`
+	-- (4 phep kiem do). Nay chi danh dau `T.ket`; `hen:buoc` thoi buoc tran va
+	-- tu tat dong ho khi kich ban da dien xong.
 	local function dung_tran(thang)
-		if T.hen ~= nil then T.hen:stop(); T.hen = nil end
+		T.ket = true
 		if T.tran ~= nil and T.kq == nil then
 			local ok, s = pcall(function() return T.tran:chot(thang) end)
 			if ok and type(s) == 'string' then nhan_ket_qua(s) end
@@ -174,7 +183,19 @@ return function(C)
 	-- Dua mot toan linh <khoa> (vd 'Troop_1'). mien_phi: linh tang kem
 	-- (CUIGame:AttachArmy -> attachedDispatch), khong ton thong soai.
 	local function dua_linh(khoa, gia, id, mien_phi)
-		if not T.dang or T.tran == nil or T.dung == true then return false end
+		-- KHONG gac theo `T.dung`: do la co TAM DUNG cua ban goc
+		-- (`_Lua_PauseGame`, xem `nhan('dung')` o duoi). Doan phim mo dau man
+		-- huong dan TAM DUNG tran roi moi yeu cau nguoi choi dat quan:
+		-- `drama_L_N_01_01.lua:96` goi `_Lua_PauseGame(true, false)`, ma buoc
+		-- `EnableGoNextWhenPutSoldiers(true)` (`:208`) nam GIUA `:96` va `:257`
+		-- (`_Lua_PauseGame(false, false)`). Ban goc tam dung chi de dung MO
+		-- PHONG; no khong chan viec ghi danh quan — engine chi gac nut bang co
+		-- rieng `SeDispatchButtonDisable`. Gac o day thi cu cham vao tuong
+		-- linh lai khong ra quan, dung cai ma kich ban dang cho (DO DUOC: cham
+		-- trong cua so @7,5–13,5 tra ve false suot, trong khi
+		-- `tran_nut:dua_linh('Troop_1')` tra 4 tu khung 0). Het tran thi
+		-- `T.dang` da false, va chinh `T.tran` tu choi (`_xong`).
+		if not T.dang or T.tran == nil then return false end
 		-- Kich ban co the dang CAM nut binh chung (`SeDispatchButtonDisable`,
 		-- xem `kich_ban.lua`): ban goc gac o C++ nen cu bam la khong ra quan.
 		-- Ta KHONG chan (chan la doi hanh vi cua ban dung) — chi DEM, de bo do
@@ -385,6 +406,14 @@ return function(C)
 			-- EncounterArmyBegin vi the di tiep o khung ke.
 			pcall(function() kb:gap_quan(); kb:buoc(tonumber(dt) or 0) end)
 		end
+		if T.ket then
+			-- Tran da xong. Kich ban van duoc buoc cho het duong cua no (xem
+			-- `dung_tran`), roi tat dong ho: khong con ai buoc nua.
+			if kb == nil or type(kb.dang_chay) ~= 'function' or not kb:dang_chay() then
+				if T.hen ~= nil then T.hen:stop(); T.hen = nil end
+			end
+			return
+		end
 		if not T.dang or T.tran == nil or T.dung == true then return end
 		hoi_thong_soai(tonumber(dt) or 0)
 		cap_nhat_thuc_tinh()
@@ -543,6 +572,13 @@ return function(C)
 		T.hen = C.lich:schedule(hen, 'buoc', 0)
 		bat_dau_thong_soai()
 		bat_dau_thuc_tinh()
+		-- Moc "tran da chay" theo gio kich ban: `_thong_soai()` tra 0 truoc dong
+		-- nay (xem `dat_lai`), nen bo do khong the dua quan truoc moc nay — co moc
+		-- thi moi tra loi duoc "vi sao khong bam kip trong cua so `dat_linh`".
+		do
+			local kb = rawget(_G, 'g_DramaSystem')
+			if kb ~= nil and type(kb.bao_moc) == 'function' then kb:bao_moc('_Lua_StartGame') end
+		end
 		-- Kich ban tran chi chay khi BAT co G_KICHBAN. Canh dien anh dung tran,
 		-- an nut, tao NPC — dung cho tran that, nhung dap len cac phep kiem cua
 		-- do_chien_dich (dua linh / thuc tinh). De mac dinh TAT: do_chien_dich

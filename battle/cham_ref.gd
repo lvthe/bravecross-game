@@ -119,3 +119,16 @@ static func ho_cham(bien_the: String) -> Vector2:
 ## Cac ten da hoi ma bang khong co — de phep kiem in ra, khong de doan bua.
 static func thieu() -> Array:
 	return _thieu.keys()
+
+
+## Cong thuc hop bao cua mot hinh chu nhat quay goc, tach ra de dung CHUNG mot
+## cho: bang `cham_ref.json` giu CAP SO da tinh (nen phep kiem tinh lai duoc doc
+## lap voi Python), con `SngRig.hop_xuong` goi ham nay cho xuong BAT KY —
+## `_lua_getBoneRectInNode` khong chi hoi xuong `Collision`.
+static func tinh(wh: Vector2, rot1: float, rot2: float, sx: float, sy: float) -> Vector2:
+	var a1 := deg_to_rad(rot1)
+	var a2 := deg_to_rad(rot2)
+	var w := wh.x * sx
+	var h := wh.y * sy
+	return Vector2(w * absf(cos(a1)) + h * absf(sin(a1)),
+			h * absf(cos(a2)) + w * absf(sin(a2)))

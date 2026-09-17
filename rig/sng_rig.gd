@@ -233,6 +233,122 @@ func co_ho_cham() -> bool:
 	return not ChamRef.muc(variant).is_empty()
 
 
+## Xuong `ten` co trong dong tac dau tien nao khong.
+##
+## De `_lua_getBonePosInNode` phan biet "khong co xuong" — ban goc tra `(0, 0)` —
+## voi mot diem that su bang `(0, 0)`. Ban goc KHONG bao loi khi ten xuong sai
+## (do tren mot ten bia dat ra), nen phep kiem nay khong duoc nem loi thay.
+func co_xuong(ten: String) -> bool:
+	return not khoa_xuong(ten).is_empty()
+
+
+## Khoa 0 cua xuong `ten` trong DONG TAC DAU TIEN co xuong ay — `{}` neu khong co.
+##
+## Cung mot luat ma `cham_ref.py` dang dung cho xuong `Collision` ("khoa 0 cua
+## dong tac DAU TIEN co xuong"), va cung la luat duy nhat tai hien duoc moi phep
+## do dang co. Ban goc thi doc theo khung dang chay; o day KHONG phan biet duoc
+## hai luat: 223/224 rig co khoa 0 giong nhau o moi dong tac, va phep doi chung
+## tren may ao (doi dong tac roi hoi lai) AM — `playAnimation` khong kip co tac
+## dung trong cung mot doan Lua.
+func khoa_xuong(ten: String) -> Dictionary:
+	for a in _group().get("animations", []):
+		for b in a.get("bones", []):
+			if String(b.get("name", "")) == ten:
+				var ks: Array = b.get("keys", [])
+				return ks[0] if not ks.is_empty() else {}
+	return {}
+
+
+## Diem neo cua xuong trong HE CUA RIG (Godot, y huong xuong) — cap `+0x08` cua
+## ban ghi khung, `anim.py` ghi ra thanh `v2`/`v3`.
+##
+## Day la cap ma `_lua_getBonePosInNode` cua ban goc tra ve (voi y doi dau):
+## `(v2, -v3)`. Do bang may ao tren nam xuong va doi chieu duoc doc lap tu du
+## lieu — ZhangLiangBao `Collision` `(-88, -227)` -> `(-88, 227)`,
+## ElephantSoldier `(-103, -115)` -> `(-103, 115)`, YuJin `Head` `(1, -127)` ->
+## `(1, 127)`, Gashapon `(-132, -196)`, Hoplite `(-77, -162)`: khop CA NAM so
+## may ao do. Xem `emu_xuong.py` muc (A)/(B)/(D).
+##
+## Truoc luot nay `v2`/`v3` khong duoc xuat ra JSON (chung la cap ma `anim.py`
+## ghi la "chua ro nghia" — nay biet mot nguoi doc).
+func diem_xuong(ten: String) -> Vector2:
+	var k := khoa_xuong(ten)
+	if k.is_empty():
+		return Vector2.ZERO
+	return Vector2(float(k.get("v2", 0.0)), float(k.get("v3", 0.0)))
+
+
+## Anh ma xuong `ten` ve o khoa 0 cua dong tac dau tien co xuong ay. `""` khi
+## khong tra duoc (khong co xuong, chi so `d` am/nam ngoai danh sach, hoac ten
+## anh khong co trong `spriteFiles`).
+func anh_xuong(ten: String) -> String:
+	var k := khoa_xuong(ten)
+	if k.is_empty():
+		return ""
+	var d := int(k.get("d", -1))
+	if d < 0:
+		return ""
+	var refs: Array = _anh_cua_xuong().get(ten, [])
+	if d >= refs.size():
+		return ""
+	return String(refs[d])
+
+
+## `(w, h)` = `sourceSize` cua anh ma xuong ve — dung nguon khung ma ban goc doc
+## (`CCSpriteFrame::getOriginalSize`; do: `BatFlight` 145,00999450684 x 120 chu
+## khong phai 290,02 cua ban ghi `.xml`). `Vector2.ZERO` khi anh do khong xuat
+## duoc ra PNG (muc danh dau kich thuoc 0).
+##
+## `spriteFiles[anh] = null` nghia la sprite do KHONG cat duoc PNG (o 0x0 trong
+## atlas — moi nhan vat co mot cai), chu khong phai "khong co o". O cua no van
+## nam trong `.plist` va `export.py` xuat sang ban do `sourceSize`. Thieu duong
+## lui nay thi `YuJin_res-44` (1x1) ra (0, 0) trong khi may ao do hop xuong
+## `Collision` la 140,00547790527 x 179,98643493652 — bon trong nam rig da do
+## deu dung anh `_res-44` (YuJin, ZhangLiangBao, BatFlight, DragonFlight).
+func khung_xuong(ten: String) -> Vector2:
+	var anh := anh_xuong(ten)
+	if anh == "":
+		return Vector2.ZERO
+	var info: Variant = data.get("spriteFiles", {}).get(anh, null)
+	if info is Dictionary and not (info as Dictionary).is_empty():
+		return Vector2(float(info.get("srcW", 0.0)), float(info.get("srcH", 0.0)))
+	var nguon: Array = data.get("sourceSize", {}).get(anh, [])
+	if nguon.size() < 2:
+		return Vector2.ZERO
+	return Vector2(float(nguon[0]), float(nguon[1]))
+
+
+## Hop cua xuong bat ky = dung cong thuc `hop()` cua `cham_ref.py`, voi `(w, h)`
+## la `sourceSize` cua anh xuong ay dang ve. Khi xuong la `Collision` thi bang
+## DUNG `_lua_CollisionSize` (do tren ba rig: YuJin, Gashapon, Hoplite).
+##
+## `(0, 0)` khi khong tra duoc — cung nhu ban goc: ten xuong khong co thi im lang
+## tra (0, 0), khong bao loi (do tren `DaQuZhanShi` va mot ten bia).
+func hop_xuong(ten: String) -> Vector2:
+	var k := khoa_xuong(ten)
+	if k.is_empty():
+		return Vector2.ZERO
+	var wh := khung_xuong(ten)
+	if wh == Vector2.ZERO:
+		return Vector2.ZERO
+	return ChamRef.tinh(wh, float(k.get("rot", 0.0)), float(k.get("rot2", 0.0)),
+			float(k.get("sx", 1.0)), float(k.get("sy", 1.0)))
+
+
+## Bang LIEN KET XUONG -> ANH cua chinh file `.xml` (mang o header 0x4c, xuat ra
+## o `parts[].children[].sprites`). Dung chung cho ca ve lan `anh_xuong`.
+var _bang_anh := {}
+
+func _anh_cua_xuong() -> Dictionary:
+	if not _bang_anh.is_empty():
+		return _bang_anh
+	for p in _ordered_parts():
+		var ten := String(p.get("name", ""))
+		if not _bang_anh.has(ten):
+			_bang_anh[ten] = (p.get("sprites", []) as Array).duplicate()
+	return _bang_anh
+
+
 
 # ------------------------------------------------------------------ noi bo
 

@@ -166,6 +166,15 @@ SUITES = [
     # thang vao bo kiem, va duong Lua qua `getSpriteFromSpriteCatch`. So do phan
     # biet that: chieu RONG truoc chieu CAO (ElephantSoldier 170,52 x 118,5).
     ('cham armature',        'script', 'tools/verify_cham_size.gd', False, []),
+    # DIEM / HOP CUA MOT XUONG BAT KY (`_lua_getBonePosInNode`,
+    # `_lua_getBoneRectInNode`) — hai cho goi trong `CUIHeroInfoFightSoulUI.lua`,
+    # man gan MAT len DAU nhan vat. Chong vao `__index` cua lop gia lap: ten nao
+    # cung tra ve MOT HAM, nen phep gac `~= nil` cua ban goc luon dung roi hai so
+    # tra ve la nil — do la mot loi Lua THAT, khong phai mot API im lang. Bon
+    # tang: cap `+0x08` doc lai tu file, nam phep do may ao, o cua anh xuong
+    # (`sourceSize`, ke ca anh `_res-44` khong cat duoc PNG), va luat doi khong
+    # gian (dich truot 140,43 -> ket qua doi dung -(140, 43)).
+    ('xuong armature',       'script', 'tools/verify_xuong.gd',     False, []),
 ]
 
 SCORE = re.compile(r'dat (\d+), hong (\d+)')

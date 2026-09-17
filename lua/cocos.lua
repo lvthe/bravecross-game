@@ -1977,6 +1977,111 @@ function Node:_lua_CollisionSize()
 	return v.x, v.y
 end
 
+-- Diem / hop cua MOT XUONG BAT KY -----------------------------------------
+-- Hai ham, va cho goi chung KHONG im lang nhu cac API con thieu khac:
+-- `CUIHeroInfoFightSoulUI.lua:3098-3115` (man gan MAT len DAU nhan vat) gac
+-- bang `if spHero._lua_getBonePosInNode ~= nil then` — ma `__index` cua lop gia
+-- lap tra ve mot ham cho MOI ten, nen phep gac ay luon dung, roi
+-- `headBoneX, headBoneY = spHero:_lua_getBonePosInNode("Head", spTargetPos)`
+-- tra nil va `facePosX = headBoneX + offsetX` la **loi Lua that**.
+--
+-- Do bang may ao (`work/emu_xuong.py`, muc A/B/C/D/G):
+--   * `_lua_getBonePosInNode(ten)` tra DUNG cap `+0x08` cua ban ghi khung voi
+--     y doi dau — `(v2, -v3)`. Doi chieu doc lap tu du lieu khop CA NAM xuong
+--     (`ZhangLiangBao` Collision `(-88, 227)`, `ElephantSoldier` `(-103, 115)`,
+--     `YuJin` Head `(1, 127)`, `Gashapon` `(-132, 196)`, `Hoplite` `(-77, 162)`).
+--   * `_lua_getBoneRectInNode(ten)` la `hop()` voi `(w, h)` la `sourceSize` cua
+--     anh xuong ay dang ve — bang DUNG `_lua_CollisionSize` khi xuong la
+--     `Collision` (do tren YuJin, Gashapon, Hoplite).
+--   * Ten xuong KHONG co thi tra `(0, 0)`, khong bao loi.
+--   * Tham so 2 BO TRONG duoc, va `pos-self` == `pos-nil` o MOI xuong da do.
+--   * Tham so 2 CO dung: day la mot phep doi khong gian kieu `convertToNodeSpace`
+--     — doi node dich tu `(-40, 7)` len `(100, 50)` thi ket qua doi dung
+--     `-(140, 43)`, tuc ti le cua dich la 1.
+--
+-- MOT CHO CHUA KHOP, ghi lai chu khong doan: khi node dich la ARMATURE thi ban
+-- goc lech he so `1,02` so voi ta, va lech CA HAI DAU nguoc chieu nhau —
+--   diem: doi node dich hai lan thi ban goc ra `-(137,255, 42,157)`, ta ra
+--         `-(140, 43)`, tuc ta LON hon `1,02` lan;
+--   rect: dich la armature thi ban goc ra `178,5 x 232,04899597168`, ta ra
+--         `175 x 227,5` (cung phep do, dich la node Cocos THUONG), tuc ta NHO
+--         hon `1,02` lan — nguoc chieu voi dau tren.
+-- Hai chieu NGUOC NHAU, nen 1,02 KHONG the la mot ti le duy nhat nam tren node
+-- dich: mot ti le nhu vay di vao phep nghich dao thi ca hai ket qua deu bi chia
+-- cung mot chieu. `tools/verify_xuong.gd` IN hai phep do nay ra, khong khang dinh.
+-- **Khong biet 1,02 thuoc node nao**: `getScale` lan `setScale` deu GIET CA
+-- TIEN TRINH do (pcall khong do duoc loi native), ca tren armature lan tren
+-- `CCSprite` thuong. Ta theo dung khuon `_lua_getPlugInPositionInNode` — cong
+-- thuc ma bon cho goi cua no da kiem — va khong nhan them he so nao. Cho goi
+-- that (`:3105`) truyen node THUONG, nen no khong dinh cho nay.
+--
+-- Ghep cap nhu the nao: `pFace:addChild` vao `spTargetPos` roi
+-- `pFace:setPosition(facePosX, facePosY)` (CUIHeroInfoFightSoulUI.lua:3127-3132),
+-- nen cap so phai o HE CON CUA node dich, dung he ma `to_godot` doi ra. Vi vay
+-- tra ve theo truc y HUONG LEN tinh tu day node dich, y nhu ham plug.
+local function _xuong_cua(gd, ten)
+	local r = _rig_cua(gd)
+	if r == nil or type(ten) ~= 'string' then return nil end
+	if not r:has_method('co_xuong') or not r:co_xuong(ten) then return nil end
+	return r
+end
+
+-- Doi mot diem (hoac mot KICH THUOC) tu he CUA RIG sang he COCOS cua node dich,
+-- dung khuon `_lua_getPlugInPositionInNode`: `y_cocos = parent_h(dich) - y_godot`.
+-- Tra `0, 0` khi dich khong phai node co bien doi (cung cach ham plug chiu node
+-- khong phai rig: mot man 3000 dong thi gia tri vo hai hon la mot loi Lua).
+--
+-- `la_hop` khac o cho doi cai gi: hop la mot KICH THUOC chu khong phai mot diem,
+-- nen doi HAI GOC roi lay hieu — nho vay dich chi TRUOT thi hop khong doi, dung
+-- nhu do duoc (dich la node Cocos thuong tra dung `175 x 227,5`). Doi diem thi
+-- lay hieu cua hai lan dat dich: `(-40, 7)` -> `(100, 50)` lam ket qua doi dung
+-- `-(140, 43)`, tuc ti le cua dich la 1.
+local function _doi_khong_gian(r, x, y, dich, la_hop)
+	if not dich:has_method('get_global_transform') then return 0, 0 end
+	local inv = dich:get_global_transform():affine_inverse()
+	if la_hop then
+		local goc = inv * r:to_global(Vector2(0, 0))
+		local xa = inv * r:to_global(Vector2(x, y))
+		return math.abs(xa.x - goc.x), math.abs(xa.y - goc.y)
+	end
+	local p = inv * r:to_global(Vector2(x, y))
+	return p.x, parent_h(dich) - p.y
+end
+
+-- Ban goc cua hai ham nay KHONG tra ve he Godot ma tra ve he COCOS cua node dich
+-- (y huong LEN tinh tu day node dich), vi nguoi goi luon lam:
+--
+--     x, y = spHero:_lua_getBonePosInNode("Head", spTargetPos)
+--     pFace:setPosition(x + offsetX, y + 17 + offsetY)
+--     spTargetPos:addChild(pFace)
+--
+-- (CUIHeroInfoFightSoulUI.lua:3098-3132.) Doi qua he Godot lai thi dao dau moi
+-- so cong thuc cua ban goc — dung nhu ham plug.
+function Node:_lua_getBonePosInNode(ten, pNode)
+	local r = _xuong_cua(raw(self), ten)
+	if r == nil or not r:has_method('diem_xuong') then return 0, 0 end
+	local p = r:diem_xuong(ten)
+	local dich = unwrap(pNode)
+	if dich == nil then
+		-- Khong truyen node dich: ban goc tra thang cap da luu, va cap ay la toa
+		-- do trong he CUA RIG — tuc chieu cao cua cha la 0 (do: `pos-nil` ==
+		-- `pos-self` o moi xuong, va rig luc do khong nam trong cay nao).
+		return p.x, -p.y
+	end
+	return _doi_khong_gian(r, p.x, p.y, dich, false)
+end
+
+function Node:_lua_getBoneRectInNode(ten, pNode)
+	local r = _xuong_cua(raw(self), ten)
+	if r == nil or not r:has_method('hop_xuong') then return 0, 0 end
+	local v = r:hop_xuong(ten)
+	local dich = unwrap(pNode)
+	if dich == nil then
+		return v.x, v.y
+	end
+	return _doi_khong_gian(r, v.x, v.y, dich, true)
+end
+
 -- Diem gan cua armature (plug) --------------------------------------------
 -- Ba ham, 48 cho goi: _lua_addChildToPlugIn 33, _lua_clearPlugIn 10,
 -- _lua_getPlugInPositionInNode 5. Day la cach ban goc treo mot node Lua (nhan

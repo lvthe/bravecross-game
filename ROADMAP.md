@@ -890,6 +890,104 @@ Ba thứ **cố ý KHÔNG làm**, ghi rõ để lần sau không đoán:
   chuyển màu do **mã** bật lúc chạy, nên "bố cục không có" **không** suy ra được
   "không cần làm".
 
+### Bốn nhóm API của lớp giả lập: đổi ô hiển, cánh, tiếng chạm, vùng chạm
+
+Khoá bằng `tools/verify_o_hien.gd` — **93 đạt / 0 hỏng**, `check.py` bộ thứ **38**.
+
+| API | chỗ gọi | làm gì | cơ sở (số đo) |
+|---|---|---|---|
+| `_lua_changeTextureDisplay` / `_lua_changeArmtureDisplay` | 14 / 2 | **thay** phần tử `idx` trong danh sách hiển của một xương | hai hàm nằm **ngay cạnh nhau** trong `libgame.so` (`0x2aa81e` / `0x2aa87a`), thân **giống hệt**, chỉ khác `[vtable+0x280]` (thay bằng **ảnh**) hay `[vtable+0x284]` (thay bằng **một biến thể** của chính `.xml` — rig lồng nhau). Cả hai nhận `(xương, tên, idx)` và **đều trả 0** |
+| `_Lua_changeWingAnimation` | 1 | đổi động tác của **cánh** nhân vật | `0x417fcc`: `w = this[+0x9fc]`, `if (!w) return 0` (`0x417fea`) — và trong bản dựng con trỏ ấy **luôn NULL**, xem dưới |
+| `setSoundStrArr` | 2 | tiếng phát khi chạm vào node | `0x49d2dc` → `[vtable+0x40](self, container)` → `0x20330e` (`bl 0x4b1f16` + `self->vtable[0x2c]`), trả 1 |
+| `setIsOpenDetection` / `pushDetectionAreaInPatentSpace` | 2 / 4 | thay phép thử "chạm còn trong node không" bằng **danh sách vùng riêng** | `0x367348`: `+0xa7c = tobool(1)`, `+0xa74 = toint(2)`, `+0xa78 = toint(3)`, và **khi tham số 1 == 0 thì `+0xa6c = +0xa68`** (xoá vector). `0x367768`: bốn `tonumber` → một hình chữ nhật 16 byte → `push_back` vào vector ở `+0xa68`/`+0xa6c`/`+0xa70` |
+
+**Đổi ô hiển: `idx` là THAY, không phải THÊM, và đó là điều chốt được.** Trong
+toàn bộ **16** chỗ gọi, tham số 3 **luôn là `0`**; nghĩa của nó suy thẳng từ thân
+hàm (`[vtable+0x280/0x284]` ghi vào **phần tử `idx`**), nên ô ở chỉ số `d` của
+**mọi khung sau đó** — kể cả khung chưa chạy — lấy đúng thứ vừa thay. Ghép với
+chỗ gọi thì rõ: `CUIShakeDice.lua:404-419` thay ảnh mặt xúc xắc rồi để động tác
+`Play` chạy tiếp; `CUIHeroInfoFightSoulUI.lua:2673` đổi số trên búa rồi cho hoạt
+ảnh nâng cấp chạy. **Tên xương là tên xương THẬT**, không phải số hiệu plug: bảng
+liên kết xương → ảnh của `UIWoYaoShenJiang.xml` và bảng `bones[]` của JSON khớp
+nhau, và 25 xương của biến thể `UIWoYaoShenJiang_Dice` gồm `Light1..6`,
+`Dice1..6`, `Star1..6`, `PlugIn_1..6`, `LayerName000`. **Ẩn một xương bằng cách
+thay ảnh `_res-44`** (ảnh 4×4 rỗng) cũng là đường của bản gốc: bảng liên kết cho
+**cả** `PlugIn_1..6` **lẫn** `LayerName000` đều trỏ tới đúng ảnh ấy — nên phép
+kiểm có một tầng đi đúng đường "ẩn" đó.
+
+**`_Lua_changeWingAnimation` trả `false` là ĐÚNG, không phải chưa làm.** Không có
+đường nào **gắn** cánh trong bản dựng, và đây là điều **đo được** chứ không phải
+suy: bản gốc gắn bằng hàm toàn cục `setGear(pRole, value)`
+(`ClientPaperDoll:ChangePaperDollHelper` gọi nó cho từng mục của `tSkinMap`, kể cả
+`HeroSkinType.Wing`), mà `setGear` **chưa làm** — và **bốn** chỗ ghi `this[+0x9fc]`
+(`0x417126`, `0x4172be`, `0x41bee2`, `0x40a8f8`) đều nằm trong C++ và **không có
+trong bảng bind Lua nào**. Nên con trỏ cánh luôn NULL và hàm đi đúng nhánh `if
+(!w) return 0` của bản gốc. Bản port vì thế **quét con của node** tìm node mang
+`la_canh()` (biến thể `EquipWing*`, 63 biến thể) rồi `play(tên)` — đường ấy chỉ
+chạy khi sau này có ai gắn cánh thật. Động tác thì **không đoán**: cánh là
+armature riêng, động tác của nó đúng bộ `Standby` / `Run` / `Death` / `Fire` /
+`Hit`, khớp hai tên mà `CUIArmyGroupCampsite.lua:1797,1799` truyền vào.
+
+**Vùng chạm: bốn số là HAI GÓC ĐỐI NHAU, trong hệ của node CHA.** Đọc từ chính
+chỗ tính (`CUIArmyGroupCampsite.lua:562-580`): hai lần `convertToWorldSpace` rồi
+đưa **cả hai** về `self.CampsiteActiveArea` — tức `{x_min, y_min, x_max, y_max}`,
+**không** phải `(x, y, rộng, cao)`, và "InPatentSpace" (在父空间) nghĩa đúng như
+chữ. Phép kiểm chọn một điểm **phân biệt được hai cách hiểu** để khoá lại.
+**Hai số nguyên thì KHÔNG khôi phục được, và KHÔNG đặt tên:** chỗ đọc chung
+(`0x3672da`) so `+0xa78` / `+0xa74` với `[vtable+0x50]` (`0x416904`, mà chính nó
+gọi `this[+0x9fc]->vtable[+0x2a8]()`), dự phòng là `[vtable+0x48]` (`0x21baf8` —
+một `retain/release` kiểu `this[0x20] = arg`); cả hai đều **không có tên trong
+bảng bind nào**. Giữ nguyên số của bản gốc (`10, 4` cho người chơi; `9, 3` cho
+người khác) và không suy diễn gì từ chúng. Chỗ đọc ấy chỉ có thể là phép thử
+**"điểm thả tay còn trong node không"**, không thể là phép thử **lúc bắt đầu**
+chạm: nó `return 0` khi cờ `+0xa7c` **tắt**, mà cờ ấy chỉ được bật trong **đúng
+một màn** — nếu là phép thử lúc bắt đầu thì không node nào trên mọi màn khác chạm
+được nữa. Nên nó chỉ thay cho `bTouchInSide` (tham số 2 của `onTouchEnd_*`), đúng
+chỗ mà `CUIArmyGroupCampsite:onTouchEnd_OnTouchActionsSwitch` đọc.
+
+**Ba cái bẫy IM LẶNG đo được trong cùng lượt này** (cả ba đều không có lỗi nào,
+chỉ có kết quả sai):
+
+1. **Bảng Lua đưa vào `set_meta` bị bỏ đi không một lời nào.** Đặt
+   `{1.5, 2.5, 3.5, 4.5}` hay `{1,2,30,40}` vào meta rồi đọc lại từ GDScript:
+   **cả hai đều không có**. Số / bool / chuỗi thì qua bình thường. Nên bốn số của
+   vùng chạm và danh sách tên tiếng đều đi qua **một chuỗi** (`,;` và `\n`).
+2. **Gọi phương thức Godot trên node đã BỌC (`c.wrap`) thì im lặng không làm
+   gì.** `n:set_meta(...)` không đặt được meta nào, trong khi đúng lệnh ấy trên
+   `c.raw(n)` chạy đúng. Cả bốn hàm mới đều đi qua `raw(self)` trước — cùng lý do
+   lớp `tien_do` đã phải làm.
+3. **Biến toàn cục của Lua đọc ngược ra qua cầu là bảng "bóng".**
+   `type(_G['_DEM']) == 'table'`, in ra `<bong _DEM>`, và
+   `string.format('%d', _G['_DEM'])` ném `number expected, got table` — nên **bộ
+   đếm không được sống ở Lua**; bộ đếm của phép kiểm nằm trong node Godot.
+
+**Chữ ký hàm chạm của bản gốc — đo được, và đọc sai thì im lặng.** `goi_pha` gọi
+`pcall(f, obj, sender, ...)`, tức hàm được gọi **như phương thức của bảng đối
+tượng**, còn **node nhận chạm là tham số THỨ HAI**: `onTouchBegin_<tên>(o, sender)`,
+`onTouchMove_<tên>(o, sender, a, b, c)`, `onTouchEnd_<tên>(o, sender, trong)`,
+`onTouchEndEx_<tên>(o, sender, b, c)`. Viết sai chữ ký thì `nhat_ky_cham` **vẫn**
+ghi lại lượt gọi, còn lỗi đi vào `loi_cham` — nên phép kiểm phải đòi **cả**
+`#loi_cham == 0`.
+
+**Một thứ KHÔNG ĐO ĐƯỢC trong bộ đo này, ghi lại kẻo mất công:** `is_inside_tree()`
+và `get_tree()` **luôn** báo sai. `_san` của bộ đo được gắn vào `SceneTree.root`,
+mà chính root ấy báo `is_inside_tree() == false` và `get_tree() == null` (nó là
+**gốc** của cây, không bao giờ nhận `ENTER_TREE`) — nên **mọi** node của cây đều
+báo y như vậy (đo cả bảy tầng từ `Light6` lên tới `root`: tầng nào cũng `false`).
+Phép kiểm vì thế khẳng định **quan hệ cha–con** (node vừa thay phải là con của
+đúng xương ấy và đang hiện) chứ không hỏi cây.
+
+**Một chỗ lệch đã biết, KHÔNG sửa, và vì sao.** `_tao_rig` gọi
+`SngRig.build(..., true)` — bật bộ lọc xương tên `Layer*` đặt ra cho **nhân vật**;
+nhưng đường `getSpriteFromSpriteCatch` đi qua đó, nên **tên THƯ MỤC** (không phải
+tên biến thể) rơi vào nhóm nhiều động tác nhất và ra rig **0 xương** — ví dụ
+`UIZhuangBeiWuHun` (nhóm `_WuHun` chỉ có `LayerName001/000`). Chỗ gọi **thật**
+không bao giờ truyền tên thư mục (cả bốn chỗ đều truyền **tên biến thể**:
+`UIZhuangBeiWuHun_CuiZhi`, `UIZhuangBeiWuHun_JinDan`, …), nên đây là **lỗ hổng đã
+ghi** trong `CLAUDE.md` (bộ lọc `Layer*` cho armature hiệu ứng) chứ không phải
+hành vi cần khoá lại. Phép kiểm ghi lại đúng sự thật ấy: tên thư mục → rig **0
+xương**, và `LuaRuntime.rig_rong` đếm được **1** lượt.
+
 ### Chuyển sắc chữ (`enableGradual` / `disableGradual` / `getEnableGradualColor` / `IsEnableGradualColor`)
 
 Bốn hàm này **chỉ** có ở lớp 12 `Label`: quét cả 132 bảng lớp của `libgame.so`
@@ -1060,6 +1158,46 @@ nhất là `event:/UI/UI_Click` 1.455 node). Khớp với mã gốc:
 `CUIEpicChapter.lua:282` và `CUISelectLevel.lua:1687` gọi
 `setSoundStrArr({"event:/UI/UI_Click"})` — **đúng chuỗi ấy**. Chưa đo node nào ứng
 với âm nào, nên **không kết luận**; đây là chỗ để tra tiếp cho `setSoundStrArr`.
+
+#### Ô `+0xC0`: đo lại đầy đủ, và **cách đọc sai đã mắc một lần**
+
+Lượt sau đọc lại ô này và **đã kết luận sai rằng "ô `+0xC0` không phải ô tiếng"**;
+kết luận ấy đến từ một phép quét sai chỗ, ghi lại nguyên văn để không ai lặp:
+
+* **Bản ghi node KHÔNG có kích thước cố định và KHÔNG nằm ở các khối B/C/D/E.**
+  Chúng nằm ở **khối G**, và địa chỉ từng bản ghi lấy từ **bảng offset ở khối F**
+  (`Xgg.nodes()` / `node_offsets()`), dài 216..352 byte tuỳ node. Phép quét sai đã
+  lấy `rec_size` của B/C/D/E rồi quét `(off, len)` trong đó — ra **0** hit cho cả
+  bốn khối, và từ số 0 ấy mà kết luận ngược với tài liệu. Quét đúng chỗ (khối G,
+  theo bảng F) ra **đúng 2.053/2.053** trên `work/decrypted` và **2.095/2.095**
+  trên `work/vn/decrypted`, **0 ngoại lệ**, và **không ô nào khác** trong bản ghi
+  trỏ vào chuỗi `event:` (quét mọi ô 4 byte từ `+0` tới hết bản ghi: chỉ `+0xC0`).
+* **Mười tên, đếm được:** `event:/UI/UI_Click` 1.455, `UI_Select` 338, `UI_Main`
+  136, `UI_Confirm` 85, `UI_Fight` 34, `UI_Cancel` 21, `UI_Forge` 14, `UI_Close` 9,
+  `UI_Clean` 2, `event:/Combat/Gen_Summon` 1. Lớp của node mang tiếng: `CCButton`
+  226, rồi tới các node con trong nút (`pBattleDeployGuildHeroItem` 59, `spContent`
+  53, `spBg` 50, `CCSprite` 41, `CCScale9Sprite` 31, `btn` 25, `Button` 24).
+* **Đối chiếu với hai ô chạm của cùng bản ghi** (đo trên 33.472 node): cả ba cùng
+  có **1.193**; **có tiếng mà không có tên chạm lẫn đối tượng chạm: 855**; có tên
+  chạm mà không có tiếng 644 (+123 không đối tượng); có tiếng + tên chạm + không
+  đối tượng 45; có tiếng + đối tượng chạm mà không tên chạm 2.
+* **Nên LÚC NÀO phát thì vẫn CHƯA ĐO ĐƯỢC, và lần này đo được cả lý do:** trong
+  **132 bảng bind** của `libgame.so`, `setSoundStrArr` là **phương thức duy nhất**
+  liên quan (không có `getSoundStrArr`, không có `getSound*` nào) — nên **không có
+  đường nào đọc ngược tên tiếng của một node ra từ Lua** để mà đo trên máy ảo, và
+  máy ảo chạy `-no-audio` thì không nghe được. Con số 855 node "có tiếng mà không
+  có chạm" cũng nói thẳng rằng **tiếng KHÔNG phải thuộc tính riêng của node bấm
+  được** — nên "phát lúc chạm" vẫn là giả thuyết, không phải số đo.
+* **Đường thứ hai của engine:** hai trong mười tên có **sẵn trong `.rodata` của
+  `libgame.so`** (`event:/UI/UI_Select` ở `0x7BC6C0`, `event:/Combat/Gen_Summon` ở
+  `0x7C0A81`) — tức engine C++ cũng tự gọi thẳng vài tiếng ấy, không chỉ đọc từ bố
+  cục. Nên ô `+0xC0` không phải đường duy nhất.
+* **Nối vào bản port thì phải làm như một việc riêng, có chủ ý:** `layout_ref`
+  hiện **không** mang ô này (`xgg.py` không đọc, `layout.py` không giữ), mà dựng
+  lại `layout_ref` thì **xoá sạch tag đã đo** — đúng cái bẫy đã ghi ở `CLAUDE.md`
+  (chạy xong phải `emu_join.py --ghi` ngay, không thì 9 bộ kiểm đỏ cùng lúc). Bản
+  port hiện chỉ phát tiếng cho **2 node** mà mã Lua gọi `setSoundStrArr` trực tiếp
+  (`lua/cocos.lua`, pha Begin — ĐẶT, xem chú thích ở đó).
 
 ### Hệ hạt: đã dịch xong sang `GPUParticles2D` (33 định nghĩa, 87 node)
 

@@ -546,6 +546,20 @@ function M.cham(pha, gd, a, b, c)
 			return true
 		end
 	end
+	-- Tieng dong cua node (`setSoundStrArr`) — phat o pha Begin, xem chu thich
+	-- dai o ham do (pha la DAT, khong do duoc bang tieng vi may ao chay
+	-- `-no-audio`). Dat TRUOC `goi_pha` de tieng ra cung luc voi ham Begin,
+	-- dung nhu mot tieng phan hoi khi vua cham.
+	if pha == 'Begin' and gd:has_meta('tieng_cham') then
+		local ds = tostring(gd:get_meta('tieng_cham'))
+		local cat = ds:find('\n', 1, true)
+		local ten_tieng = cat and ds:sub(1, cat - 1) or ds
+		if ten_tieng ~= '' then
+			-- `playSoundEffect` la ten toan cuc cua engine, do
+			-- `lua/am_thanh.lua` (M.install, goi tu bootstrap.install_cocos) dat.
+			playSoundEffect(ten_tieng)
+		end
+	end
 	goi_pha(gd, pha, a, b, c)
 	-- Node DA DANG KY thi nuot cham ke ca khi no khong co ham cho pha nay:
 	-- ccTouchBegan cua no tra true (doi tuong khong co onTouchBegin_ thi khong
@@ -2077,6 +2091,207 @@ function Node:_lua_CollisionSize()
 	if r == nil or not r:has_method('ho_cham') then return 0, 0 end
 	local v = r:ho_cham()
 	return v.x, v.y
+end
+
+-- Doi thu DANG HIEN cua mot xuong ------------------------------------------
+-- Hai ham, 16 cho goi: `_lua_changeTextureDisplay` 14 (CUIShakeDice 4/5/6 mat
+-- xuc xac, CUIHeroInfoFightSoulUI 3 cho doi so cua bua vo hon) va
+-- `_lua_changeArmtureDisplay` 2 (CUIShakeDice 413/414 — danh dau o sang / o sao).
+--
+-- HAI ham chu khong mot, va do la su that cua ban goc: trong libgame.so chung
+-- nam NGAY CANH NHAU (`0x2aa81e` va `0x2aa87a`), than giong het nhau, chi khac
+-- o cho goi `[vtable+0x280]` (thay bang ANH) hay `[vtable+0x284]` (thay bang
+-- MOT BIEN THE cua chinh file .xml — rig long nhau). Ca hai nhan
+-- `(std::string xuong, std::string ten, int idx)`, va CA HAI deu tra 0.
+--
+-- Doi so 3 (`idx`) trong toan bo 16 cho goi deu la **0**. Y nghia cua no suy
+-- thang tu than ham: `[vtable+0x280/0x284]` thay PHAN TU `idx` trong danh sach
+-- hien cua xuong, chu khong phai them mot phan tu — nen o mang chi so `d` cua
+-- moi khung sau do deu lay dung thu vua thay. Ghep voi chinh cho goi thi ro:
+-- CUIShakeDice:404 thay anh o `Dice1..6` roi de dong tac `Play` chay tiep;
+-- CUIHeroInfoFightSoulUI:1549 doi so tren bua roi cho hoat anh nang cap chay.
+-- `rig/sng_rig.gd` (`thay_o_hien`) lam dung phep thay ay.
+--
+-- TEN XUONG la ten XUONG THAT cua armature (`Dice1`, `Light3`, `Number`), khong
+-- phai so hieu plug: do bang bang lien ket xuong -> anh cua
+-- `UIWoYaoShenJiang.xml` va bang `bones[]` cua JSON da xuat — 25 xuong cua bien
+-- the `UIWoYaoShenJiang_Dice` gom `Light1..6`, `Dice1..6`, `Star1..6`,
+-- `PlugIn_1..6`, `LayerName000`. Dong bi CHU THICH o CUIShakeDice:431 goi
+-- `_lua_changeTextureDisplay("PlugIn_1", ...)` — cung mot khong gian ten.
+--
+-- AN mot xuong bang cach thay anh `..._res-44` (anh 4x4 rong) cung la duong cua
+-- ban goc: bang lien ket cua `UIWoYaoShenJiang.xml` cho CA `PlugIn_1..6` lan
+-- `LayerName000` deu tro toi dung anh ay.
+local function _thay_o_hien(gd, ten_xuong, ten, idx, chi_anh)
+	local r = _rig_cua(gd)
+	if r == nil or not r:has_method('thay_o_hien')
+			or not r:has_method('o_hien') then
+		return 0
+	end
+	if type(ten_xuong) ~= 'string' or type(ten) ~= 'string' then return 0 end
+	if type(idx) ~= 'number' then idx = 0 end
+	local node = r:o_hien(ten, ten_xuong, chi_anh)
+	r:thay_o_hien(ten_xuong, node, math.floor(idx))
+	return 0
+end
+
+function Node:_lua_changeTextureDisplay(ten_xuong, ten_anh, idx)
+	return _thay_o_hien(raw(self), ten_xuong, ten_anh, idx, true)
+end
+
+function Node:_lua_changeArmtureDisplay(ten_xuong, ten_rig, idx)
+	return _thay_o_hien(raw(self), ten_xuong, ten_rig, idx, false)
+end
+
+-- Canh cua nhan vat ---------------------------------------------------------
+-- Mot cho goi: `CUIArmyGroupCampsite.lua:1797,1799` trong `MainPlayerAction` —
+-- doi dong tac `Death` / `Standby` cho CANH cua nhan vat chinh.
+--
+-- Ban goc: `0x417fcc`, `name = lua_tolstring(1)`, roi
+-- `w = this[+0x9fc]`; ham phu `0x417fc0` lam `r0 = this[0x9fc]; if (r0)
+-- r0 = r0[+0x1c0]`. `if (w)` NULL thi tra thang 0 (`0x417fea`) — tuc **khong
+-- co canh thi im lang**, dung nhu ham nay chay trong ban dung.
+--
+-- KHONG co duong nao GAN canh trong ban dung, va day la dieu do duoc chu khong
+-- phai suy: ban goc gan bang ham toan cuc `setGear(pRole, value)`
+-- (`ClientPaperDoll:ChangePaperDollHelper` goi no cho tung muc cua `tSkinMap`,
+-- ke ca `HeroSkinType.Wing = "Wing"`), ma **`setGear` chua lam** — va bon cho
+-- ghi `this[+0x9fc]` (`0x417126`, `0x4172be`, `0x41bee2`, `0x40a8f8`) deu nam
+-- trong C++ va KHONG co trong bang bind Lua nao. Nen con tro canh luon la NULL
+-- trong ban dung, va ham nay tra false — dung nhanh `if (w)` cua ban goc.
+--
+-- Ten dong tac thi KHONG doan: canh la armature `EquipWing*` (63 bien the),
+-- dong tac cua no dung la `Standby` / `Run` / `Death` / `Fire` / `Hit` — khop
+-- dung hai ten ma cho goi truyen vao.
+function Node:_Lua_changeWingAnimation(ten)
+	local gd = raw(self)
+	for i = 0, gd:get_child_count() - 1 do
+		local con = gd:get_child(i)
+		-- Canh nam o day node nao do: ban goc giu no bang mot con tro rieng
+		-- (`this[+0x9fc]`), khong phai mot xuong cua nhan vat, nen phai tim
+		-- trong cay con chu khong qua `_rig_cua`. Do sau 2 vi node canh la mot
+		-- node boc ngoai rig cua no, y nhu node nhan vat.
+		local ung_vien = {con}
+		for j = 0, con:get_child_count() - 1 do
+			ung_vien[#ung_vien + 1] = con:get_child(j)
+		end
+		for _, u in ipairs(ung_vien) do
+			if u:has_method('la_canh') and u:la_canh() then
+				return u:play(tostring(ten))
+			end
+		end
+	end
+	return false
+end
+
+-- Tieng dong khi cham vao node ----------------------------------------------
+-- Hai cho goi, ca hai deu dung mot muc: `CUIEpicChapter.lua:282` va
+-- `CUISelectLevel.lua:1687`, moi cho `setSoundStrArr({"event:/UI/UI_Click"})`
+-- ngay sau `setLuaTouchName("OnClickPoint")`.
+--
+-- Ban goc: `0x49d2dc` doc bang Lua vao mot container roi goi
+-- `[vtable+0x40](self, container)` = `0x20330e` = `bl 0x4b1f16` +
+-- `self->vtable[0x2c](self, container)`, tra 1. Ham nay co mat trong ~180 bang
+-- vtable, tuc no la ham cua LOP NODE chu khong rieng lop nao.
+--
+-- HAI DIEU **DAT**, ghi ro chu khong nhan la do:
+--
+--   * PHA phat tieng. Ca hai cho goi deu co CA `onTouchBegin_OnClickPoint` lan
+--     `onTouchEnd_OnClickPoint`, nen doc ma Lua khong phan biet duoc. Chon pha
+--     **Begin** vi o ca hai man, ham Begin moi la ham HANH DONG
+--     (`onTouchBegin_OnSelectLevel(self.spChapterCurrent)` — chon ai ngay khi
+--     vua cham), con ham End chi bao lai `bTouchInSide`. Khong do duoc bang
+--     tieng that: may ao chay `-no-audio` (xem ROADMAP), nen khong nghe duoc
+--     ban goc phat luc nao.
+--   * CHON MUC NAO trong bang. Ca 16 cho goi deu truyen bang MOT muc, nen
+--     "muc dau" / "mot muc ngau nhien" / "lan luot" khong phan biet duoc bang
+--     du lieu goc — lay muc dau.
+--
+-- Con ten tieng thi do duoc: `event:/UI/UI_Click` co trong bang `event_ref`
+-- (`data_ref/event_ref.json`, kieu `chinh-xac`, file `UI__UI_Click.ogg`), nen
+-- `playSoundEffect` phat dung tieng ay chang khong im lang.
+--
+-- Cac ten di qua DAY chu khong qua mot bang trong meta: bang Lua dua vao
+-- `set_meta` bi IM LANG bo di (do roi — xem chu thich o
+-- `pushDetectionAreaInPatentSpace`). Cac ten ngan bang `\n`.
+function Node:setSoundStrArr(t)
+	if type(t) ~= 'table' then return end
+	local ds = {}
+	for i = 1, #t do
+		if type(t[i]) == 'string' then ds[#ds + 1] = t[i] end
+	end
+	raw(self):set_meta('tieng_cham', table.concat(ds, '\n'))
+end
+
+-- Vung cham rieng cua node --------------------------------------------------
+-- `setIsOpenDetection(co, a, b)` + `pushDetectionAreaInPatentSpace(x, y, x2, y2)`.
+-- Hai cho mo (CUIArmyGroupCampsite:1010, :1176) va bon cho day vung vao
+-- (:1012, :1014, :1178, :1180) — node mo vung chinh la `pChapter` (nhan vat
+-- nguoi choi) va `pPlayer` (nhan vat nguoi khac), va vung thi lay tu hai node
+-- trong BO CUC (`ndCampDetectionAreaTree`, `ndCampDetectionAreaBonfire`).
+--
+-- Ban goc:
+--   `0x367348` setIsOpenDetection — `this[+0xa7c] = (byte)lua_toboolean(1)`,
+--     `this[+0xa74] = lua_tointeger(2)`, `this[+0xa78] = lua_tointeger(3)`, va
+--     **khi tham so 1 == 0 thi `this[+0xa6c] = this[+0xa68]`** — xoa danh sach
+--     vung (begin = end cua std::vector).
+--   `0x367768` pushDetectionAreaInPatentSpace — bon `lua_tonumber` -> float,
+--     dung mot hinh chu nhat 16 byte roi `push_back` vao vector o `+0xa68`
+--     (begin) / `+0xa6c` (end) / `+0xa70` (cap).
+--
+-- Nguon goc cua bon so: `CUIArmyGroupCampsite.lua:562-580` tinh
+-- `{x, y, w, h}` bang `convertToWorldSpace(0,0)` va `convertToWorldSpace(fW,fH)`
+-- roi `convertToNodeSpace` ve `self.CampsiteActiveArea` — tuc bon so la **HAI
+-- GOC DOI NHAU** (`{x_min, y_min, x_max, y_max}`), KHONG phai `(x, y, rong,
+-- cao)`, va o trong HE CUA **NODE CHA** cua node nhan — do la y cua chu
+-- "InPatentSpace" (在父空间). Node nhan that su la con cua
+-- `CampsiteActiveArea` (`:983` `self.CampsiteActiveArea:addChild(pChapter, 10, 10)`).
+--
+-- Y NGHIA CUA HAI SO nguyen thi **KHONG KHOI PHUC DUOC, va KHONG dat ten**:
+-- cho doc chung (`0x3672da`, ban ghi vtable `0x8979b0 + 0x7c`) so `this[+0xa78]`
+-- va `this[+0xa74]` voi `[vtable+0x50]` (= `0x416904` ->
+-- `this[+0x9fc]->vtable[+0x2a8]()`), con du phong la `[vtable+0x48]`
+-- (= `0x21baf8`, mot ham retain/release kieu `this[0x20] = arg`). Ca hai cai
+-- dem ra deu khong co ten trong bang bind nao. Giu NGUYEN so cua ban goc
+-- (`10, 4` cho nguoi choi, `9, 3` cho nguoi khac) va khong suy dien gi tu chung.
+--
+-- Cho doc ay CHI co the la phep thu "diem tha tay con trong node khong", khong
+-- the la phep thu luc BAT DAU cham: no `return 0` khi co `+0xa7c` TAT, ma co ay
+-- chi duoc bat trong dung mot man — neu la phep thu luc bat dau thi khong node
+-- nao tren moi man khac cham duoc nua. Vi vay no chi thay cho `bTouchInSide`
+-- (tham so 2 cua `onTouchEnd_*`), dung cho ma `CUIArmyGroupCampsite:
+-- onTouchEnd_OnTouchActionsSwitch` doc: `if not bTouchInSide then goto Exit0`.
+-- Xem `LuaRuntime._trong_thuc` (game/lua_runtime.gd).
+function Node:setIsOpenDetection(co, a, b)
+	local gd = raw(self)
+	if co == nil then co = true end
+	if not co then
+		gd:set_meta('cham_mo', false)
+		if gd:has_meta('vung_cham') then gd:remove_meta('vung_cham') end
+		return
+	end
+	gd:set_meta('cham_mo', true)
+	gd:set_meta('cham_so_1', math.floor(tonumber(a) or 0))
+	gd:set_meta('cham_so_2', math.floor(tonumber(b) or 0))
+end
+
+-- Vi sao bon so di qua MOT CHUOI chu khong qua mot bang: **bang Lua dua vao
+-- `set_meta` bi IM LANG bo di** — do that roi (dat `{1.5, 2.5, 3.5, 4.5}` va
+-- `{1,2,30,40}` vao meta roi doc lai tu GDScript: ca hai deu khong co, khong
+-- mot loi nao). So / bool / chuoi thi qua duoc binh thuong. Dung kieu loi im
+-- lang cua du an nay, va cung la ly do `setSoundStrArr` o tren luu chuoi.
+--
+-- MOT BAY NUA do ra cung luc, ghi lai: goi phuong thuc Godot tren node da BOC
+-- (`c.wrap`) thi **im lang khong lam gi** — `n:set_meta(...)` khong dat duoc
+-- meta nao ca, trong khi cung lenh ay tren `c.raw(n)` chay dung. Ca bon ham o
+-- day deu di qua `raw(self)` truoc, dung nhu lop `tien_do` da phai lam.
+function Node:pushDetectionAreaInPatentSpace(x, y, x2, y2)
+	if x == nil or y == nil or x2 == nil or y2 == nil then return end
+	local gd = raw(self)
+	local cu = ''
+	if gd:has_meta('vung_cham') then cu = tostring(gd:get_meta('vung_cham')) end
+	gd:set_meta('vung_cham', cu .. string.format('%.4f,%.4f,%.4f,%.4f;',
+			tonumber(x) or 0, tonumber(y) or 0, tonumber(x2) or 0, tonumber(y2) or 0))
 end
 
 -- Diem / hop cua MOT XUONG BAT KY -----------------------------------------

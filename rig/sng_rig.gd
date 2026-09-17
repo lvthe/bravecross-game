@@ -588,23 +588,106 @@ func _build_bones() -> void:
 ## Mot thu co the hien cua xuong: anh trong atlas, hoac CA MOT RIG KHAC nam
 ## trong cung file — dau cua CaoCao, than cua ZhuGeLiang deu vay. Rig long nhau
 ## dung de quy va chay dong tac dau cua no.
+##
+## Anh duoc UU TIEN khi mot ten co o ca hai bang (xem `_nested_variant`).
 func _display_for(ref: String, bone: String) -> Node2D:
-	var info := _sprite_for([ref])
-	if not info.is_empty():
+	if not _sprite_for([ref]).is_empty():
+		return o_hien(ref, bone, true)
+	return o_hien(ref, bone, false)
+
+
+## Dung mot thu HIEN DUOC tu TEN cua no trong file, de thay vao o cua mot xuong.
+##
+## Moi ten trong .xml chi thuoc MOT trong hai bang, va ban goc cung tach dung
+## hai duong ay — do la ly do co HAI ham rieng
+## (`_lua_changeTextureDisplay` 0x2aa81e / `_lua_changeArmtureDisplay` 0x2aa87a,
+## hai ham nam ngay canh nhau va than giong het nhau, chi khac cho chung goi
+## `[vtable+0x280]` hay `[vtable+0x284]` cua doi tuong armature):
+##
+##   chi_anh = true   ten la ANH trong atlas (`UIWoYaoShenJiang_res-Num3`,
+##                    `UIZhuangBeiWuHun_Res-300T`)
+##   chi_anh = false  ten la MOT BIEN THE cua chinh file .xml do
+##                    (`UIWoYaoShenJiang_Base_Light`) — rig long nhau
+##
+## Tra ve null khi khong co trong bang ay — va do la duong AN mot xuong ma ban
+## goc dang dung: `UIWoYaoShenJiang_res-44` la anh 4x4 rong, va bang lien ket
+## cua chinh file ay cho `PlugIn_1..6` + `LayerName000` deu tro toi no.
+##
+## `bone` chi de ghi so `nested_rigs` (nhu `_display_for`), khong dung vao viec
+## dung node.
+func o_hien(ten: String, bone: String, chi_anh: bool) -> Node2D:
+	if chi_anh:
+		var info := _sprite_for([ten])
+		if info.is_empty():
+			return null
 		return _make_sprite(info)
-	var nested := _nested_variant([ref])
+	var nested := _nested_variant([ten])
 	if nested == "":
 		return null
-	# KHONG truyen hide_clutter xuong: xem chu thich o CLUTTER_PREFIXES.
+	# Tham so cuoi (hide_clutter) luon la false: KHONG truyen bo loc xuong rig
+	# long nhau — xem chu thich o CLUTTER_PREFIXES.
 	var child := _make(data, source_dir, nested, nested, _chain, false)
 	if child == null:
 		return null
 	var names := child.animations()
 	if not names.is_empty():
 		child.player.play(names[0])
-	if not nested_rigs.has(bone):
+	if bone != "" and not nested_rigs.has(bone):
 		nested_rigs.append(bone)
 	return child
+
+
+## Thay thu dang hien o o `idx` cua xuong `bone` bang `node`; `node` = null thi
+## o do thanh RONG.
+##
+## Ban goc KHONG them mot o moi: no THAY the phan tu `idx` trong danh sach hien
+## cua xuong (vtable +0x280 / +0x284). Nen o chi so `d` cua cac khung sau do —
+## ca khung chua chay lan khung dang chay — deu lay dung node vua thay. Do la y
+## cua tro: CUIShakeDice doi mat xuc xac bang cach thay anh o mot o, roi de dong
+## tac chay tiep.
+##
+## O vuot bang thi NOI RONG bang `null` (khac `_dat_khung` — ham do COI chi so
+## ngoai bang la 0 vi do la du lieu khung hong). O `idx` am thi bo qua.
+func thay_o_hien(bone: String, node: Node2D, idx: int) -> bool:
+	if idx < 0 or not displays.has(bone):
+		return false
+	var xuong: Node2D = bones.get(bone)
+	if xuong == null:
+		return false
+	var ds: Array = displays[bone]
+	while ds.size() <= idx:
+		ds.append(null)
+	var cu = ds[idx]
+	if cu != null and is_instance_valid(cu):
+		xuong.remove_child(cu)
+		cu.queue_free()
+	ds[idx] = node
+	if node != null:
+		node.visible = false
+		xuong.add_child(node)
+	# Doi HIEN/AN bang tay chu khong goi `_dat_khung`: ham do con dat lai CACH
+	# TRON cua ca xuong theo tham so, ma o day khong biet khung nao dang chay.
+	for i in ds.size():
+		if ds[i] != null and is_instance_valid(ds[i]):
+			ds[i].visible = i == idx
+	return true
+
+
+## Bien the nay co phai CANH khong.
+##
+## Canh la mot armature RIENG (`EquipWing_01`, `EquipWing_11`… — 63 bien the
+## trong `assets_ref/EquipWing`), khong phai mot xuong cua nhan vat. Dong tac
+## cua no dung ten `Standby` / `Run` / `Death` / `Fire` / `Hit`, va
+## `CUIArmyGroupCampsite.lua:1797,1799` goi dung `Death` / `Standby` — nen phep
+## kiem nay chon dung thu ma `_Lua_changeWingAnimation` can.
+##
+## Trong ban dung, khong duong nao GAN canh vao nhan vat: ban goc gan bang ham
+## toan cuc `setGear(pRole, value)` (ClientPaperDoll:ChangePaperDollHelper, voi
+## `HeroSkinType.Wing`), ma `setGear` chua lam — bon cho ghi con tro canh
+## (`this[+0x9fc]`) deu nam trong C++ va khong co trong bang bind Lua nao. Nen
+## ham nay hien chi dung de nhan ra canh SAU NAY.
+func la_canh() -> bool:
+	return variant.begins_with("EquipWing")
 
 
 ## Hien o thu `idx` cua xuong, an cac o khac; -1 an het. Chi so ngoai bang

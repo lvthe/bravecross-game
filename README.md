@@ -1120,7 +1120,9 @@ và đo ra thì cả kho chỉ có **9 node** vượt quá ngưỡng ấy nên k
 
 12. ~~**Hai hàm xương của armature — `_lua_getBonePosInNode` /
     `_lua_getBoneRectInNode`**~~ — **xong**, khoá bằng `tools/verify_xuong.gd`
-    (**59 đạt / 0 hỏng**, `check.py` bộ thứ **40**). Khác mọi API thiếu khác ở
+    (**59 đạt / 0 hỏng**, `check.py` bộ thứ **36** — con số "40" ghi ở đây trước
+    kia là **sai**, đếm lại trên chính `check.py`: `SUITES` lúc thêm bộ này có
+    **36** mục và nó là mục cuối; ba mục ngay trước đó ghi 33/34/35 thì **đúng**). Khác mọi API thiếu khác ở
     một chỗ quan trọng: **thiếu thì không im lặng**. Chỗ gọi
     (`sc/user/UI/CUIHeroInfoFightSoulUI.lua:3105-3106`, màn Võ Hồn) gác bằng
     `if spHero._lua_getBonePosInNode ~= nil then` — mà `__index` của lớp giả lập
@@ -1142,6 +1144,39 @@ và đo ra thì cả kho chỉ có **9 node** vượt quá ngưỡng ấy nên k
     (`getScale`/`setScale` giết cả tiến trình dò trên máy ảo), bản dựng không
     nhân nó, và chỗ gọi thật truyền node **thường** nên không dính. Số đo đầy
     đủ: `ROADMAP.md`, mục "Hai hàm xương".
+
+13. ~~**Bốn nhóm API còn lại của lớp giả lập**~~ — **xong**, khoá bằng
+    `tools/verify_o_hien.gd` (**93 đạt / 0 hỏng**, `check.py` bộ thứ **38**).
+    Bốn nhóm: **đổi ô hiển của xương** (`_lua_changeTextureDisplay` 14 chỗ /
+    `_lua_changeArmtureDisplay` 2 chỗ), **cánh** (`_Lua_changeWingAnimation` 1),
+    **tiếng chạm** (`setSoundStrArr` 2), **vùng chạm**
+    (`setIsOpenDetection` 2 + `pushDetectionAreaInPatentSpace` 4). Chi tiết và số
+    đo ở `ROADMAP.md`, mục "Bốn nhóm API của lớp giả lập". Bốn điều đáng nhớ
+    nhất, cả bốn đều **đo được** chứ không suy:
+    * Hai hàm đổi ô hiển nằm **ngay cạnh nhau** trong `libgame.so` và thân
+      **giống hệt** — khác đúng một chỗ: `[vtable+0x280]` thay bằng **ảnh**,
+      `[vtable+0x284]` thay bằng **một biến thể của chính `.xml`** (rig lồng
+      nhau). Đó là lý do bản gốc có **hai** hàm cho một việc tưởng như một, và
+      `idx` là **THAY** phần tử chứ không phải **THÊM** (cả 16 chỗ gọi đều
+      truyền `0`, và ô ấy đổi cả cho những khung chưa chạy).
+    * `_Lua_changeWingAnimation` trả `false` là **đúng**: không đường nào **gắn**
+      cánh trong bản dựng (bản gốc gắn bằng `setGear`, hàm này **chưa làm**, và
+      **bốn** chỗ ghi con trỏ cánh đều nằm trong C++ không lộ ra Lua) — nên hàm
+      đi đúng nhánh `if (!w) return 0` của bản gốc.
+    * Bốn số của vùng chạm là **HAI GÓC ĐỐI NHAU trong hệ của node CHA**
+      (`convertToWorldSpace` hai lần rồi đưa cả hai về node cha), **không** phải
+      `(x, y, rộng, cao)`. Hai số nguyên đi kèm thì **không khôi phục được** —
+      giữ nguyên số của bản gốc (`10, 4` / `9, 3`) và **không đặt tên** cho chúng.
+    * **Ba cái bẫy im lặng** đo được cùng lượt: bảng Lua đưa vào `set_meta` bị
+      **bỏ đi không một lời** (nên số và tên phải đi qua chuỗi); gọi phương thức
+      Godot trên node đã **bọc** (`c.wrap`) thì **im lặng không làm gì** (nên
+      phải `c.raw`); và biến toàn cục của Lua đọc ngược ra qua cầu là **bảng
+      "bóng"** (`string.format('%d', _G['_DEM'])` ném `number expected, got
+      table`) — nên bộ đếm của phép kiểm sống trong node Godot.
+    Chữ ký hàm chạm của bản gốc cũng chốt được ở đây: `goi_pha` gọi
+    `pcall(f, obj, sender, ...)`, tức **node nhận chạm là tham số THỨ HAI** —
+    `onTouchEnd_<tên>(o, sender, trong)`. Viết sai thì **không lỗi nào** ở dòng
+    chạy, chỉ có lỗi nằm trong `loi_cham`, nên phép kiểm đòi luôn `#loi_cham == 0`.
 
 #### Chiến dịch và sân trận
 

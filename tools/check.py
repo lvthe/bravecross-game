@@ -190,6 +190,20 @@ SUITES = [
     # viec rig cua tuong VAN la con dau tien (neu khong thi `_rig_cua` tro nham
     # sang hieu ung), va chinh `g_ClientPaperDoll` chay nguyen van.
     ('hieu ung sao',         'script', 'tools/verify_sao.gd',         False, []),
+
+    # Bon nhom API cua lop gia lap vua lam xong. Doc lap truoc tien: bang LIEN KET
+    # xuong -> anh cua chinh file `.json` (`Dice3` la ANH, `Light3` la MOT BIEN THE
+    # long nhau — dung hai bang ay la ly do ban goc co hai ham rieng cho mot viec
+    # tuong nhu mot), roi den `SngRig.thay_o_hien` (THAY o `idx` chu khong THEM, va
+    # o do lai duoc ham khung sau do nhat len), roi den duong Lua DUNG NHU CHO GOI
+    # THAT (`CUIShakeDice.lua:404-419` lat sau mat xuc xac — ca hai nhanh `nPoints
+    # == 6` va khong; `CUIHeroInfoFightSoulUI.lua:2673` doi so cua bua vo hon voi
+    # TEN BIEN THE chu khong phai ten thu muc), va cuoi cung la bon so cua vung
+    # cham di qua chinh `LuaRuntime.touch_at` / `_trong_thuc` (hai goc doi trong
+    # khong gian cua node CHA, khac han o cua chinh node — phep kiem chon diem
+    # phan biet duoc hai cach hieu), tieng dong chi phat o pha Begin, va
+    # `_Lua_changeWingAnimation` voi tới CANH ma khong dung tới nhan vat.
+    ('o hien armature',      'script', 'tools/verify_o_hien.gd',      False, []),
 ]
 
 SCORE = re.compile(r'dat (\d+), hong (\d+)')

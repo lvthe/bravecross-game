@@ -827,7 +827,7 @@ func touch_at(pha: String, p: Vector2) -> bool:
 	if _dang_cham == null or not is_instance_valid(_dang_cham):
 		_dang_cham = null
 		return false
-	var trong := _trung(_dang_cham, p)
+	var trong := _trong_thuc(_dang_cham, p)
 	if pha == "Move":
 		_goi_cham("Move", _dang_cham, trong, c.x, c.y)
 		return true
@@ -938,6 +938,49 @@ static func _trung(n: Control, p: Vector2) -> bool:
 	if n.size.x <= 0.0 or n.size.y <= 0.0:
 		return false
 	return Rect2(Vector2.ZERO, n.size).has_point(_bien_doi(n).affine_inverse() * p)
+
+
+## Tham so 2 (`bTouchInSide`) cua `onTouchEnd_*` — xem co nam trong node khong.
+##
+## Voi hau het node thi la dung phep thu o cua node (`_trung`). Nhung node nao
+## da goi `setIsOpenDetection` + `pushDetectionAreaInPatentSpace` (lua/cocos.lua)
+## thi BAN GOC thay phep thu ay bang DANH SACH VUNG RIENG, va vung tinh trong HE
+## CUA **NODE CHA** (`CampsiteActiveArea` — chu "InPatentSpace" 在父空间).
+## Bon so cua moi vung la HAI GOC DOI NHAU (`x_min, y_min, x_max, y_max`), khong
+## phai `(x, y, rong, cao)`: `CUIArmyGroupCampsite.lua:562-569` lay
+## `convertToWorldSpace(0,0)` va `convertToWorldSpace(fW,fH)` roi doi ca hai ve
+## node cha.
+##
+## `cham_mo` la co bat/tat, `cham_so_1` / `cham_so_2` la hai so nguyen ma ban goc
+## luu lai trong cung loi goi — **KHONG dung o day**: y nghia cua chung khong
+## khoi phuc duoc (xem chu thich `setIsOpenDetection`).
+static func _trong_thuc(n: Control, p: Vector2) -> bool:
+	if not n.has_meta("cham_mo") or not bool(n.get_meta("cham_mo")):
+		return _trung(n, p)
+	if not n.has_meta("vung_cham"):
+		# Co bat nhung danh sach RONG: ban goc duyet mot vector rong nen khong
+		# vung nao chua diem — cung ra false.
+		return false
+	var cha := n.get_parent()
+	var q := p
+	var h := 640.0
+	if cha is Control:
+		q = _bien_doi(cha).affine_inverse() * p
+		if (cha as Control).size.y > 0.0:
+			h = (cha as Control).size.y
+	var x := q.x
+	var y := h - q.y
+	for muc in String(n.get_meta("vung_cham")).split(";", false):
+		var so := (muc as String).split(",")
+		if so.size() != 4:
+			continue
+		var x1 := minf(so[0].to_float(), so[2].to_float())
+		var x2 := maxf(so[0].to_float(), so[2].to_float())
+		var y1 := minf(so[1].to_float(), so[3].to_float())
+		var y2 := maxf(so[1].to_float(), so[3].to_float())
+		if x >= x1 and x <= x2 and y >= y1 and y <= y2:
+			return true
+	return false
 
 
 static func _bien_doi(n: CanvasItem) -> Transform2D:

@@ -27,7 +27,7 @@ từ bản đã dịch ngược. Hai repo, nằm cạnh nhau:
 ## Trước khi làm gì
 
 ```bash
-python tools/check.py          # 39 bộ, phải xanh hết
+python tools/check.py          # 42 dòng kết quả (38 bộ trong SUITES + 4 bộ Python), phải xanh hết
 ```
 
 Kéo `brave-cross` mới về thì dựng lại `ui_ref` + `layout_ref` + tag (README,
@@ -140,6 +140,19 @@ mọi phần trăm**: thanh máu HUD luôn đầy, thanh nạp game không bao g
 Vẽ được rồi vẫn chưa chạy: **hai action** đẩy phần trăm (`S_CCProgressTo` 49
 chỗ gọi, `S_CCProgressFromTo` 14) là **bóng** cho tới lượt này — xem mục
 "Thanh tiến độ", đoạn cuối.
+
+(10) **bốn nhóm API còn lại — xong**: đổi ô hiển của xương
+(`_lua_changeTextureDisplay` / `_lua_changeArmtureDisplay` — hai hàm, `idx` là
+**THAY** chứ không phải THÊM), cánh (`_Lua_changeWingAnimation` trả `false` là
+đúng vì không đường nào gắn cánh), tiếng chạm (`setSoundStrArr`), vùng chạm
+(`setIsOpenDetection` + `pushDetectionAreaInPatentSpace` — bốn số là **hai góc
+đối nhau trong hệ node CHA**). Khoá bằng `tools/verify_o_hien.gd` (93 đạt /
+0 hỏng). **Ba bẫy im lặng** đo được cùng lượt, đừng quên: bảng Lua đưa vào
+`set_meta` **bị bỏ đi không một lời**; gọi phương thức Godot trên node đã **bọc**
+(`c.wrap`) thì **im lặng không làm gì** (phải `c.raw`); biến toàn cục của Lua đọc
+ngược ra qua cầu là **bảng "bóng"**, không phải số. Chữ ký hàm chạm: `goi_pha`
+gọi `pcall(f, obj, sender, ...)` — **node là tham số THỨ HAI**. Chi tiết:
+`ROADMAP.md`, mục "Bốn nhóm API của lớp giả lập".
 
 Kịch bản trận (`sc/plot/drama_*.lua`) chạy bằng `lua/kich_ban.lua`
 (`DFDramaScriptSystem` giả, chạy coroutine + điều kiện đi tiếp). Bật bằng cờ

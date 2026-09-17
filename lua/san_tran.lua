@@ -175,6 +175,12 @@ return function(C)
 	-- (CUIGame:AttachArmy -> attachedDispatch), khong ton thong soai.
 	local function dua_linh(khoa, gia, id, mien_phi)
 		if not T.dang or T.tran == nil or T.dung == true then return false end
+		-- Kich ban co the dang CAM nut binh chung (`SeDispatchButtonDisable`,
+		-- xem `kich_ban.lua`): ban goc gac o C++ nen cu bam la khong ra quan.
+		-- Ta KHONG chan (chan la doi hanh vi cua ban dung) — chi DEM, de bo do
+		-- phan biet duoc "may do da bam ngoai cua so cho phep".
+		local kb = rawget(_G, 'g_DramaSystem')
+		if kb ~= nil and type(kb.bao_bam_dat) == 'function' then kb:bao_bam_dat() end
 		gia = tonumber(gia) or 0
 		if not mien_phi and T.ld < gia then
 			ghi('dua linh ' .. tostring(khoa) .. ': thieu thong soai ' .. T.ld .. '/' .. gia)
@@ -236,6 +242,18 @@ return function(C)
 	-- = `Chapter.LeaderShipResume` (giay cho moi 1 diem) de phep do kiem duoc
 	-- NHIP hoi chu khong chi kiem con so dau va con so cuoi.
 	function S:_thong_soai() return T.ld, T.ld_max, T.ld_hoi end
+
+	-- Cho cong cu do doc MOC DUNG cua toan quan ta (`Sprite.Troop.PosX`, o) —
+	-- khong phai ham cua ban goc. Doc lai CHINH chuoi JSON ma ma goc gui xuong
+	-- bang `cjson` cua Lua, de phep kiem co hai duong doc doc lap: duong nay (Lua)
+	-- va duong cua man tran (`tran_nut:do_cho_dat`, GDScript). Hai ben lech nhau
+	-- la biet ngay. Xem `tools/verify_dat_linh.gd` va `tools/do_chien_dich.gd`.
+	function S:_moc_toan()
+		local ok, t = pcall(cjson.decode, T.ta)
+		if not ok or type(t) ~= 'table' or type(t.Sprite) ~= 'table' then return nil end
+		local tr = t.Sprite.Troop
+		return type(tr) == 'table' and tonumber(tr.PosX) or nil
+	end
 
 	-- Thuc tinh. Nut: spBattleFieldHeroItem nhan ban, tag 1..5
 	-- (CUIGame:SetSkillIcons). ENGINE goi InitSkillButton cho tung tuong, doi

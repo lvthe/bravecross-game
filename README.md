@@ -605,6 +605,16 @@ thành 353, và 105 màn mở được thành 244.
 
 ### Những chỗ đã mất công tìm ra, đừng tìm lại
 
+* **Có HAI bản `libgame.so`, và địa chỉ không dùng chung được.** Trong
+  `brave-cross/work/` có `apk/…` (10.231.498 byte, 25-10-2017) và `vn/apk/…`
+  (10.213.832 byte, 28-12-2017); **không có đoạn byte nào giống nhau** giữa hai
+  bản (đã đo), nên cùng một hàm nằm ở hai địa chỉ khác nhau — thí dụ chuỗi
+  `DispatchButtonDisable` ở `0x7c57f8` (apk) và `0x7c1bb6` (vn). **Bản tham
+  chiếu là `vn`**, vì `sc/` và `data_ref` của bản dựng lấy từ
+  `work/vn/decrypted/assets`; mọi địa chỉ trong tài liệu này là của **vn** trừ
+  chỗ ghi rõ `(apk)`. Đã mất công một lần vì đọc bản apk rồi tưởng các địa chỉ
+  cũ trong tài liệu sai và định xoá đi — chúng **đúng ở không gian vn**. Trước
+  khi bác bỏ một địa chỉ, phải biết nó thuộc bản nào.
 * **`+0xA4` trong `.xgg` là `zOrder`**, không phải tag. Kiểm được vì
   `CUIManager.lua` đặt zOrder cho từng lớp che bằng hằng số viết rõ trong mã:
   `lNormalDlgMask` 20, lớp chạm 21, `lSubDialogMask` 100, `lSystemMask` 4000,
@@ -1402,8 +1412,16 @@ khi engine nhận `setDispatchID`. Bấm nút hay `CUIGame:TouchArrmy(n)` (đư�
 `updateLeaderShip` / `updateMaxLeaderShip` (tên đo trong `libgame.so`). Số lấy
 từ dữ liệu bản gốc: `L_N_01_01` có thống soái 6, `LeaderShipResume` 5;
 `Troop_1` (`DefenderN`, HP 1.000) tốn 3, mỗi toán 4 người. ĐẶT, chưa đo: vào
-trận đầy thống soái; hồi 1 điểm sau mỗi `LeaderShipResume` giây; toán lính
-xuất hiện ở mép trái sân. "Binh lực 20/20" chưa làm — không có số trong dữ
+trận đầy thống soái; hồi 1 điểm sau mỗi `LeaderShipResume` giây. Toán lính đưa
+ra **đứng ở ô 0** (mép trái sàn) — ĐẶT, và đã thử đặt lên mốc của toán rồi **phải
+bỏ** (`--kichban` tụt 9/0 → 6/3: toán đứng trong sàn gặp địch sớm hơn ~1,4 giây,
+trận kết thúc trước bước kế tiếp của kịch bản, mà đồng hồ kịch bản chính là đồng
+hồ trận — xem `san_tran_ve.dua_linh`). Còn mốc của toán thì là **số đo**
+(`Sprite.Troop.PosX` — đo trong trận thật: 7 ô = 700 px ở `L_N_01_01`), và
+`dispatch()` của engine **không tính toạ độ nào** (`.so` bản vn: `0x45eda4` →
+`0x466220` chỉ ghi danh quân vào danh sách của sàn), nên "chỗ đứng của quân đưa ra
+= chỗ của toán" mới chỉ là **suy ra** — chưa đo được (đường máy ảo đã chết trong
+`RepaleceScene`, xem `work/emu_tran.py`). "Binh lực 20/20" chưa làm — không có số trong dữ
 liệu. Kiểm (`--kiem`): hai lần `TouchArrmy(1)` thả 2 × 4 người (quân 11 → 19),
 thống soái 6 → 0, lần ba bị từ chối; bấm THẬT vào tâm nút (qua `touch_at`) sau
 khi hồi đủ 3 thì thêm 4 người, trừ 3.

@@ -27,7 +27,7 @@ từ bản đã dịch ngược. Hai repo, nằm cạnh nhau:
 ## Trước khi làm gì
 
 ```bash
-python tools/check.py          # 43 dòng kết quả (39 bộ trong SUITES + 4 bộ Python), phải xanh hết
+python tools/check.py          # 44 dòng kết quả (40 bộ trong SUITES + 4 bộ Python), phải xanh hết
 ```
 
 Kéo `brave-cross` mới về thì dựng lại `ui_ref` + `layout_ref` + tag (README,
@@ -287,9 +287,54 @@ một ô. Số làn cũng là số đo: `Location` của 91 mục trong `KDBGame
 chỉ nhận 0..3. Nay `fArmySpace` có bản anh em `fArmySpaceInArena` (1.2) cho đấu
 trường, engine có hai hàm đọc riêng (`0x38193c` / `0x388240`). Đường đo +
 `tran_ref.json` + `tools/verify_lan.gd`; hàm `san_tran_ve.gd:lan_lech_y()` là chỗ
-duy nhất tính làn ra toạ độ. **Còn ĐẶT đúng một chỗ**: chỗ đặt **toán lính đầu
-tiên** khi bấm nút binh chủng (ta đặt ở mép trái ô 0) — client chỉ gọi `dispatch()`
-của lớp C++ nên không suy ra được từ `.so`; và thứ tự xếp khi `Location = 0`.
+duy nhất tính làn ra toạ độ. **Chỗ đặt toán lính đưa ra — ĐÃ THỬ VÀ PHẢI BỎ
+(2026-09-17); vẫn là ĐẶT (ô 0).** Đã tưởng chốt được: `dispatch()` của engine
+**không tính toạ độ nào** (`.so` **bản vn**: `0x45eda4` → `0x466220` chỉ đánh dấu
+quân `+0x5a4 = 0x44` rồi nối vào danh sách của sàn `+0x39c`), nên quân đưa ra đứng
+đúng chỗ của toán, và chỗ ấy là `Sprite.Troop.PosX` (`CUIGame:FitBattleArmyPos` đặt
+3,83 ô, `FightLogic:GetSelfFightDataBody` mặc định 7). **Đo trong trận thật**
+(`L_N_01_01`, `do_chien_dich --kiem`): `PosX = 7` ô = **700 px**. Nhưng đổi
+`dua_linh` sang dùng mốc ấy thì `do_chien_dich --kichban` **tụt từ 9 đạt / 0 hỏng
+xuống 6/3** — toán đứng trong sàn gặp địch sớm hơn ~1,4 giây, trận kết thúc trước
+bước kế tiếp của kịch bản, mà **đồng hồ kịch bản chính là đồng hồ trận**
+(`lua/san_tran.lua:78`, `dung_tran` gọi `T.hen:stop()`), nên kịch bản đứng ở lệnh
+27/43. Đặt từ **mép** sàn cũng ra 6/3. Nên đã **trả về ô 0**, giữ lại phần **đo
+được**: một chỗ định nghĩa duy nhất `tran_goc.moc_toan(sprite)` cho `doc_quan`
+(hành vi y hệt mã cũ — ải 1 vẫn 9/0), khoá bằng `tools/verify_dat_linh.gd`
+(17 đạt / 0 hỏng) và một phép kiểm **hai đường đọc độc lập** trong
+`do_chien_dich --kiem` (Lua `cjson` đọc lại chuỗi JSON so với số của màn trận,
+`dat 27, hong 0`). Câu cũ "phải dựng lại trên máy ảo bằng cờ `bDirectBattle`"
+**đã đo và SAI**: đường ấy tới `bDirectBattle = true` rồi SIGSEGV trong
+`RepaleceScene` (`work/emu_dom.py`). **Lượt này bác bỏ thêm một giả thuyết bằng
+phép đo:** `SeDispatchButtonDisable` / `SetWakeButtonDisable` **không phải** lệnh
+ghi nhật ký — chúng ghi **cờ bật nút** của lớp drama (vn `0x468b54` / `0x468b78`:
+`eor r0,r0,#1; strb.w r0,[drama+0x390]` / `+0x391` tại `0x468b6a` / `0x468b8e`;
+đọc lại ở vn `0x45d554` / `0x462308`, trả 0 trừ khi `[drama+0x37c] == 1`; bản apk
+là `0x46af20` / `0x46af44` / `0x45f8b4` / `0x4646d4`). Bản gốc **gác ở C++**
+(`CUIGame:TouchArrmy` gọi thẳng `dispatch()`); nay `lua/kich_ban.lua` giữ cờ thật
+và `lua/san_tran.lua` **đếm** số lần bấm trong lúc cấm — đo được **0 lần** (lệnh
+cấm nằm gần cuối kịch bản, sau khi quân đã ra hết), nên lời giải thích cũ "bộ đo
+bấm nút kể cả trong cửa sổ bị cấm" **sai**. **Còn CHƯA rõ, ghi rõ:** người đầu
+tiên đứng ngay mốc hay lệch nửa toán (`0x41b538` có `vsub.f32` = `X ∓ fArmyLength ×
+0.5 × cỡ ô` = 200 px, **dấu** do `0x414912` quyết định — nó lật bit dấu khi cờ
+`[obj+0x308]` khác 1; bản dựng cho đứng ngay mốc), và nhịp cách giữa các **toán**
+đưa ra (bản dựng lấy `fArmySpace` = 110 px). Cùng lượt, hai sự thật mới của `.so`
+(đều bản vn): `0x382670` = `fArmySpace × fArmyLength × cỡ ô px` = 440 px (ví dụ thứ
+ba của lối "hằng số tính bằng ô × cỡ ô"); và tên khoá JSON (`PosX` ở `0x7bc0b7`,
+`Soldiers`, `NpcID`…) **không truy được bằng xref** — không một word 4 byte nào
+trong cả file trỏ vào `0x7bc000–0x7bd000`, nên đường engine → parse JSON không lần
+tĩnh được. Thứ tự xếp khi `Location = 0` vẫn là của ta.
+
+**Địa chỉ `.so` phải nói rõ BẢN NÀO.** Trong `brave-cross/work/` có **hai** bản
+`libgame.so` khác nhau về bố cục mã: `apk/…` (10.231.498 byte, 25-10-2017) và
+`vn/apk/…` (10.213.832 byte, 28-12-2017). **Không có đoạn byte nào giống nhau
+giữa hai bản** (đo), nên địa chỉ **không dùng chung được**: cùng chuỗi
+`DispatchButtonDisable` nằm ở `0x7c57f8` (apk) và `0x7c1bb6` (vn). **Mọi địa chỉ
+trong tài liệu này là của bản `vn`** — bản tham chiếu, vì `sc/` và `data_ref` của
+bản dựng lấy từ `work/vn/decrypted/assets` — trừ chỗ nào ghi rõ `(apk)`. Đã mắc
+một lần: đọc bản apk rồi tưởng các địa chỉ cũ trong tài liệu sai và định xoá đi;
+thực ra chúng **đúng ở không gian vn**. Trước khi bác bỏ một địa chỉ, phải biết nó
+thuộc bản nào.
 
 `ptLayout`: ĐỪNG đoán tiếp, HAI giả thuyết đã bị bác bỏ bằng số đo — "đội hình
 của toán lính" (tích `x*y` khớp `MaxUnit` ở 0/6 binh chủng) và "kích thước

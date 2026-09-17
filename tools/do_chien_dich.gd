@@ -21,6 +21,9 @@
 extends SceneTree
 
 const VM := preload("res://tools/vao_main.gd")
+## Man tran: lay hang so nhip xep quan tu chinh cho dinh nghia (`ARMY_SPACE`), de
+## phep kiem khong chep tay con so 110 px.
+const STV := preload("res://battle/san_tran_ve.gd")
 const KHUNG := 1.0 / 30.0
 
 ## [ten buoc, viec lam (Lua), so khung cho sau do]
@@ -105,6 +108,13 @@ const BUOC := [
 		local q1 = nut:so_quan()
 		local l1, lm, hoi = bf:_thong_soai()
 		nk.dua = { q0, q1, l0, l1, lm }
+		-- CHO DAT toan linh: moc cua toan doc HAI duong khac nhau de soi ra duoc
+		-- mot lan lech o giua — `bf:_moc_toan()` doc lai chinh chuoi JSON ma MA GOC
+		-- gui xuong bang cjson cua Lua, con `nut:do_cho_dat()` la so cua man tran
+		-- (GDScript) sau khi da dat quan. Hai ben phai ra cung mot moc, va moc do
+		-- phai khac 0 (o 0 la mep trai san, ngoai doi hinh).
+		nk.moc = bf:_moc_toan()
+		nk.cho = nut:do_cho_dat()
 		-- Thong soai vao tran: do ca BA dau, de phep kiem khong chi hoi "engine
 		-- giu so may" ma hoi "so do o dau ra".
 		--   lm    — so engine dang giu la toi da (doc tu `Chapter.LeaderShip`
@@ -350,6 +360,12 @@ func _init() -> void:
 			print("  chuoi thoai: %s" % (str(kb.get("thoai", "")) if kb != null else ""))
 			print("  nhat ky kich ban: %s" % (str(kb.get("nk", "")) if kb != null else ""))
 			print("  loi kich ban: %s" % loikb)
+			# Nut binh chung bi kich ban cam: co that cua `SeDispatchButtonDisable`
+			# (dao khi ghi vao `drama+0x390`). `bam_cam` dem so lan may do VAN bam
+			# trong luc cam — ban goc khong cho, ta khong chan nhung do.
+			print("  nut binh chung bi cam: %s | so lan bam trong luc cam: %d" % [
+					str(kb.get("nk", "")).contains("SeDispatchButtonDisable true"),
+					int(kb.get("bam_cam", 0)) if kb != null else 0])
 			# Dong minh nhap tran chua (JoinBattle trong nhat ky), va tran ket
 			# thuc ra sao: kich ban keo boss ra thi ben ta don sach -> thang.
 			print("  quan luc kich ban xong: %s" % str(lua.run("return require('cocos').tran_nut:ds_quan()", "ds")))
@@ -385,6 +401,12 @@ func _init() -> void:
 				["duong di: MoveThenDoAction toi san tran", nk.contains("MoveThenDo"), nk],
 				["dong tac: DoAction toi san tran", nk.contains("DoAction"), nk],
 				["lenh trang thai tran duoc ghi (SetArmyWaiting)", nk.contains("SetArmyWaiting"), nk],
+				# Nut binh chung bi kich ban cam la CO THAT cua lop drama, khong
+				# con la lenh ghi nhat ky: chuoi nay chi ra duoc khi
+				# `kich_ban.lua` da giu co va DAO dung nhu `.so`
+				# (`strb.w ~bat,[drama+0x390]` -> bat = true ghi co ban 0).
+				["kich ban cam nut binh chung: giu co that, dao khi ghi",
+						nk.contains("SeDispatchButtonDisable true -> co ban 0"), nk],
 				["hieu ung ban do dung armature that (DramaDialog_SmokeWhite)",
 						da.begins_with("true"), da],
 				["lop phu mau va rung man dang chay", da.contains("phu ") and
@@ -645,6 +667,59 @@ func _process(dt: float) -> bool:
 	return false
 
 
+## Cho dat toan linh trong tran THAT, mot dong cho bang kiem cua `--kiem`.
+##
+## `dua moc` la `Sprite.Troop.PosX` cua chinh chuoi JSON ma MA GOC gui xuong, doc
+## lai bang `cjson` trong Lua (`g_BattleField:_moc_toan`) — nen no la so THAT cua
+## ai nay, khong phai hang so ta chon. `dua cho` la chuoi cua man tran:
+##
+##     moc 3.83 o = 383 px | 8 nguoi vua ra: T11@383, T12@273, ...
+##
+## Hai duong doc doc lap phai ra CUNG mot moc: Lua `cjson` doc lai chuoi JSON
+## (`bf:_moc_toan`) va man tran (`do_cho_dat`). Moc phai khac 0 — o 0 la mep trai
+## san, ngoai doi hinh (`CUIGame:FitBattleArmyPos` dat toan o 3,83 / 7,1 / 7 o).
+## Cho dat cua TOAN LINH DUA RA thi la ĐẶT (o 0, xem `san_tran_ve.dua_linh`), nen
+## phep kiem chi doi moi nguoi nam SAU goc san theo tung buoc `fArmySpace` — dung
+## hinh dang ay — chu khong doi no trung moc cua toan. Doi `dua_linh` sang moc
+## cua toan thi dong kiem nay phai sua cung luc, va phai chay lai `--kichban`
+## truoc (lan 2026-09-17 no tut xuong 6 dat / 3 hong).
+func _kiem_moc(cuoi: Dictionary) -> Array:
+	var moc := float(str(cuoi.get("dua moc", "")))
+	var cho := str(cuoi.get("dua cho", ""))
+	var phan := cho.split(" | ")
+	var m := 0.0
+	var goc := 0.0
+	var xs: Array = []
+	if phan.size() == 3:
+		var dau := phan[0].split(" ")
+		if dau.size() >= 5:
+			m = float(dau[1])
+		var dg := phan[1].split(" ")
+		if dg.size() >= 2:
+			goc = float(dg[1])
+		for o in phan[2].replace("nguoi vua ra:", "").split(","):
+			var a := o.strip_edges().split("@")
+			if a.size() == 2:
+				xs.append(float(a[1]))
+	var buoc := STV.ARMY_SPACE * 100.0
+	var skew := STV.SKEW_X
+	var dat := moc != 0.0 and is_equal_approx(m, moc) and not xs.is_empty()
+	for x in xs:
+		# Doi ta `lui = -1`: moi nguoi xep LUI ve phia sau goc theo luoi cheo cua
+		# `_them` — cot lui `fArmySpace` (1,1 o = 110 px), hang lui them `SKEW_X`
+		# (46 px). Doi lai mot trong hai hang so ay thi dong kiem nay do.
+		var lui := goc - float(x)
+		var khop := false
+		for cot in 8:
+			for hang in 3:
+				if absf(lui - (cot * buoc + hang * skew)) <= 0.5:
+					khop = true
+		if lui < -0.5 or not khop:
+			dat = false
+	return ["cho dat toan linh: moc cua toan doc duoc, toan dua ra xep lui theo luoi fArmySpace/SKEW_X",
+			dat, "moc %s (man tran %.2f) | goc %.0f | %s" % [cuoi.get("dua moc"), m, goc, cho]]
+
+
 ## Kiem ca chuoi chien dich cua ban goc, tu nut tan cong o Main toi man ket
 ## thuc. In "dat X, hong Y" (check.py doc dong nay).
 func _kiem(lua: LuaRuntime, may_chu: String, offline: String, canh: String,
@@ -767,6 +842,13 @@ func _kiem(lua: LuaRuntime, may_chu: String, offline: String, canh: String,
 		ds.append(["dua linh: 2 toan x4 nguoi, thong soai 6 -> 0 (lan 3 bi tu choi)",
 				int(cuoi["dua q"]) == 8 and str(cuoi["dua ld"]) == "6/0/6",
 				"them %s quan, thong soai truoc/sau/toi da %s" % [cuoi["dua q"], cuoi["dua ld"]]])
+		# CHO DAT toan linh: moc cua toan phai la so THAT trong chuoi JSON ma MA GOC
+		# gui xuong (`Sprite.Troop.PosX` — `CUIGame:FitBattleArmyPos` dat 3,83 / 7,1 /
+		# 7 o tuy loai tran), khac 0, va man tran phai dat quan dung moc do. Hai duong
+		# doc doc lap: Lua `cjson` (`bf:_moc_toan`) va GDScript (`do_cho_dat`).
+		ds.append(_kiem_moc(cuoi))
+		print("  cho dat toan linh: Lua doc tu chuoi JSON = %s o | man tran: %s"
+				% [cuoi.get("dua moc"), cuoi.get("dua cho")])
 		# "cam X max M dung false | gb0_0:1.40/D ...": camera toi dich (bi chan
 		# o M), MOI lop troi dung he so x camera, va co it nhat mot lop he so
 		# khac 1 (nen parallax nap duoc tu bo cuc).
@@ -836,6 +918,11 @@ const _KICH_BAN := """
 	out['thoai'] = (k and k.chuoi_thoai) and k:chuoi_thoai():sub(1, 1500) or ''
 	out['nk'] = (k and k.nhat_ky) and k:nhat_ky():sub(1, 1500) or ''
 	out['loi'] = tostring(k and k.loi and k:loi())
+	-- So lan BAM nut binh chung trong luc kich ban dang cam (`kich_ban.lua`
+	-- giu co that cua `SeDispatchButtonDisable`; ban goc gac o C++). Day la so
+	-- DO, khong phai loi: may do bam theo nhip nen so nay noi ro no co bam ngoai
+	-- cua so cho phep hay khong — xem `san_tran_ve.dua_linh`.
+	out['bam_cam'] = (k and k.so_bam_cam) and k:so_bam_cam() or 0
 	return out
 """
 
@@ -862,6 +949,10 @@ const _TRANG_THAI_CUOI := """
 	local d = nk.dua or {}
 	out['dua q'] = (tonumber(d[2]) or 0) - (tonumber(d[1]) or 0)
 	out['dua ld'] = tostring(d[3]) .. '/' .. tostring(d[4]) .. '/' .. tostring(d[5])
+	-- Cho dat toan linh: moc doc tu chuoi JSON (Lua) va cho ma man tran bao
+	-- (GDScript) — xem `nk.moc` / `nk.cho` trong buoc "dua linh ra tran".
+	out['dua moc'] = tostring(nk.moc)
+	out['dua cho'] = tostring(nk.cho)
 	-- Thong soai vao tran: toi-da/nhip-hoi/cong-thuc-ban-goc/JSON/JSON.
 	out['ts vao tran'] = table.concat(nk.ts or {}, '/')
 	local nut = require('cocos').tran_nut

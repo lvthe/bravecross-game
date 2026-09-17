@@ -8,9 +8,9 @@
 # chung the nao. Nay do duoc het (xem `brave-cross/work/tran_ref.py`):
 #
 #   * DON VI la O: chinh file cau hinh ghi chu `<!-- 道宽 格 -->` tren hai hang so
-#     do, va engine nhan voi co o tinh bang px (`0x35f43e` doc `fLaneWidth` roi
-#     `vmul.f32` voi o `+0x270` = `this+0x180`);
-#   * CONG THUC xep lan: `0x35f0a4` = `y = y0 + (Location-1) * rong + lech`;
+#     do, va engine nhan voi co o tinh bang px (`0x35f43e`, BAN VN, doc `fLaneWidth`
+#     roi `vmul.f32` voi o `+0x270` = `this+0x180`);
+#   * CONG THUC xep lan: `0x35f0a4` (vn) = `y = y0 + (Location-1) * rong + lech`;
 #   * SO LAN: `Location` cua bang binh chung chi nhan 0..3 (91 muc).
 #
 # Nen bo kiem nay khong hoi "chay duoc khong" — no hoi MAN TRAN co con dung so
@@ -127,7 +127,7 @@ func _init() -> void:
 			and is_equal_approx(STV.ARMY_SPACE * o_px, 110.0),
 			str(STV.ARMY_SPACE))
 	# Dau truong dung ban KHAC (`fArmySpaceInArena`) — do la ly do engine co hai
-	# ham doc rieng (`0x38193c` / `0x388240`). Man tran thuong khong duoc lay nham
+	# ham doc rieng (vn: `0x38193c` / `0x388240`). Man tran thuong khong duoc lay nham
 	# con so cua dau truong.
 	t("fArmySpaceInArena co that va KHAC fArmySpace",
 			float(army.get("fArmySpaceInArena", 0)) > 0.0

@@ -20,7 +20,8 @@
 #   * duong mat dat: giua node g_MapZero (bo cuc ghi y = 165);
 #   * co armature: NpcSize cua du lieu goc;
 #   * toc do, tam danh toi thieu: cua BattleUnit (chinh cho man 960 px);
-#   * CHO DAT toan linh khi bam nut binh chung (mep trai o 0) — xem `dua_linh`.
+#   * nguoi DAU TIEN cua toan linh dua ra dung ngay moc cua toan hay lech nua
+#     toan, va nhip cach giua cac toan dua ra — xem `dua_linh`.
 extends Node2D
 
 const TRAN_GOC := preload("res://battle/tran_goc.gd")
@@ -48,12 +49,12 @@ const BIEN := 90.0          ## le trai / phai: cho quan tiep vien vao tran
 ## SO LAN va KHOANG CACH LAN la cua BAN GOC, va DON VI nay DA DO DUOC — khong con
 ## la suy luan. Chinh `map/global_config.xml` ghi chu ngay tren hai hang so do
 ## `<!-- 道宽 格 -->` ("be ngang duong [lan], tinh bang O"), va engine nhan no voi
-## co o tinh bang px: `0x35f43e` (lop `CDFTMXTiledMap`) doc `fLaneWidth` roi
-## `vmul.f32` voi o `+0x270` (= `0x35e73a`, tuc `this+0x180`, cap co o). Vay
+## co o tinh bang px: `0x35f43e` (vn; lop `CDFTMXTiledMap`) doc `fLaneWidth` roi
+## `vmul.f32` voi o `+0x270` (= `0x35e73a`, vn; tuc `this+0x180`, cap co o). Vay
 ## 0.4 o = 40 px va 0.1 o = 10 px — ba duong doc lap khac cung noi co o = 100 px
 ## (engine viet cung `100*(4-idx)`, `InWhichCell` chan theo "co o x so o", va
 ## `map/map_1.tmx` khai `tilewidth=100`).
-## Cong thuc xep lan cua engine `0x35f0a4`: `y = y0 + (Location-1) * 40 + 10` —
+## Cong thuc xep lan cua engine `0x35f0a4` (vn): `y = y0 + (Location-1) * 40 + 10` —
 ## xem `lan_lech_y()`. Ba lan nam gon trong 10 + 2*40 = 90 px < 1 o, va `Location`
 ## cua bang binh chung (`config/share/KDBGameArmyConfig.xgg`, 91 muc) chi nhan
 ## 0..3 — nen `LAN_SO` cung la so DO, khong phai so ta chon.
@@ -99,6 +100,11 @@ var _so_im := 0
 ## {ly do: so don} — chia so im theo nguyen nhan. Xem `_phat_trung_don`.
 var _ly_do_im: Dictionary = {}
 var _goc_x := 0.0              ## o 0 cua san (g_MapZero), toa do cua nut nay
+## Moc dung cua toan quan ta tren san, tinh bang O (`Sprite.Troop.PosX` — mot cho
+## dinh nghia duy nhat: `tran_goc.moc_toan`). Linh CO SAN trong du lieu tran dung
+## moc nay; toan linh DUA RA thi khong (ĐẶT o 0) — xem `dua_linh`.
+var _moc_toan := 0.0
+var _ra_cuoi := 0              ## so nguoi vua ra o lan `dua_linh` cuoi cung
 var _cam := 0.0                ## camera da troi bao nhieu px sang phai
 var _cam_max := 0.0
 var _cam_toc := 0.0            ## toc do hien tai, o/giay (tang dan luc bat dau)
@@ -134,6 +140,7 @@ func bat_dau(ta_json: String, dich_json: String, hat: int, mz) -> String:
 	if not (ta is Dictionary) or not (dich is Dictionary):
 		return "setSendTroops / setLevelData khong phai JSON object"
 	_sprite = ta.get("Sprite", {})
+	_moc_toan = TRAN_GOC.moc_toan(_sprite)
 	var q: Dictionary = TRAN_GOC.doc_quan(ta, dich, _rules)
 	_max_t = float(q["max_t"])
 	_dat_khung(mz)
@@ -270,20 +277,61 @@ func _them(e: Dictionary, doi: int) -> void:
 	_muc[u] = e
 
 
+## Cho MOT don vi VAO TRAN GIUA TRAN: mep san ben minh (ta: mep trai, dich: mep
+## phai — hang so `BIEN` la le cua san danh cho quan tiep vien). MOT cho dinh
+## nghia duy nhat cho duong quan TIEP VIEN cua kich ban (`dua_dong_minh`, ca hai
+## doi). Toan linh bam nut binh chung CO Y khong di duong nay — xem `dua_linh`.
+func _mep_vao(doi: int) -> float:
+	return (_trai + BIEN) if doi == 0 else (_phai - BIEN)
+
+
 ## Dua MOT TOAN linh ra tran — nut binh chung cua ban goc (engine goi
 ## dispatch). Toan gom MaxUnit nguoi dung tu CHI SO THAT cua Sprite[<ten>]
 ## (vd Troop_1: DefenderN, HP 1000, MaxUnit 4). Tra so nguoi da dua ra.
-## CHO DAT TOAN: DAT o mep trai san (o 0, tuc dung goc g_MapZero), va DAY LA CHO
-## DUY NHAT con DAT trong item "cho dung quan" cua ROADMAP — phan LAN thi da do
-## duoc (xem `lan_lech_y`). Ly do no khong suy ra duoc tu file game: client chi
-## goi `CUIGame:TouchArrmy` -> `self.tArmyIcons[id]:dispatch()`, ma `dispatch`
-## va `setDispatchID` KHONG file Lua nao trong `sc/` dinh nghia (grep ca cay),
-## tuc no nam trong lop C++ cua engine; che do thu cua chinh engine thi TU SINH
-## du lieu quan (`g_BattleField:setSendTroops("", self.test)`, CUIGame.lua:877).
-## Doan dang tin: quan tiep vien cua KICH BAN vao tran tu MEP (`dua_dong_minh`,
-## theo `CreateNpcAndMoveTo` cua ban goc), nen mep trai la cho hop voi chinh ban
-## goc. Do han tren may ao thi mo bang co `bDirectBattle` (sc/game.lua:483 ->
-## `CUIGame:Test()`), xem ROADMAP muc "Cho dung quan".
+##
+## CHO DAT: o 0 cua san (mep trai), con so 0 truyen vao `_muc`. DAY LA ĐẶT, va la
+## cho DUY NHAT con lai cua muc "cho dung quan" — ghi ro ca hai ve:
+##
+## MOC CUA TOAN thi la so DO: `Sprite.Troop.PosX` (`tran_goc.moc_toan`) la cho
+## `CUIGame:FitBattleArmyPos` (CUIGame.lua:702) dat toan quan ta — 3,83 o (can
+## giua o 6,83, doi phuong 9,83), `FightLogic:GetSelfFightDataBody` mac dinh 7 o;
+## do trong tran THAT `L_N_01_01` bang `do_chien_dich --kiem`: PosX = 7 o = 700 px.
+## `tran_goc.doc_quan` vi the dat linh CO SAN o moc ay.
+##
+## Vi sao KHONG dung moc ay cho toan dua ra:
+##   * `dispatch()` cua engine khong tinh toa do nao (doc `.so` BAN VN: `0x45eef0`
+##     -> than `0x45eda4` -> callee `0x466220` chi danh dau quan `+0x5a4 = 0x44`
+##     roi noi quan vao danh sach cua san `singleton+0x39c`), nen "cho dung cua
+##     quan dua ra = cho dung cua toan" chi la SUY RA, khong phai so do;
+##   * may ao khong do duoc: bat co `bDirectBattle` (`sc/game.lua:483` ->
+##     `CUIGame:Test()`) thi tien trinh toi `bDirectBattle = true` roi SIGSEGV
+##     trong `RepaleceScene` (do: `work/emu_dom.py`, `work/emu_tran.py`);
+##   * DA THU dat ngay moc: sua `dua_linh` dung `_moc_toan` (2026-09-17) thi
+##     `do_chien_dich --kichban` tut tu **9 dat / 0 hong** xuong **6 dat / 3 hong**.
+##     Do nguyen nhan: toan dung trong san nen gap dich som hon ~1,4 giay, tran
+##     KET THUC truoc buoc ke tiep cua kich ban, ma dong ho cua kich ban chinh la
+##     dong ho tran (`lua/san_tran.lua:78` — `dung_tran` goi `T.hen:stop()`), nen
+##     kich ban dung han o lenh thu 27/43 (`ChangeFight LvbuEvil Fight` -> khong
+##     bao gio toi `SetArmyWaiting`). Do bang phep do tam trong `do_chien_dich`:
+##     `isGaming` chuyen `false` o khung ~1400 trong khi `_cho.kieu = 'tre'`,
+##     `_tre = 1,40` con lai. Dat tu mep (`_mep_vao`) cung ra **6 dat / 3 hong**
+##     — tuc moi cho dat TRONG san deu doi ket qua ai 1.
+##   * Duong (b) — lam bo do trung thanh — DA LAM MOT PHAN, va chinh no BAC BO mot
+##     gia thiet cu: `lua/kich_ban.lua` nay giu CO THAT cua lenh
+##     `SeDispatchButtonDisable` (`.so` BAN VN `0x468b54`: `r0 = toboolean(arg);
+##     eor r0,r0,#1; strb.w r0,[drama+0x390]` — tuc `+0x390` la co BAN, gia tri
+##     truyen vao bi DAO truoc khi ghi; ham doc lai o vn `0x45d554` tra 0 tru khi
+##     `[drama+0x37c] == 1`; ban apk la `0x46af20` / `0x46af44`), va
+##     `lua/san_tran.lua` DEM so lan bam trong luc bi cam. Do duoc: **0 lan** —
+##     `SeDispatchButtonDisable(true)` (`drama_L_N_01_01.lua:668`) la lenh GAN CUOI
+##     kich ban, sau khi quan da ra het, nen bo do khong he bam trong cua so bi cam.
+##     Gia thiet cu ("bo do bam nut moi 30 khung KE CA trong cua so cam") vi the
+##     SAI — no khong dung duoc de giai thich 9/0 -> 6/3; nguyen nhan van la dong
+##     ho kich ban dung theo tran (muc ngay tren).
+##   * Con lai cho (a): do duoc tren ban goc (duong may ao da chet). Duong (b) con
+##     mot buoc nua moi trung thanh that: cho bo do TUAN THEO co ay — khi do
+##     `bam_cam` khac 0 moi la loi cua bo do, con bay gio no la so do.
+## Vi vay: giu nguyen cho dat CU (o 0) cho toi khi co bang chung, va ghi lai ĐẶT.
 func dua_linh(ten: String) -> int:
 	if _xong:
 		return 0
@@ -297,6 +345,7 @@ func dua_linh(ten: String) -> int:
 				0.0, 0.0, _so_linh)
 		_so_linh += 1
 		_them(e, 0)
+	_ra_cuoi = n
 	return n
 
 
@@ -324,7 +373,7 @@ func dua_dong_minh(ten_hinh: String, doi: int, cs_json: String) -> bool:
 	# tiep vien "di vao" cua kich ban (CreateNpcAndMoveTo), thay vi hien ngay
 	# giua san. AI cua BattleUnit tu tien ve phia dich.
 	var u: BattleUnit = _doi[d].back()
-	u.sx = (_trai + BIEN) if d == 0 else (_phai - BIEN)
+	u.sx = _mep_vao(d)
 	u.position = Vector2(u.sx, u.sy)
 	return true
 
@@ -776,6 +825,20 @@ func thu_phong() -> float:
 func do_thu_phong() -> String:
 	return "%.4f %.4f %s" % [_phong_dich, scale.x,
 			"dan" if _phong_con > 0.0 else "ngay"]
+
+
+## So do CHO DAT cua toan linh vua bam nut: MOC CUA TOAN doc tu `Sprite.Troop.PosX`
+## cua du lieu tran (o, roi ra px) — tuc cho dung CUA TOAN theo du lieu goc, va x
+## cua tung nguoi vua ra (px so voi o 0 cua san, o day la cho dat ĐẶT cua port) —
+## cong goc san. Hai so nay CO Y khac nhau: moc la so DO, cho dat la ĐẶT (xem
+## `dua_linh`), nen bo do doc ca hai de phan biet "doc dung du lieu" voi "dat o dau".
+## Ham cua CONG CU DO, khong phai ham cua ban goc.
+func do_cho_dat() -> String:
+	var ds := PackedStringArray()
+	for i in range(maxi(0, _dau.size() - _ra_cuoi), _dau.size()):
+		ds.append("%s@%.0f" % [_dau[i][0], float(_dau[i][1])])
+	return "moc %.2f o = %.0f px | goc %.0f | %d nguoi vua ra: %s" % [
+			_moc_toan, _moc_toan * _o, _goc_x, _ra_cuoi, ", ".join(ds)]
 
 
 ## Do: camera, gioi han, va moi lop da troi bao xa so voi goc.

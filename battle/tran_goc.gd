@@ -78,6 +78,23 @@ static func danh(ta_json: String, dich_json: String, hat: int) -> String:
 	return JSON.stringify(tong_ket(doi_ta, doi_dich, t, sat, thang))
 
 
+## Moc dung cua TOAN quan ta tren san, tinh bang O: `Sprite.Troop.PosX` cua du
+## lieu tran. Day dung la cho `CUIGame:FitBattleArmyPos` (ban goc, CUIGame.lua:702)
+## dat toan: 3,83 o (can giua o 6,83, doi phuong 9,83) hoac 7,1 / 7 tuy loai tran;
+## `FightLogic:GetSelfFightDataBody` con co mac dinh 7 cho du lieu cua chinh minh.
+## Khong phai o 0 — o 0 la mep trai san, ngoai doi hinh.
+##
+## Mot cho dinh nghia duy nhat de duong `doc_quan` (linh CO SAN trong du lieu tran)
+## va duong `san_tran_ve` khong the lech nhau. Rieng `san_tran_ve.dua_linh` (toan
+## linh dua ra giua tran bang nut binh chung) CO Y KHONG dung moc nay: dat ngay moc
+## la SUY RA — `dispatch()` cua engine chi GHI DANH quan vao danh sach cua san
+## (`.so` BAN VN `0x45eda4` -> `0x466220` khong tinh toa do nao) — va da THU
+## (2026-09-17) roi phai BO, xem chu thich dai o `san_tran_ve.dua_linh`.
+static func moc_toan(sprite: Dictionary) -> float:
+	var troop = sprite.get("Troop", null)
+	return float(troop.get("PosX", 0.0)) if troop is Dictionary else 0.0
+
+
 ## Doc hai doi quan tu du lieu ban goc gui cho engine. Moi muc:
 ##   f (Combat.Fighter), id, tuong, ten / sprite (ten armature), pos_x (o tren
 ##   san), xuat_hien (AppearTime cua nhom), co (NpcSize), thu_tu.
@@ -86,7 +103,7 @@ static func danh(ta_json: String, dich_json: String, hat: int) -> String:
 static func doc_quan(ta: Dictionary, dich: Dictionary, rules: Dictionary) -> Dictionary:
 	var sprite: Dictionary = ta.get("Sprite", {})
 	var troop = sprite.get("Troop", {})
-	var px_ta := float(troop.get("PosX", 0)) if troop is Dictionary else 0.0
+	var px_ta := moc_toan(sprite)
 	var doi_ta: Array = []
 	for s in _ds(troop.get("Soldiers", []) if troop is Dictionary else []):
 		if not (s is Dictionary):

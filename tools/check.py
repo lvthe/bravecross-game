@@ -211,13 +211,21 @@ SUITES = [
     # khong co cho nao trong file game noi engine dung chung the nao. Nay do duoc
     # het, va bo kiem nay giu cho chung khong troi lai: chu thich 道宽 格 ngay
     # tren hai hang so trong chinh file cau hinh (don vi la O), cho engine nhan voi
-    # co o px (`0x35f43e` -> `vmul.f32` voi `+0x270` = `this+0x180`), cong thuc
-    # xep lan `0x35f0a4` (`y = y0 + (Location-1)*rong + lech`, ra 10/50/90 px), so
+    # co o px (`0x35f43e` BAN VN -> `vmul.f32` voi `+0x270` = `this+0x180`), cong
+    # thuc xep lan `0x35f0a4` (vn) (`y = y0 + (Location-1)*rong + lech`, ra
+    # 10/50/90 px), so
     # lan dem tu `Location` cua bang binh chung (91 muc, 0..3 — nen LAN_SO cung la
     # so do chu khong phai so ta chon), va `fArmySpace` co ban anh em
     # `fArmySpaceInArena` cho dau truong (hai ham doc rieng trong engine). Neu
     # thieu `data_ref/tran_ref.json` thi bao BO QUA.
     ('cho dung quan',        'script', 'tools/verify_lan.gd',          False, []),
+    # Cho DAT toan linh khi bam nut binh chung: phai dung MOC CUA TOAN
+    # (`Sprite.Troop.PosX` = 3,83 / 7,1 / 7 o tuy loai tran), khong phai o 0
+    # (mep trai san). Truoc day `dua_linh` truyen cung 0.0 nen linh dua ra dung
+    # cach toan minh 4..7 o. Suy ra chu CHUA DO duoc: `dispatch()` cua engine
+    # khong tinh toa do (`0x45eda4` -> `0x466220`), con may ao thi chet trong
+    # `RepaleceScene` khi bat `bDirectBattle` — xem `work/emu_dom.py`.
+    ('cho dat toan linh',    'script', 'tools/verify_dat_linh.gd',      False, []),
 ]
 
 SCORE = re.compile(r'dat (\d+), hong (\d+)')

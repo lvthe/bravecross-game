@@ -72,6 +72,8 @@ return function(c)
 			_finish = nil,
 			_xong = false,      -- FinishGame da goi
 			_loi = nil,         -- loi coroutine (neu co)
+			_cam_dat = false,   -- kich ban dang CAM nut binh chung (xem SeDispatchButtonDisable)
+			_cam_bam = 0,       -- so lan nguoi choi BAM trong luc bi cam (do, khong chan)
 		}, KB)
 	end
 
@@ -396,13 +398,50 @@ return function(c)
 	for _, ten in ipairs({
 		'SetArmyWaiting', 'SetStateImmunity', 'SetRoleIgnoreOrder', 'AddPlugin',
 		'RemovePlugin', 'UnlockArmyByPlugin', 'SetPlugsOnBattleMapVisible',
-		'SetWakeButtonDisable', 'SeDispatchButtonDisable', 'ChangeWakeFuryFlag',
+		'ChangeWakeFuryFlag',
 		'RelateWakeButton', 'EnableRemoveInstructWhenTouchWakeButton',
 		'SetBloodAndShadowVisible', 'SetSpriteZorder', 'SetEnemyAllUnitRebel',
 		'SetArmyUnitOrder', 'SetArmyUnitVisible', 'TakeUnitExpeBattle',
 	}) do
 		KB[ten] = ghi(ten)
 	end
+
+	-- HAI lenh nay KHONG phai lenh trang thai vo nghia — chung ghi CO "nut bam
+	-- duoc" cua lop drama, nen ghi nhat ky khong la du. Doc `.so` (ban vn:
+	-- `0x468b54` / `0x468b78`; ban apk: `0x46af20` / `0x46af44`):
+	--
+	--     r0 = lua_toboolean(arg);  eor r0, r0, #1;  strb.w r0, [drama+0x390]
+	--
+	-- tuc `+0x390` (binh chung) va `+0x391` (thuc tinh) la co BAN — 1 = bam
+	-- duoc — va gia tri truyen vao bi DAO truoc khi ghi. Hai ham doc lai
+	-- (vn `0x45d554` cho `+0x390`, vn `0x462308` cho `+0x391`) deu tra 0 tru
+	-- khi `[drama+0x37c] == 1`.
+	--
+	-- Ban goc GAC o C++: `CUIGame:TouchArrmy` (`sc/user/Battle/CUIGame.lua:4055`)
+	-- goi thang `dispatch()`, khong he hoi co nao. Nen o day giu CO THAT va DEM
+	-- so lan bam khi dang bi cam, chu KHONG chan: chan la doi hanh vi cua ban
+	-- dung, ma may do thi bam theo nhip (`do_chien_dich.gd`, `i % 30 == 15`) nen
+	-- no khong biet co ay. So dem do moi la thu phan biet duoc "may do da bam
+	-- ngoai cua so cho phep" — xem `san_tran_ve.dua_linh`.
+	function KB:SeDispatchButtonDisable(bat)
+		self._cam_dat = (bat == true)
+		self._nhat_ky[#self._nhat_ky + 1] = 'SeDispatchButtonDisable '
+			.. tostring(bat) .. ' -> co ban ' .. (self._cam_dat and '0' or '1')
+		return hinh_nhan
+	end
+	function KB:SetWakeButtonDisable(bat)
+		self._nhat_ky[#self._nhat_ky + 1] = 'SetWakeButtonDisable ' .. tostring(bat)
+		return hinh_nhan
+	end
+
+	-- Chia hai: `bao_bam_dat` do duong dua linh goi khi co dang bat (chi DEM),
+	-- `so_bam_cam` de bo do doc ra. Tra so that (khong tra bang) de ben GDScript
+	-- doc duoc — bien toan cuc cua Lua doc nguoc ra qua cau la bang "bong".
+	function KB:bao_bam_dat()
+		if self._cam_dat then self._cam_bam = (self._cam_bam or 0) + 1 end
+		return self._cam_bam or 0
+	end
+	function KB:so_bam_cam() return self._cam_bam or 0 end
 
 	-- EnableGoNextWhenStatusSucceed(...): cho nhu DelayTime, ban goc cho toi khi
 	-- trang thai dinh duoc — ta khong mo phong trang thai nen di tiep ngay.

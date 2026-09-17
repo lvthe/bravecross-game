@@ -2080,6 +2080,16 @@ tướng không bị cướp, cấp 5 thay cấp 3, cấp 1 xoá sạch); D **ch
 
 ## 5. Trận đánh
 
+> **Địa chỉ `.so` phải nói rõ BẢN NÀO.** Trong `brave-cross/work/` có **hai** bản
+> `libgame.so` khác bố cục mã: `apk/…` (10.231.498 byte, 25-10-2017) và
+> `vn/apk/…` (10.213.832 byte, 28-12-2017). **Không có đoạn byte nào giống nhau
+> giữa hai bản** (đo), nên địa chỉ **không dùng chung được**: cùng chuỗi
+> `DispatchButtonDisable` nằm ở `0x7c57f8` (apk) và `0x7c1bb6` (vn). **Mọi địa
+> chỉ trong mục này là của bản `vn`** — bản tham chiếu, vì `sc/` và `data_ref`
+> của bản dựng lấy từ `work/vn/decrypted/assets` — trừ chỗ nào ghi rõ `(apk)`.
+> Đã mắc một lần: đọc bản apk rồi tưởng các địa chỉ cũ trong tài liệu sai; thực
+> ra chúng **đúng ở không gian vn**.
+
 - [x] Chuỗi trọn: Main → chọn ải → bố trí quân → trận → màn kết thúc
 - [x] Chỉ số quân lấy từ luật gốc, không chỉnh tay
 - [x] Công thức sát thương **thật** của bản gốc
@@ -2251,19 +2261,89 @@ tướng không bị cướp, cấp 5 thay cấp 3, cấp 1 xoá sạch); D **ch
       hàm đọc riêng — `0x38193c` lấy `+0x70` (`fArmyLength`) + `+0x74`
       (`fArmySpace`), `0x388240` lấy `+0x70` + `+0x78` (`fArmySpaceInArena`). Màn
       trận thường không được lấy nhầm số của đấu trường.
-      **ĐẶT còn lại (nay chỉ còn một chỗ):** **chỗ đặt toán lính đầu tiên khi
-      bấm nút binh chủng** — ta đặt ở mép trái sàn (ô 0, đúng gốc `g_MapZero`).
-      Không suy ra được từ file game: client chỉ gọi `CUIGame:TouchArrmy` →
-      `self.tArmyIcons[id]:dispatch()`, mà `dispatch` và `setDispatchID`
-      **không file Lua nào trong `sc/` định nghĩa** (grep cả cây 973 file), tức
-      nó nằm trong lớp C++ của engine; chế độ thử của chính engine thì **tự sinh**
-      dữ liệu quân (`g_BattleField:setSendTroops("", self.test)`,
-      `CUIGame.lua:877-881`). Chỗ dựa duy nhất: quân tiếp viện của **kịch bản**
-      vào trận từ **mép** (`dua_dong_minh`, theo `CreateNpcAndMoveTo` của bản
-      gốc). Đo hẳn thì phải dựng lại trên máy ảo bằng cờ `bDirectBattle`
-      (`sc/game.lua:483` → `CUIGame:Test()`, hàm này dựng 10 toán thử
-      `ArmyTypeID = 1..10` với `ChapterKey = "L_N_01_01"` rồi
-      `RepaleceScene("Battle", …)`) — chưa làm.
+      **Chỗ đặt toán lính đưa ra — ĐÃ THỬ DÙNG MỐC CỦA TOÁN VÀ PHẢI BỎ
+      (2026-09-17). Chỗ đặt vẫn là ĐẶT (ô 0).**
+      Trước đây ta đặt ở mép trái sàn (ô 0, gốc `g_MapZero`) và ghi là không suy
+      ra được. Lượt này tưởng đã chốt được: **`dispatch()` không tính toạ độ nào
+      cả** — đọc `.so` **bản vn**: `0x45eef0` → thân `0x45eda4`, chỉ gọi
+      `0x466220`, hàm này đánh dấu quân (`+0x5a4 = 0x44`) rồi **nối vào danh
+      sách của sàn** (`+0x39c`), không một phép tính vị trí — nên chỗ đứng của
+      quân đưa ra là chỗ đứng của **toán**, và toán đứng ở đâu thì client Lua
+      nói: `CUIGame:FitBattleArmyPos` (`sc/user/Battle/CUIGame.lua:702`) đặt
+      `Sprite.Troop.PosX` = 3,83 ô (can giữa 6,83, đối phương 9,83) hoặc 7,1 / 7
+      tuỳ loại trận, và `FightLogic:GetSelfFightDataBody`
+      (`sc/share/FightLogic.lua:187`) mặc định **7**. **Đo trong trận thật**
+      (ải `L_N_01_01`, `do_chien_dich.gd --kiem`): `Sprite.Troop.PosX = 7` ô =
+      **700 px**, toán có đúng 1 người lúc đầu (`Hero_25`); bản ghi quân đưa ra
+      `Troop_1` có `Location = nil` nên nó đi lưới 3 hàng không làn.
+      **Nhưng đổi `dua_linh` sang dùng mốc ấy làm `do_chien_dich.gd --kichban`
+      tụt từ 9 đạt / 0 hỏng xuống 6 đạt / 3 hỏng**, nên đã **bỏ, trả về ô 0**.
+      Đo được nguyên nhân: toán đứng trong sàn thì gặp địch sớm hơn ~1,4 giây,
+      trận **kết thúc trước bước kế tiếp của kịch bản**, mà đồng hồ của kịch bản
+      **chính là** đồng hồ trận (`lua/san_tran.lua:78` — `dung_tran` gọi
+      `T.hen:stop()`), nên kịch bản đứng hẳn ở lệnh 27/43 (`ChangeFight LvBuEvil
+      Fight`, không bao giờ tới `SetArmyWaiting`) và ba phép kiểm cuối đỏ. Đặt
+      từ **mép** sàn cũng ra 6/3 — tức **mọi** chỗ đặt trong sàn đều đổi kết quả
+      ải 1. Giữ lại phần **đo được**: một chỗ định nghĩa duy nhất
+      `tran_goc.moc_toan(sprite)` cho `doc_quan` (**hành vi y hệt mã cũ**: ải 1
+      vẫn 9/0), và một phép kiểm trong `do_chien_dich --kiem` đối chiếu **hai
+      đường đọc độc lập** — Lua `cjson` đọc lại chính chuỗi JSON
+      (`lua/san_tran.lua:S:_moc_toan`) so với số của màn trận
+      (`san_tran_ve.gd:do_cho_dat`) — `dat 27, hong 0`. `tools/verify_dat_linh.gd`
+      (17 đạt / 0 hỏng) khoá: mốc đọc đúng ở **cả hai** đường, mốc ≠ 0, và
+      `dua_linh` **cố ý** đặt ở ô 0.
+      **Ba sự thật mới đọc từ `.so` (đều ở bản vn):**
+      `0x382670` tính **bề dài một toán** = `fArmySpace × fArmyLength × cỡ ô px`
+      = 1,1 × 4 × 100 = **440 px** — hai hệ số lấy qua hai hàm đọc cấu hình
+      `0x38193c` (`+0x70` = `fArmyLength`) và bản anh em `0x388240`, rồi nhân với
+      cặp **cỡ ô px** (`this+0x180`). Đây là **ví dụ thứ ba** của lối "hằng số
+      tính bằng ô × cỡ ô px", sau `0x35f43e` (bề ngang làn) và `0x41b538`
+      (`vsub.f32` tại `0x41b58c`: `X -= fArmyLength × 0.5 × cỡ ô` = 200 px —
+      **dấu thật** do `0x414912` quyết định, nó lật bit dấu khi cờ `[obj+0x308]`
+      khác 1, nên cùng hàm ấy chạy ra cộng **hoặc** trừ). Và **tên khoá JSON
+      không truy được bằng xref**: `PosX` (`0x7bc0b7`), `PosY`, `Soldiers`,
+      `NpcID`, `AppearTime` nằm trong `.rodata` mà **không một word 4 byte nào
+      trong cả file** trỏ vào `0x7bc000–0x7bd000` (và cũng không vào
+      `0x7b8300–0x7b8400`) — nên đường "engine → parse JSON" **không thể lần
+      tĩnh**, ghi lại làm lý do dừng.
+      **Đường máy ảo: ĐÃ ĐO VÀ CHẾT.** Cờ `bDirectBattle` (`sc/game.lua:483` →
+      `CUIGame:Test()`) chạy tới `TRAN|chen duoc, bDirectBattle = true` rồi
+      **SIGSEGV trong `RepaleceScene`** (fault nằm trong
+      `[anon:libwebview reservation]`; `work/emu_dom.py`, `work/emu_tran.py`).
+      Không phải "chưa làm" — đã làm và không đi được.
+      **Cách gỡ nút này, và một giả thuyết đã bị chính phép đo bác bỏ.** Muốn
+      chốt chỗ đặt thật thì phải gỡ **một trong hai** chỗ: (a) đo trên bản gốc
+      (đường máy ảo đã chết), hoặc (b) làm bộ đo **trung thành**. Lượt này làm
+      được **một nửa của (b)**, và chính nó **bác bỏ** lời giải thích cũ: hai
+      lệnh `SeDispatchButtonDisable` / `SetWakeButtonDisable` **không phải** lệnh
+      trạng thái vô nghĩa như ta tưởng — chúng ghi **cờ bật nút** của lớp drama.
+      Đọc `.so` (vn `0x468b54` / `0x468b78`; apk `0x46af20` / `0x46af44`):
+      `r0 = lua_toboolean(arg); eor r0,r0,#1; strb.w r0,[drama+0x390]` (nút binh
+      chủng, ghi ở `0x468b6a`) và `+0x391` (nút thức tỉnh, `0x468b8e`) — tức hai
+      byte ấy là **cờ BẬT** (1 = bấm được) và giá trị truyền vào **bị đảo** trước
+      khi ghi; hai hàm đọc lại (vn `0x45d554` cho `+0x390`, vn `0x462308` cho
+      `+0x391`) trả `0` trừ khi `[drama+0x37c] == 1` (bản `+0x390` còn trả 0 khi
+      `[drama+0x3fd]` khác 0). Bản gốc **gác ở C++** — `CUIGame:TouchArrmy`
+      (`sc/user/Battle/CUIGame.lua:4055`) gọi thẳng `dispatch()`, Lua không hề
+      hỏi cờ. Nay `lua/kich_ban.lua` giữ **cờ thật** ấy (thôi coi là lệnh ghi
+      nhật ký) và `lua/san_tran.lua` **đếm** số lần bấm trong lúc bị cấm, in ra
+      ở `do_chien_dich --kichban` (`bam_cam`). **Đo được: 0 lần** — vì
+      `SeDispatchButtonDisable(true)` (`drama_L_N_01_01.lua:668`) là lệnh **gần
+      cuối** kịch bản, sau khi quân đã ra hết. Vậy giả thuyết cũ ("bộ đo bấm nút
+      **kể cả** trong cửa sổ bị cấm") **sai**, và nó không dùng được để giải
+      thích 9/0 → 6/3; nguyên nhân vẫn là **đồng hồ kịch bản** ở trên. Phần còn
+      lại của (b): cho bộ đo **tuân theo** cờ ấy — khi đó `bam_cam` khác 0 mới là
+      lỗi của bộ đo, còn bây giờ nó là số đo.
+      **Còn CHƯA rõ (ghi rõ, không bịa số):** (1) người **đầu tiên** của toán
+      đứng **ngay** mốc hay lệch **nửa toán** — engine có `X -= fArmyLength ×
+      0.5 × cỡ ô` = 200 px ở `0x41b538` (hàm mà địa chỉ ấy thuộc về được `bl`
+      tới từ `0x384e34` / `0x38ad3a` / `0x38d62c`), **và phép quét `bl` theo độ
+      sâu 3 từ cả `0x45eda4` lẫn `0x466220` không chạm tới một địa chỉ nào trong
+      vùng `0x41b400–0x41b700`** — tức phép dời ấy nằm ở **đường xếp đội hình
+      khác**, không phải đường quân ra giữa trận; bản dựng cho người đầu tiên
+      đứng ngay mốc. (2) **nhịp cách giữa các TOÁN đưa ra** khi bấm nhiều lần —
+      bản dựng lấy `fArmySpace` (110 px) và bộ đếm `_dem` khoá theo
+      `"<doi>/<px>"` nên hai toán không đè nhau.
       Thứ tự xếp khi quân **không có làn riêng** (`Location = 0`, ví dụ tướng
       người chơi) vẫn là của ta.
       `ptLayout`: **hai giả thuyết đã bị bác bỏ bằng số đo.** (1) "đội hình của
@@ -2525,11 +2605,38 @@ tướng không bị cướp, cấp 5 thay cấp 3, cấp 1 xoá sạch); D **ch
    ra 10/50/90 px, và số làn (3) đếm từ `Location` của 91 mục trong
    `KDBGameArmyConfig.xgg`. Đường đo + khoá: `brave-cross/work/tran_ref.py` →
    `data_ref/tran_ref.json`, `tools/verify_lan.gd` (33 đạt / 0 hỏng). Chi tiết và
-   bốn đường bằng chứng: §5 mục "Chỗ đứng quân". **Còn lại trong (a) đúng một
-   chỗ**: chỗ đặt **toán lính đầu tiên** khi bấm nút binh chủng — không suy ra
-   được từ `.so` (client chỉ gọi `dispatch()` của lớp C++), muốn có số thì phải
-   dựng lại trên máy ảo bằng cờ `bDirectBattle` (`sc/game.lua:483` →
-   `CUIGame:Test()`).
+   bốn đường bằng chứng: §5 mục "Chỗ đứng quân". **Chỗ cuối trong (a) — chỗ đặt
+   toán lính đưa ra — ĐÃ THỬ VÀ PHẢI BỎ (2026-09-17), vẫn là ĐẶT (ô 0).**
+   Đã tưởng chốt được, vì `dispatch()` của engine **không tính toạ độ nào**
+   (`.so` bản vn: `0x45eda4` → `0x466220` chỉ ghi danh quân vào danh sách của
+   sàn), nên quân đưa ra đứng đúng chỗ của toán, mà chỗ ấy là `Sprite.Troop.PosX`
+   — đo trong trận thật (`L_N_01_01`): **7 ô = 700 px**. Đổi `dua_linh` sang dùng
+   mốc ấy thì `do_chien_dich --kichban` **tụt từ 9 đạt / 0 hỏng xuống 6/3**: toán
+   đứng trong sàn gặp địch sớm hơn ~1,4 giây, trận kết thúc trước bước kế tiếp
+   của kịch bản, mà **đồng hồ kịch bản chính là đồng hồ trận**
+   (`lua/san_tran.lua:78` — `dung_tran` gọi `T.hen:stop()`), nên kịch bản đứng ở
+   lệnh 27/43 và ba phép kiểm cuối đỏ. Đặt từ **mép** sàn cũng ra 6/3 — mọi chỗ
+   đặt trong sàn đều đổi kết quả ải 1. Nên đã trả về ô 0; giữ lại phần **đo
+   được**: một chỗ định nghĩa duy nhất `tran_goc.moc_toan` cho `doc_quan` (hành
+   vi y hệt mã cũ — ải 1 vẫn 9/0), khoá bằng `tools/verify_dat_linh.gd` (17/0),
+   và một phép kiểm hai đường đọc độc lập trong `do_chien_dich --kiem`
+   (`dat 27, hong 0`). Câu "phải dựng lại trên máy ảo bằng cờ `bDirectBattle`" ở
+   bản trước **đã đo và SAI**: đường ấy chạy tới `bDirectBattle = true` rồi
+   SIGSEGV trong `RepaleceScene` (`work/emu_dom.py`). **Lượt này bác bỏ luôn một
+   giả thuyết nữa, bằng phép đo:** `SeDispatchButtonDisable` / `SetWakeButtonDisable`
+   **không** phải lệnh ghi nhật ký — chúng ghi **cờ bật nút** của lớp drama
+   (`.so` vn `0x468b54` / `0x468b78`: `eor r0,r0,#1; strb.w r0,[drama+0x390]` /
+   `+0x391`, ghi ở `0x468b6a` / `0x468b8e`; hai hàm đọc lại ở vn `0x45d554` /
+   `0x462308`, trả 0 trừ khi `[drama+0x37c] == 1`). Nay `lua/kich_ban.lua` giữ cờ
+   thật ấy và `lua/san_tran.lua` **đếm** số lần bấm trong lúc bị cấm — đo được
+   **0 lần** (lệnh cấm nằm gần cuối kịch bản, sau khi quân đã ra hết), nên lời
+   giải thích cũ "bộ đo bấm nút kể cả trong cửa sổ bị cấm" **sai**. Còn chưa rõ
+   (ghi rõ, không bịa): người đầu tiên có lệch nửa toán không (`0x41b538` có
+   `vsub.f32` = `X ∓ fArmyLength × 0.5 × cỡ ô` = 200 px; dấu do `0x414912` quyết
+   định), và nhịp cách giữa các **toán** đưa ra. Ba sự thật mới của `.so` cùng
+   lượt: `0x382670` = `fArmySpace × fArmyLength × cỡ ô px` = 440 px; và tên khoá
+   JSON (`PosX` ở `0x7bc0b7`…) **không truy được bằng xref** — không một word nào
+   trong file trỏ vào trang chuỗi ấy.
    và **(b) tốc độ** — đo lại 2026-09-18:
    tốc độ CHẠY **đã trích** (bộ binh 300 / cung 250 / kỵ 350) và đã có phép
    kiểm, và luật đi/chạy **nay ĐÃ khôi phục được một phần** (lượt đo đầu kết

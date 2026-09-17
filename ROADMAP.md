@@ -2205,17 +2205,67 @@ tướng không bị cướp, cấp 5 thay cấp 3, cấp 1 xoá sạch); D **ch
       thân `CCActionInterval::initWithDuration` của Cocos2d-x. Cả bốn chỗ gọi
       đều truyền 0 nên không đổi hành vi. Khoá bằng 3 phép kiểm trong
       `do_chien_dich --kiem` (22/22)
-- [x] **Chỗ đứng quân** — làn và khoảng cách nay là **số thật**. `Location`
-      (1..3) của chính bản ghi sprite quyết định làn (Defender 1, Archer 3);
-      khoảng cách làn lấy từ `map/global_config.xml`: `fLaneWidth = 0.4` ô
-      (40 px) và `fLaneOffset = 0.1` ô (10 px) — ba làn gọn trong 90 px < 1 ô,
-      khớp với việc `Location` chỉ nhận 1..3. Khoảng cách giữa hai quân cùng
-      làn dùng `fArmySpace = 1.1` ô (110 px) thay cho 48 px ta đặt trước đây —
-      48 nhỏ hơn thân người (56) nên quân chồng nhau.
-      **ĐẶT còn lại**: đơn vị của `fLaneWidth`/`fLaneOffset` là ô (suy từ chính
-      file đó, chưa đọc được chỗ engine dùng hai hằng này); và thứ tự xếp khi
-      quân **không có làn riêng** (`Location = 0`, ví dụ tướng người chơi) vẫn
-      là của ta.
+- [x] **Chỗ đứng quân** — làn và khoảng cách nay là **số thật**, và **đơn vị đã
+      đo xong** (2026-09-17, trước đó còn là ĐẶT). `Location` (1..3) của chính
+      bản ghi sprite quyết định làn (Defender 1, Archer 3); khoảng cách làn lấy
+      từ `map/global_config.xml`: `fLaneWidth = 0.4` ô (40 px) và
+      `fLaneOffset = 0.1` ô (10 px). Khoảng cách giữa hai quân cùng làn dùng
+      `fArmySpace = 1.1` ô (110 px) thay cho 48 px ta đặt trước đây — 48 nhỏ hơn
+      thân người (56) nên quân chồng nhau.
+      **Đơn vị ô không còn là suy luận — bốn đường độc lập:**
+      1. **Chính file cấu hình ghi đơn vị.** Ngay trên hai hằng số ấy có chú
+         thích `<!-- 道宽 格 -->` — "bề ngang đường [làn], tính bằng **ô**".
+         `tran_ref.py` bóc luôn chú thích đó vào `lan.chung` để bằng số giữ
+         bằng chứng, và `verify_lan.gd` đỏ nếu nó biến mất.
+      2. **Chỗ engine dùng hai hằng** (đây là phần trước kia "chưa đọc được"):
+         `0x35f43e`, lớp `CDFTMXTiledMap` (vtable `0x00895ac8`, RTTI
+         `0x00895de8`) — `bl 0x38c7f0` (singleton cấu hình) → `vldr s16,[r0,#0x14]`
+         (`fLaneWidth`, `+0x18` là `fLaneOffset`) → `ldr.w r3,[r3,#0x270]` →
+         `vldr s15,[r0,#4]` → **`vmul.f32`** → `vstr s15,[r4,#0x264]`. Slot ảo
+         `+0x270` là `0x35e73a` = `return this + 0x180`, tức cặp **(cỡ ô ngang,
+         cỡ ô dọc) tính bằng px**; `+0x24`/`+0x28` của chính cấu hình là cặp ấy
+         theo **số ô**, nên hai chỗ đọc ra hai đại lượng khác nhau và tên đọc
+         theo `v270()[0]`/`v270()[+4]`, đếm theo `v268()`.
+      3. **Cỡ ô = 100 px**, ba đường nữa: `0x35f068` viết cứng `100*(4-idx)`;
+         `InWhichCell` (`0x35ec4c`) chặn điểm theo `v270()[0]×v268()[0]` và
+         `v270()[+4]×v268()[+4]` ("cỡ ô × số ô") rồi chia lấy chỉ số ô; và
+         `map/map_1.tmx` — file TMX **duy nhất** của game — khai
+         `tilewidth="100" tileheight="100"`, ô đất `CDFMapGround 100×100`.
+      4. **Công thức xếp làn**, từ `0x35f0a4`:
+         `y = y0 + (Location−1) × bề_ngang_px + lệch_px` → làn 1/2/3 lệch
+         **10 / 50 / 90 px**; ba làn gọn trong 90 px < 1 ô, đúng chỗ `Location`
+         chỉ nhận 0..3. Nay là hàm `san_tran_ve.gd:lan_lech_y()`, một chỗ duy
+         nhất, `verify_lan.gd` đối chiếu từng làn với `lan.lech_px_theo_lan`.
+      **Số làn cũng là số đo**: `Location` của **91** mục trong
+      `config/share/KDBGameArmyConfig.xgg` chỉ nhận `{0: 1, 1: 48, 2: 23, 3: 19}`
+      — nên `LAN_SO = 3` không phải số ta chọn, và bộ kiểm đọc lại bảng đó để
+      đòi `Location` lớn nhất = `LAN_SO` (thiếu một làn thì quân của làn 4 bị dồn
+      sang làn khác).
+      Đường đo + bằng số: `brave-cross/work/tran_ref.py` → `data_ref/tran_ref.json`
+      (kèm cả năm hằng camera `fCameraThreshold`/`fTrackSpeedPPS`/
+      `fTrackSlowOutDist`/`fTrackSlowInFullTime`/`fTrackChasingDist`, trước đây
+      cũng chỉ ghi tên trường cạnh mỗi hằng); khoá bằng `tools/verify_lan.gd`
+      (33 đạt / 0 hỏng).
+      **Phát hiện thêm cùng lượt**: `fArmySpace` có **bản anh em**
+      `fArmySpaceInArena` (`1.2` so với `1.1`) cho đấu trường, và engine có **hai**
+      hàm đọc riêng — `0x38193c` lấy `+0x70` (`fArmyLength`) + `+0x74`
+      (`fArmySpace`), `0x388240` lấy `+0x70` + `+0x78` (`fArmySpaceInArena`). Màn
+      trận thường không được lấy nhầm số của đấu trường.
+      **ĐẶT còn lại (nay chỉ còn một chỗ):** **chỗ đặt toán lính đầu tiên khi
+      bấm nút binh chủng** — ta đặt ở mép trái sàn (ô 0, đúng gốc `g_MapZero`).
+      Không suy ra được từ file game: client chỉ gọi `CUIGame:TouchArrmy` →
+      `self.tArmyIcons[id]:dispatch()`, mà `dispatch` và `setDispatchID`
+      **không file Lua nào trong `sc/` định nghĩa** (grep cả cây 973 file), tức
+      nó nằm trong lớp C++ của engine; chế độ thử của chính engine thì **tự sinh**
+      dữ liệu quân (`g_BattleField:setSendTroops("", self.test)`,
+      `CUIGame.lua:877-881`). Chỗ dựa duy nhất: quân tiếp viện của **kịch bản**
+      vào trận từ **mép** (`dua_dong_minh`, theo `CreateNpcAndMoveTo` của bản
+      gốc). Đo hẳn thì phải dựng lại trên máy ảo bằng cờ `bDirectBattle`
+      (`sc/game.lua:483` → `CUIGame:Test()`, hàm này dựng 10 toán thử
+      `ArmyTypeID = 1..10` với `ChapterKey = "L_N_01_01"` rồi
+      `RepaleceScene("Battle", …)`) — chưa làm.
+      Thứ tự xếp khi quân **không có làn riêng** (`Location = 0`, ví dụ tướng
+      người chơi) vẫn là của ta.
       `ptLayout`: **hai giả thuyết đã bị bác bỏ bằng số đo.** (1) "đội hình của
       toán lính" — tích `x*y` khớp `MaxUnit` ở **0/6** binh chủng có cả hai số
       (Berserker `{3,3}` = 9 nhưng `MaxUnit` = 2). (2) "kích thước chiếm chỗ" —
@@ -2468,8 +2518,19 @@ tướng không bị cướp, cấp 5 thay cấp 3, cấp 1 xoá sạch); D **ch
    chứng chứ không còn là ĐẶT — bốn bằng chứng và hai phép kiểm ở §5 mục
    "Cách hồi thống soái" (đo được `ld_max / ld_hoi / công thức / JSON / JSON` =
    `6 / 5 / 6 / 6 / 5`, và nhịp hồi ba lần liên tiếp cách nhau `151, 151` khung).
-   Còn lại **(a) chỗ đứng** (chỗ đặt toán lính đầu tiên ở mép trái ô 0, và đơn
-   vị của `fLaneWidth` / `fLaneOffset`) và **(b) tốc độ** — đo lại 2026-09-18:
+   **(a) chỗ đứng — ĐÃ XONG phần làn** (2026-09-17): đơn vị của
+   `fLaneWidth` / `fLaneOffset` nay là **ô, đã đo** chứ không còn suy luận —
+   chính file cấu hình ghi `<!-- 道宽 格 -->` trên hai hằng, engine nhân với cỡ ô
+   px ở `0x35f43e` (slot `+0x270` = `this+0x180`), công thức xếp làn ở `0x35f0a4`
+   ra 10/50/90 px, và số làn (3) đếm từ `Location` của 91 mục trong
+   `KDBGameArmyConfig.xgg`. Đường đo + khoá: `brave-cross/work/tran_ref.py` →
+   `data_ref/tran_ref.json`, `tools/verify_lan.gd` (33 đạt / 0 hỏng). Chi tiết và
+   bốn đường bằng chứng: §5 mục "Chỗ đứng quân". **Còn lại trong (a) đúng một
+   chỗ**: chỗ đặt **toán lính đầu tiên** khi bấm nút binh chủng — không suy ra
+   được từ `.so` (client chỉ gọi `dispatch()` của lớp C++), muốn có số thì phải
+   dựng lại trên máy ảo bằng cờ `bDirectBattle` (`sc/game.lua:483` →
+   `CUIGame:Test()`).
+   và **(b) tốc độ** — đo lại 2026-09-18:
    tốc độ CHẠY **đã trích** (bộ binh 300 / cung 250 / kỵ 350) và đã có phép
    kiểm, và luật đi/chạy **nay ĐÃ khôi phục được một phần** (lượt đo đầu kết
    luận sai là "không khôi phục được"): cờ `+0x295` bật khi lệch hoành độ tới

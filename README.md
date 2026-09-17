@@ -56,6 +56,13 @@ python ../brave-cross/work/wake_ref.py
 #     khung hình). Thiếu nó thì 87 node hạt trong 296 bố cục dựng ra Control
 #     rỗng, KHÔNG báo lỗi gì.
 python ../brave-cross/work/hatref.py --out hat_ref
+# 2g. Hằng số của sàn trận — khối `<stage>`/`<army>`/`<camera>` của
+#     `map/global_config.xml` + cỡ ô của `map/map_1.tmx`. Trước đây màn trận
+#     chép tay mấy con số này và ghi chú là "suy từ chính file đó"; nay có đường
+#     đo (đơn vị của `fLaneWidth`/`fLaneOffset` là Ô — chính file cấu hình ghi
+#     `<!-- 道宽 格 -->`, và engine nhân với cỡ ô ở `0x35f43e`). Thiếu nó thì bộ
+#     kiểm `cho dung quan` báo BO QUA chứ không đỏ.
+python ../brave-cross/work/tran_ref.py
 
 # 3. Bảng số liệu cho máy chủ — cũng gitignore, cùng lý do
 python sim/export_stats.py --all

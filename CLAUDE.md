@@ -27,7 +27,7 @@ từ bản đã dịch ngược. Hai repo, nằm cạnh nhau:
 ## Trước khi làm gì
 
 ```bash
-python tools/check.py          # 42 dòng kết quả (38 bộ trong SUITES + 4 bộ Python), phải xanh hết
+python tools/check.py          # 43 dòng kết quả (39 bộ trong SUITES + 4 bộ Python), phải xanh hết
 ```
 
 Kéo `brave-cross` mới về thì dựng lại `ui_ref` + `layout_ref` + tag (README,
@@ -273,12 +273,23 @@ bằng chính mã gốc — `SkillLogic:CommandReviveAccelerate`
 ghi ngược `LeaderShipResume = 1/addtionPerSec`. Còn ĐẶT: vào trận thì đầy
 thống soái.
 
-Chỗ đứng quân: LÀN là số thật. `Location` (1..3) của bản ghi sprite quyết
-định làn (Defender 1, Archer 3; 0 = không có làn riêng). Khoảng cách lấy từ
-`map/global_config.xml`: `fLaneWidth = 0.4` ô = 40 px, `fLaneOffset = 0.1` ô
-= 10 px, khoảng cách hai quân cùng làn `fArmySpace = 1.1` ô = 110 px. ĐẶT:
-đơn vị của hai hằng làn là ô (suy từ chính file đó — mọi hằng khác trong nó
-đều tính bằng ô), và thứ tự xếp khi `Location = 0`.
+Chỗ đứng quân: LÀN là số thật, và **đơn vị của hai hằng làn nay đã ĐO** (trước
+là ĐẶT). `Location` (1..3) của bản ghi sprite quyết định làn (Defender 1, Archer
+3; 0 = không có làn riêng). Khoảng cách lấy từ `map/global_config.xml`:
+`fLaneWidth = 0.4` ô = 40 px, `fLaneOffset = 0.1` ô = 10 px, khoảng cách hai
+quân cùng làn `fArmySpace = 1.1` ô = 110 px. Bốn đường độc lập cho đơn vị ô:
+chính file cấu hình ghi chú `<!-- 道宽 格 -->` ngay trên hai hằng; engine nhân
+với cỡ ô px ở `0x35f43e` (`vldr` `+0x14`/`+0x18` rồi `vmul.f32` với slot
+`+0x270` = `this+0x180`, cặp cỡ ô); cỡ ô = 100 px (engine viết cứng `100*(4-idx)`,
+`InWhichCell` chặn theo "cỡ ô × số ô", và `map_1.tmx` khai `tilewidth=100`); và
+công thức xếp làn `0x35f0a4` → làn 1/2/3 lệch 10/50/90 px, gọn trong 90 < 100 px
+một ô. Số làn cũng là số đo: `Location` của 91 mục trong `KDBGameArmyConfig.xgg`
+chỉ nhận 0..3. Nay `fArmySpace` có bản anh em `fArmySpaceInArena` (1.2) cho đấu
+trường, engine có hai hàm đọc riêng (`0x38193c` / `0x388240`). Đường đo +
+`tran_ref.json` + `tools/verify_lan.gd`; hàm `san_tran_ve.gd:lan_lech_y()` là chỗ
+duy nhất tính làn ra toạ độ. **Còn ĐẶT đúng một chỗ**: chỗ đặt **toán lính đầu
+tiên** khi bấm nút binh chủng (ta đặt ở mép trái ô 0) — client chỉ gọi `dispatch()`
+của lớp C++ nên không suy ra được từ `.so`; và thứ tự xếp khi `Location = 0`.
 
 `ptLayout`: ĐỪNG đoán tiếp, HAI giả thuyết đã bị bác bỏ bằng số đo — "đội hình
 của toán lính" (tích `x*y` khớp `MaxUnit` ở 0/6 binh chủng) và "kích thước

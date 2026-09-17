@@ -19,7 +19,8 @@
 #   * CACH camera bam quan (_buoc_camera) — con so cua no thi that;
 #   * duong mat dat: giua node g_MapZero (bo cuc ghi y = 165);
 #   * co armature: NpcSize cua du lieu goc;
-#   * toc do, tam danh toi thieu: cua BattleUnit (chinh cho man 960 px).
+#   * toc do, tam danh toi thieu: cua BattleUnit (chinh cho man 960 px);
+#   * CHO DAT toan linh khi bam nut binh chung (mep trai o 0) — xem `dua_linh`.
 extends Node2D
 
 const TRAN_GOC := preload("res://battle/tran_goc.gd")
@@ -44,15 +45,21 @@ const BIEN := 90.0          ## le trai / phai: cho quan tiep vien vao tran
 ## ban TQ (nguoi choi doi chieu bang anh chup ban goc), khong treo len giua man.
 ## Chi la CHO DUNG BAN DAU cua ta; _tach() giu khoang cach sau do, ket qua tran
 ## do chi so + cong thuc quyet dinh.
-## SO LAN va KHOANG CACH LAN la cua BAN GOC: muc <camera>/<army> cua
-## map/global_config.xml ghi `fLaneWidth = 0.4`, `fLaneOffset = 0.1`; moi hang
-## so trong file do deu tinh bang O (vd `fArmyLength = 4`, `fArmySpace = 1.1`,
-## `<ptVector>` cua toc do) va 1 o = 100 px, nen 0.4 o = 40 px va 0.1 o = 10 px.
-## Ba lan nam gon trong 10 + 2*40 = 90 px < 1 o — khop voi viec chi so lan
-## (`Location`) chi nhan 1..3.
-## DAT: don vi cua `fLaneWidth`/`fLaneOffset` la O (suy tu chinh file do, chua
-## doc duoc cho engine dung hai hang so nay).
-const LAN_SO := 3
+## SO LAN va KHOANG CACH LAN la cua BAN GOC, va DON VI nay DA DO DUOC — khong con
+## la suy luan. Chinh `map/global_config.xml` ghi chu ngay tren hai hang so do
+## `<!-- 道宽 格 -->` ("be ngang duong [lan], tinh bang O"), va engine nhan no voi
+## co o tinh bang px: `0x35f43e` (lop `CDFTMXTiledMap`) doc `fLaneWidth` roi
+## `vmul.f32` voi o `+0x270` (= `0x35e73a`, tuc `this+0x180`, cap co o). Vay
+## 0.4 o = 40 px va 0.1 o = 10 px — ba duong doc lap khac cung noi co o = 100 px
+## (engine viet cung `100*(4-idx)`, `InWhichCell` chan theo "co o x so o", va
+## `map/map_1.tmx` khai `tilewidth=100`).
+## Cong thuc xep lan cua engine `0x35f0a4`: `y = y0 + (Location-1) * 40 + 10` —
+## xem `lan_lech_y()`. Ba lan nam gon trong 10 + 2*40 = 90 px < 1 o, va `Location`
+## cua bang binh chung (`config/share/KDBGameArmyConfig.xgg`, 91 muc) chi nhan
+## 0..3 — nen `LAN_SO` cung la so DO, khong phai so ta chon.
+## Bang so + duong do: `brave-cross/work/tran_ref.py` -> `data_ref/tran_ref.json`,
+## khoa bang `tools/verify_lan.gd`.
+const LAN_SO := 3           ## max Location cua bang binh chung
 const LAN_CACH := 40.0      ## fLaneWidth 0.4 o
 const LAN_LECH := 10.0      ## fLaneOffset 0.1 o
 const HANG_SO := LAN_SO     ## so hang xep khi quan KHONG co lan rieng
@@ -98,6 +105,15 @@ var _cam_toc := 0.0            ## toc do hien tai, o/giay (tang dan luc bat dau)
 var _cam_dung := false
 var _lop: Array = []           ## [Control, x goc, he so parallax] cua nut parallax cha
 var _bang = null               ## BangTuong: khung + thanh mau/no cua tuong ta (goc duoi-trai)
+
+
+## Lech y cua mot LAN so voi duong dat (px, huong LEN), theo dung cong thuc cua
+## engine `0x35f0a4`: `y = y0 + (Location-1) * fLaneWidth + fLaneOffset`. `lan`
+## o day la so lan 1-based nhu `Location` cua ban goc, nen lan 1/2/3 ra
+## 10 / 50 / 90 px. Tach ra thanh ham de bo kiem `tools/verify_lan.gd` doi chieu
+## duoc voi con so trong `data_ref/tran_ref.json`.
+static func lan_lech_y(lan: int) -> float:
+	return LAN_LECH + float(lan - 1) * LAN_CACH
 
 
 ## Tra ve chuoi loi, hoac "" neu bat dau duoc. `mz` la node g_MapZero (co the
@@ -225,8 +241,9 @@ func _them(e: Dictionary, doi: int) -> void:
 	# Hang truoc (hang 0) DUNG NGAY tren duong dat g_MapZero, cac hang sau lui
 	# LEN (chieu sau san, y am hon) — dung vat ly duong dat, khong day xuong che
 	# ca the tuong o goc man. DOAN_LEN nhac ca doi hinh len mot chut cho thoat
-	# the tuong (nguoi choi doi chieu bang anh ban goc).
-	u.sy = _mat_dat - DOAN_LEN - LAN_LECH - float(hang) * LAN_CACH
+	# the tuong (nguoi choi doi chieu bang anh ban goc). CHO DAT la cua ban goc
+	# phan LAN (`lan_lech_y`); DOAN_LEN thi la cua ta.
+	u.sy = _mat_dat - DOAN_LEN - lan_lech_y(hang + 1)
 	u.position = Vector2(u.sx, u.sy)
 	add_child(u)
 	var r := _thu_muc_rig(String(e["ten"]))
@@ -256,7 +273,17 @@ func _them(e: Dictionary, doi: int) -> void:
 ## Dua MOT TOAN linh ra tran — nut binh chung cua ban goc (engine goi
 ## dispatch). Toan gom MaxUnit nguoi dung tu CHI SO THAT cua Sprite[<ten>]
 ## (vd Troop_1: DefenderN, HP 1000, MaxUnit 4). Tra so nguoi da dua ra.
-## DAT: toan xuat hien o mep trai san (o 0); ban goc dua tu dau, chua do.
+## CHO DAT TOAN: DAT o mep trai san (o 0, tuc dung goc g_MapZero), va DAY LA CHO
+## DUY NHAT con DAT trong item "cho dung quan" cua ROADMAP — phan LAN thi da do
+## duoc (xem `lan_lech_y`). Ly do no khong suy ra duoc tu file game: client chi
+## goi `CUIGame:TouchArrmy` -> `self.tArmyIcons[id]:dispatch()`, ma `dispatch`
+## va `setDispatchID` KHONG file Lua nao trong `sc/` dinh nghia (grep ca cay),
+## tuc no nam trong lop C++ cua engine; che do thu cua chinh engine thi TU SINH
+## du lieu quan (`g_BattleField:setSendTroops("", self.test)`, CUIGame.lua:877).
+## Doan dang tin: quan tiep vien cua KICH BAN vao tran tu MEP (`dua_dong_minh`,
+## theo `CreateNpcAndMoveTo` cua ban goc), nen mep trai la cho hop voi chinh ban
+## goc. Do han tren may ao thi mo bang co `bDirectBattle` (sc/game.lua:483 ->
+## `CUIGame:Test()`), xem ROADMAP muc "Cho dung quan".
 func dua_linh(ten: String) -> int:
 	if _xong:
 		return 0

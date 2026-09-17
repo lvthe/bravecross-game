@@ -204,6 +204,20 @@ SUITES = [
     # phan biet duoc hai cach hieu), tieng dong chi phat o pha Begin, va
     # `_Lua_changeWingAnimation` voi tới CANH ma khong dung tới nhan vat.
     ('o hien armature',      'script', 'tools/verify_o_hien.gd',      False, []),
+
+    # CHO DUNG QUAN — hang so lan cua man tran. Bon nam hang so cua
+    # `battle/san_tran_ve.gd` (LAN_CACH/LAN_LECH/LAN_SO/ARMY_SPACE) va nam hang so
+    # camera tung la ĐẶT: ghi chu noi "suy tu chinh map/global_config.xml" chu
+    # khong co cho nao trong file game noi engine dung chung the nao. Nay do duoc
+    # het, va bo kiem nay giu cho chung khong troi lai: chu thich 道宽 格 ngay
+    # tren hai hang so trong chinh file cau hinh (don vi la O), cho engine nhan voi
+    # co o px (`0x35f43e` -> `vmul.f32` voi `+0x270` = `this+0x180`), cong thuc
+    # xep lan `0x35f0a4` (`y = y0 + (Location-1)*rong + lech`, ra 10/50/90 px), so
+    # lan dem tu `Location` cua bang binh chung (91 muc, 0..3 — nen LAN_SO cung la
+    # so do chu khong phai so ta chon), va `fArmySpace` co ban anh em
+    # `fArmySpaceInArena` cho dau truong (hai ham doc rieng trong engine). Neu
+    # thieu `data_ref/tran_ref.json` thi bao BO QUA.
+    ('cho dung quan',        'script', 'tools/verify_lan.gd',          False, []),
 ]
 
 SCORE = re.compile(r'dat (\d+), hong (\d+)')

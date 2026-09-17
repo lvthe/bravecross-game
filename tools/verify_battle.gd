@@ -116,6 +116,56 @@ func _init() -> void:
 	_check(MoveRef.di("KhongCoSpriteNay") == 0.0,
 			"sprite la thi tra 0 chu khong doan")
 
+	# --- luat DI hay CHAY, do tu libgame.so (ham 0x413bd4, ban vn).
+	# Nguong = 4 x be ngang O = 400 px; `+=` (vcmpe + it pl la `>=`).
+	_check(BattleUnit.NGUONG_CHAY == 400.0 and BattleUnit.CHAY_O == 4.0
+			and BattleUnit.O_PX == 100.0,
+			"nguong chay = 4 O x 100 px = 400 px", str(BattleUnit.NGUONG_CHAY))
+	_check(BattleUnit.nen_chay(500.0, true) and BattleUnit.nen_chay(-500.0, true),
+			"xa hon 4 O thi chay (ca hai chieu)")
+	_check(BattleUnit.nen_chay(400.0, true), "dung bang nguong thi CHAY (>=, khong phai >)")
+	_check(not BattleUnit.nen_chay(399.9, true), "gan hon nguong thi di")
+	_check(not BattleUnit.nen_chay(500.0, false), "chua biet toc do chay thi di, khong doan")
+
+	# --- va chinh buoc di phai dung con so do: xa thi buoc dai bang toc do CHAY.
+	# Dung mot don vi that (visual = false nen khong dung armature).
+	var u_ta := BattleUnit.new()
+	u_ta.visual = false
+	u_ta.setup(c.make(c.order[0]), 0, c.rules, Combat.Rng.new(11), "",
+			1.0, "", "Defender")
+	var u_dich := BattleUnit.new()
+	u_dich.visual = false
+	u_dich.setup(c.make(c.order[0]), 1, c.rules, Combat.Rng.new(12), "",
+			1.0, "", "Defender")
+	u_ta.target = u_dich
+	# Nguong 400 px: dat muc tieu o 500 px (chay) va o 300 px (di), do buoc di
+	# duoc trong dung 1 giay. Toc do Defender: di 130, chay 300 px/giay.
+	u_ta.sx = 0.0
+	u_ta.sy = 0.0
+	u_ta.advance(1.0, [], {u_ta: [0.0, 0.0], u_dich: [500.0, 0.0]})
+	_check(absf(u_ta.sx - 300.0) < 0.01, "muc tieu o 500 px -> di duoc 300 px (CHAY)",
+			str(u_ta.sx))
+	u_ta.sx = 0.0
+	u_ta.sy = 0.0
+	u_ta.advance(1.0, [], {u_ta: [0.0, 0.0], u_dich: [300.0, 0.0]})
+	_check(absf(u_ta.sx - 130.0) < 0.01, "muc tieu o 300 px -> di duoc 130 px (di)",
+			str(u_ta.sx))
+	# Khong biet sprite thi van di 130... khong: lay du phong theo chi so, va
+	# KHONG chay (khong doan toc do chay).
+	var u_la := BattleUnit.new()
+	u_la.visual = false
+	u_la.setup(c.make(c.order[0]), 0, c.rules, Combat.Rng.new(13), "",
+			1.0, "", "KhongCoSpriteNay")
+	u_la.target = u_dich
+	u_la.sx = 0.0
+	u_la.sy = 0.0
+	u_la.advance(1.0, [], {u_la: [0.0, 0.0], u_dich: [500.0, 0.0]})
+	_check(u_la.speed_chay == 0.0 and absf(u_la.sx - u_la.speed) < 0.01,
+			"sprite la: khong chay, van di theo toc do du phong", str(u_la.sx))
+	u_ta.free()
+	u_dich.free()
+	u_la.free()
+
 	print("\n=== 5. anh xa truong sang ben danh / ben chiu (Harm) ===")
 	# Doc ra tu cho dien struct 0x41ab82..0x41ad08: nDp va fReducingDamage lay tu
 	# BEN CHIU, con nguyen to / xuyen / DamageAddition / DamageMultiples lay tu

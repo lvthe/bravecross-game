@@ -19,12 +19,54 @@ const LANE_PULL := 0.35        ## doi lan cham hon chay thang bao nhieu lan
 const LANE_WEIGHT := 4.0       ## lech lan bi phat nang the nay khi chon muc tieu
 const BAR_Y := -88.0           ## rig lay goc o chan, nhan vat cao khoang 90
 
+## Nguong CHAY: ban goc bat co `chay` khi |Δx| toi muc tieu >= 4 x be ngang O.
+## Do tu libgame.so (ban vn) — ham `0x413bd4`, noi DUY NHAT trong ca hai ban bat
+## co ay (co `+0x295` chi bi dung o 4 cho: xoa trong ham dung, xoa sau buoc chay
+## `0x415b18`, va bat tai `0x413c4c`):
+##
+##   0x413c12  ldr r3,[pc,#0x44]; add r3,pc; ldr r3,[r3]   ; singleton san tran
+##   0x413c1c  ldr r0,[r3]; bl 0x462e5e  ; 0x462e5e = ldr.w r0,[r0,#0x1b8]
+##   0x413c2a  ldr r3,[r0]; ldr.w r3,[r3,#0x270]; blx r3   ; -> ban do + 0x180
+##   0x413c36  vldr s14,[r0]                               ; be ngang O, tinh PX
+##   0x413c3a  vmul.f32 s15,s14,#4.0
+##   0x413c42  vcmpe.f32 s16,s15                           ; |Δx| (s16) voi 4 x O
+##   0x413c4c  strbpl.w r0,[r5,#0x295]                     ; xa thi BAT CO CHAY
+##
+## `+0x270` = `0x35e73a` = `add.w r0,r0,#0x180; bx lr`. Quet ca file thi do la
+## STUB DUY NHAT dang `this + 0x180` (35 cho cong hang so 0x180, chi 1 cho theo
+## kieu nay), va no nam trong DUNG HAI vtable: `CDFTMXTiledMap` (vt `0x895ac8`,
+## RTTI `14CDFTMXTiledMap`) va `cocos2d::CCTMXTiledMap` (vt `0x921780`). Nen doi
+## tuong lay qua `[san tran + 0x1b8]` chac chan la BAN DO tmx, va `+0x180` la be
+## ngang O tinh bang px = 100 (`map/map_1.tmx` khai `tilewidth="100"`; cung cho
+## do, `0x35f43e` nhan fLaneWidth voi no de ra be ngang lan PX).
+##
+## `dx` chu khong phai khoang cach: ban goc tru truc X roi lay tri tuyet doi
+## (`vsub.f32 s16,s16,s15` … `vabs.f32`), KHONG dung toi Y.
+##
+## Co bi XOA sau moi buoc chay (`0x415b18`) — tuc no duoc TINH LAI tung buoc,
+## nen o day cung tinh lai tung khung hinh chu khong nho trang thai.
+const CHAY_O := 4.0
+const O_PX := 100.0
+const NGUONG_CHAY := CHAY_O * O_PX
+
 var fighter: Combat.Fighter
 var team := 0
 var rig: SngRig = null
 ## Toc do va tam danh lay tu chi so cua don vi (setup() ghi de). Gia tri o day
 ## chi la du phong.
 var speed := 90.0
+## Toc do CHAY, px/giay. Lay cung nguon voi toc do DI (`<ptRunVector>` cua khoi
+## `<move>` trong `map/*_config.xml`, xem battle/move_ref.gd). 0 = khong biet
+## sprite do thi KHONG chay, chu khong doan.
+##
+## Do them tu .so: nhanh chay cua ban goc (`0x415a9a`..`0x415b18`) day vi tri di
+## mot buoc CUNG `3,8 O` (`vldr s15,[pc,#0x13c]` = 3.8, nhan voi be ngang O) roi
+## goi `+0x2a4(this, ban_do, &dich, 0, …)` — ban goc di theo BUOC roi de armature
+## chay het quang duong do. Man tran cua ta di LIEN TUC theo px/giay nen dung
+## thang `<ptRunVector>`; con quan he giua buoc 3,8 O kia va `<ptRunVector>` thi
+## CHUA do duoc (khong co may ao nao chay noi ban goc — xem ROADMAP muc toc do
+## quan), nen ghi lai day cho khoi phai doan lai.
+var speed_chay := 0.0
 var reach := 58.0
 ## Tam toi thieu: vai quan chung khong danh duoc muc tieu qua gan (Artillery,
 ## Catapult). 0 = khong co han che.
@@ -75,12 +117,14 @@ func setup(f: Combat.Fighter, team_index: int, rules: Dictionary,
 	# ky binh 140... Truong `MovingSpeed` cua bang chi so tran KHONG phai cho
 	# engine lay toc do — no khong he co trong libgame.so; xem battle/move_ref.gd.
 	#
-	# DAT: lay toc do DI. Ban goc con co toc do CHAY (bo binh 300, cung 250,
-	# ky binh 350) va chon di hay chay theo "brain" ben C++ — chua giai.
+	# Chon DI hay CHAY thi nay DA DO: xem `NGUONG_CHAY` (nguong) va
+	# `nen_chay()` (luat). Toc do chay lay cung bang do.
 	speed = MoveRef.di(ten_sprite)
+	speed_chay = MoveRef.chay(ten_sprite)
 	if speed <= 0.0:
 		# Khong biet sprite do: giu cach cu de khoi dung im.
 		speed = maxf(28.0, f.move_speed * 1.5)
+		speed_chay = 0.0
 	# Don dau tien roi vao luc hoi chieu xong, giong mo phong Python.
 	cooldown = fighter.interval
 	if visual and art_dir != "":
@@ -120,6 +164,7 @@ func _scale_x(mag: float) -> float:
 const THAY_DONG := {
 	"Standby": ["Standby", "Standby2", "Walk", "Run"],
 	"Walk": ["Walk", "Walk2", "Run", "Standby"],
+	"Run": ["Run", "Walk", "Walk2", "Standby"],
 	"Fight": ["Fight", "Fight2", "Fight3", "Fire", "Walk"],
 	"Wake": ["Wake", "Wake2", "WakeLoop", "Fight", "Walk"],
 	"Death": ["Death", "Down", "Hit", "Standby"],
@@ -185,6 +230,14 @@ func alive() -> bool:
 # chuyen; pha 2 gom moi don ra cung luc roi tru mau mot the. Nho vay hai ben
 # co the cung chet trong mot buoc, dung nhu mo hinh Python.
 
+## Chon DI hay CHAY theo luat cua ban goc: `dx` = toa do muc tieu tru toa do
+## minh (px). Xa tu `NGUONG_CHAY` (4 O = 400 px) tro len thi chay — ke ca bang
+## dung nguong (`vcmpe` + `it pl` la `>=`, khong phai `>`). Chua biet toc do chay
+## (`co_chay` = false) thi di, khong doan.
+static func nen_chay(dx: float, co_chay: bool) -> bool:
+	return co_chay and absf(dx) >= NGUONG_CHAY
+
+
 ## Pha 1: chon muc tieu, tien len. `snap` la vi tri cua moi don vi truoc buoc
 ## nay. Tra ve muc tieu neu don vi nay ra don trong buoc, khong thi null.
 ## Xac mo dan roi BIEN MAT sau khi chet — khong de dong lai thanh vet den.
@@ -238,11 +291,17 @@ func advance(delta: float, enemies: Array, snap: Dictionary) -> BattleUnit:
 		# Di theo LAN: chay thang mot mach theo truc x, con doi lan thi cham
 		# hon nhieu. Neu cho di thang toi muc tieu thi ca tam don vi don ve
 		# mot diem giua san roi chong len nhau thanh mot dong.
-		var step_y := speed * LANE_PULL * delta
+		#
+		# Di hay CHAY: xa >= 4 O thi chay (`nen_chay`, do tu .so — xem
+		# `NGUONG_CHAY`). Ban goc tinh lai tung buoc nen o day cung tinh lai
+		# tung khung hinh.
+		var chay := nen_chay(dx, speed_chay > 0.0)
+		var v := speed_chay if chay else speed
+		var step_y := v * LANE_PULL * delta
 		if dx > 0.0:
-			sx = here[0] + speed * delta
+			sx = here[0] + v * delta
 		elif dx < 0.0:
-			sx = here[0] - speed * delta
+			sx = here[0] - v * delta
 		else:
 			sx = here[0]
 		sy = here[1] + maxf(-step_y, minf(step_y, dy))
@@ -251,7 +310,7 @@ func advance(delta: float, enemies: Array, snap: Dictionary) -> BattleUnit:
 			facing = signf(dx)
 			if rig != null:
 				rig.scale.x = _scale_x(absf(rig.scale.y))
-		_play("Walk")
+		_play("Run" if chay else "Walk")
 		return null
 
 	state = State.ATTACK

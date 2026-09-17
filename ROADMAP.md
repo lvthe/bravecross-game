@@ -2139,20 +2139,46 @@ tướng không bị cướp, cấp 5 thay cấp 3, cấp 1 xoá sạch); D **ch
       với `vmul #4.0`, `itt pl` + `strbpl.w` — rồi đặt cờ; `Δx` là hiệu hoành
       độ giữa `self` và vật ở `self+0x17c` (đúng ô `+0x17c` mà `0x415a4d`
       dùng, nên cùng họ lớp).
-      **W chưa rõ là gì**: nó là float đầu của kết quả ảo `+0x270` trên một
-      vật lấy qua chuỗi truy cập toàn cục, bước cuối là `ldr r0, [r0, #0x1b8]`
-      (`0x462e5e`, **533 chỗ gọi**) — nên `+0x1B8` ở đó là trường của **một lớp
-      khác**, không phải `ptRunVector`: đúng cái bẫy "cùng độ lệch, khác lớp",
-      và là lý do không được khẳng định gì chỉ từ một độ lệch.
-      Vậy tóm lại luật đi/chạy: **bật cờ chạy khi lệch hoành độ tới mục tiêu
-      ≥ 4 × W; chỗ dùng trao `&ptRunVector` cho bộ di chuyển ảo `+0x2E8` rồi
-      xoá cờ.** Cổng **vẫn giữ tốc độ ĐI** (ĐẶT) vì `W` chưa xác định — nối
-      bằng một ngưỡng tự đặt thì phải ghi rõ là ĐẶT. Tốc độ CHẠY **đã trích**
-      (`data_ref/move_ref.json`) và **đã có phép kiểm**
-      (`tools/verify_battle.gd:108-116`) nhưng **chưa nối** vào chỗ dùng
-      (`battle/unit.gd:80` đang lấy `MoveRef.di()`). Ghi chú chưa truy: hàm
-      dựng một lớp move đặt `+0x1FC = 20` (`0x4124e0`), một lớp khác `= 30`
-      (`0x412548`) — nghi là số tốc độ theo lớp, chưa đo.
+      **W ĐÃ CHỐT (2026-09-18) — bản đồ tmx, `W` = bề ngang ô = 100 px.** Chỗ
+      đọc là chuỗi truy cập toàn cục: `0x413c12` lấy `.got 0x92ac08`
+      (`R_ARM_RELATIVE` → `.bss 0x95dc18`), `ldr r0,[r3]` ra đối tượng **sàn
+      trận**, `bl 0x462e5e` (`= ldr.w r0,[r0,#0x1b8]`) ra vật ở `+0x1b8`, rồi
+      gọi ảo `+0x270`. Chốt được là nhờ RTTI, không phải đoán:
+        * `0x35e73a` = `add.w r0,r0,#0x180; bx lr` là **stub duy nhất** kiểu
+          `this + 0x180` trong cả file (quét đủ `.text`: 35 chỗ cộng hằng
+          0x180, **đúng 1 chỗ** theo kiểu tính địa chỉ này) — nên bất kỳ vật
+          nào có ô `+0x270` bằng `0x35e73b` đều **chắc chắn** trả `this+0x180`;
+        * quét `.data.rel.ro` tìm word `0x35e73b`: **đúng hai** vtable có nó ở
+          ô `+0x270` — `CDFTMXTiledMap` (vt `0x895ac8`, RTTI `14CDFTMXTiledMap`)
+          và `cocos2d::CCTMXTiledMap` (vt `0x921780`). Vậy vật ở
+          `[sàn trận + 0x1b8]` là **bản đồ tmx**, và `+0x180` là cỡ ô **tính
+          bằng px** = 100 (`map/map_1.tmx` khai `tilewidth="100"`; cùng chỗ đó
+          `0x35f43e` nhân `fLaneWidth` với nó để ra **bề ngang làn px**, và
+          `InWhichCell` `0x35ec4c` chia điểm cho nó để ra chỉ số ô).
+        * Nghi vấn cũ ("`+0x1B8` ở đó là trường của **một lớp khác**, không
+          phải `ptRunVector`; đúng cái bẫy *cùng độ lệch, khác lớp*") **vẫn
+          đúng** — chỉ khác là lớp ấy nay **biết tên**: `lua_DFBattleField`
+          (hàm dựng `0x466a24`, vt `0x9088e8`, RTTI `17lua_DFBattleField`, ghi
+          chính nó vào `.bss 0x95dc18` tại `0x466c7a`). Và cái trường `+0x1b8`
+          của **lớp đó** — chỗ `0x462038` so `cmp r0, r7` với `obj->v108()` —
+          là *con trỏ tới bản đồ* của sàn trận hiện tại, không phải vector.
+      Vậy **ngưỡng = 4 × 100 = 400 px = 4 ô**, `>=` (`vcmpe` + `it pl`), và so
+      **chỉ trục X** (`vsub` rồi `vabs`, không đụng tới Y).
+      **ĐÃ NỐI vào cổng** (`battle/unit.gd`: `NGUONG_CHAY`/`nen_chay()`; chạy
+      thì dùng `MoveRef.chay()`, và có thêm động tác `Run` cho armature). Còn
+      **CHƯA đo được** một chỗ, ghi lại cho khỏi đoán: nhánh chạy
+      (`0x415a9a`..`0x415b18`) đẩy vị trí đi một bước **cứng `3,8` ô**
+      (`vldr s15,[pc,#0x13c]` = 3.8, nhân với bề ngang ô) rồi gọi
+      `+0x2a4(this, bản_đồ, &đích, 0, …)` — tức **bản gốc đi theo BƯỚC** rồi để
+      armature chạy hết quãng đường đó. Bản dựng đi **liên tục** theo px/giây
+      nên dùng thẳng `<ptRunVector>` (cùng nguồn với `<ptVector>` của đường
+      đi, `data_ref/move_ref.json`, phép kiểm `tools/verify_battle.gd`); quan hệ
+      giữa bước `3,8` ô kia và `<ptRunVector>` thì **chưa đo** (máy ảo không
+      chạy nổi bản gốc — SIGSEGV trong `RepaleceScene`). Đo được luôn: sau khi
+      nối, `do_chien_dich --kichban` vẫn **11 đạt / 0 hỏng** (trận xong ở
+      `giay 47`). Ghi chú chưa truy: hàm dựng một lớp move đặt `+0x1FC = 20`
+      (`0x4124e0`), một lớp khác `= 30` (`0x412548`) — nghi là số tốc độ theo
+      lớp, chưa đo.
 - [x] **Ánh xạ trường sang bên đánh / bên chịu** — đọc thẳng từ **chỗ điền
       struct** (`0x41ab82..0x41ad08`), không còn suy theo nghĩa của tên. Hàm
       `0x380c94` nhận một struct 0x4c byte; chỗ điền lấy từng ô từ hai đối
@@ -2718,13 +2744,18 @@ tướng không bị cướp, cấp 5 thay cấp 3, cấp 1 xoá sạch); D **ch
    lượt: `0x382670` = `fArmySpace × fArmyLength × cỡ ô px` = 440 px; và tên khoá
    JSON (`PosX` ở `0x7bc0b7`…) **không truy được bằng xref** — không một word nào
    trong file trỏ vào trang chuỗi ấy.
-   và **(b) tốc độ** — đo lại 2026-09-18:
-   tốc độ CHẠY **đã trích** (bộ binh 300 / cung 250 / kỵ 350) và đã có phép
-   kiểm, và luật đi/chạy **nay ĐÃ khôi phục được một phần** (lượt đo đầu kết
-   luận sai là "không khôi phục được"): cờ `+0x295` bật khi lệch hoành độ tới
-   mục tiêu `≥ 4 × W`, chỗ dùng trao `&ptRunVector` cho bộ di chuyển ảo
-   `+0x2E8` rồi xoá cờ — còn `W` (float đầu của kết quả ảo `+0x270`) thì
-   **chưa rõ**. Chi tiết, số đo và ba bẫy của phép quét: §5 mục "Tốc độ quân".
+   và **(b) tốc độ** — đo lại 2026-09-18, **xong**:
+   tốc độ CHẠY (bộ binh 300 / cung 250 / kỵ 350) và luật đi/chạy nay **đều đã
+   khôi phục và đã nối** — cờ `+0x295` bật khi lệch hoành độ tới mục tiêu
+   `≥ 4 × W`, và `W` **đã chốt** = bề ngang ô của bản đồ tmx = 100 px (chốt
+   bằng RTTI: `0x35e73a` = `this+0x180` là stub duy nhất kiểu ấy trong file, và
+   chỉ **hai** vtable có nó ở ô `+0x270`, cả hai đều là lớp bản đồ tmx), nên
+   **ngưỡng = 400 px = 4 ô**; cổng dùng `MoveRef.chay()` khi xa, có thêm động
+   tác `Run`. Còn **chưa đo**: nhánh chạy đẩy một bước **cứng 3,8 ô** rồi để
+   armature chạy hết quãng ấy (bản dựng đi liên tục nên dùng thẳng
+   `<ptRunVector>`). Chi tiết, số đo và ba bẫy của phép quét: §5 mục "Tốc độ
+   quân"; phép kiểm `tools/verify_battle.gd` (11 phép) và
+   `do_chien_dich --kichban` vẫn 11/0.
 5. ~~**Làm binding engine `LuaTableView_create`**~~ — **xong**
    (`lua/bang.lua`, gắn ở `bootstrap.lua:228`), cùng lượt ấy làm luôn
    `LuaTableViewCell_create`. Trước đó `tv` là bong nên màn nào chạm vào nó thì

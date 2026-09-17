@@ -1801,6 +1801,86 @@ nhau: `cham_ref.json` với bản đồ `sourceSize`), tầng D đi **đường 
 `getSpriteFromSpriteCatch` — kể cả luật đổi không gian, xương sai tên, và node
 không phải rig (im lặng trả `(0, 0)`, đúng như bản gốc).
 
+### Hiệu ứng sao của tướng (`_Lua_addStarLevelEffect`)
+
+Bảng "API Cocos CHUA LAM" còn hai món, món to là cái này — **4 chỗ gọi**, nhưng
+cả 4 đều gác bằng `if spHeroSprite._Lua_addStarLevelEffect then`, mà `__index` của
+lớp giả lập trả hàm cho **mọi** tên, nên thiếu nó thì **không một dòng lỗi**:
+hiệu ứng sao của tướng đơn giản là không bao giờ hiện. Bốn chỗ:
+`sc/user/Logical/ClientPaperDoll.lua:271,288` (từ đó ra màn túi / đội hình / thông
+tin tướng / hang / ải vô tận) và `sc/user/Battle/CUIGame.lua:953` (sân trận).
+
+**Mã máy** (đo): tên hàm có đúng một lần trong `libgame.so` (`.rodata 0x7b50d9`)
+và **hai** bảng bind (`.data 0x9377a0`, `0x938378`) cùng trỏ Thumb `0x41ba6d`
+(`0x41ba6c`). Hàm bao quanh chỉ đọc một số nguyên rồi gọi `0x41b998(L, n, 1)`;
+trong đó: `memset(buf, 0, 0x40)` (`0x201fec`),
+`snprintf(buf, 63, "lsStarLevelEffect_%d", n)` (`0x20261c`, chuỗi ở `0x41b9ec`),
+`std::string` (`0x73668c`), rồi **tạo node theo KHOÁ CẤU HÌNH** (`0x38d2e8`, với
+quản lý lấy từ `0x38c7f0()->[+0x198]`), đặt tên mỗi node là `StarLevelEffect_`
+(`0x41b9aa` → `+0x120`), và khi có cờ thì gọi trước `0x418628(self,
+"StarLevelEffect_")` để **xoá cái cũ**. Nghĩa là KHOÁ CẤU HÌNH quyết định, không
+phải tên tài nguyên.
+
+**Cấu hình** (`map/global_config.xml`, khối `<star>`): khoá `lsStarLevelEffect_<cấp>`,
+mỗi khoá liệt kê tên **biến thể** — cấp 2 chỉ `StarLevelEffect_2Up`; cấp 3..7 có
+đủ `_<cấp>Up` và `_<cấp>Down` (phần trên người và phần dưới chân: `_NUp` 7..11
+xương, `_NDown` 1..5 xương). **Cấp 1 không có hiệu ứng** — khối bắt đầu từ `_2`,
+đúng bằng lý do `NumberUtils.Range(HeroGrowthFactor or 1, 1, 7)` trả 1 thì không
+thấy gì. Số xương từng biến thể: 2Up 7, 3Up 7, 3Down 1, 4Up 8, 4Down 2, 5Up 10,
+5Down 2, 6Up 11, 6Down 2, 7Up 11, 7Down 5.
+
+**Hai chỗ đọc nhầm, sửa trong lượt này.** (a) Tài liệu cũ ghi "file armature có 23
+biến thể, mỗi biến thể đúng một động tác `PluginPlay`" — **sai**: **11** biến thể
+là của cấu hình và có `PluginPlay`, **12** biến thể còn lại tên
+`StarLevelEffect_mc_*` là **rig lồng nhau**, động tác của chúng tên `Play`. Bảng
+JSON nay ghi rõ từng loại ở trường `loai`, và bộ kiểm đòi đúng phép chia 11 + 12.
+(b) "chỉ hai biến thể có rig lồng nhau" — **sai**: **cả 11** đều có, đo theo đúng
+luật `_sprite_for` → `_nested_variant` (ưu tiên ẢNH, hết ảnh mới tới biến thể):
+theo thứ tự 2Up…7Down là **2/2/1/3/2/5/2/6/2/6/5** xương trỏ tới rig lồng nhau,
+và rig lồng nhau lại lồng tiếp (`_mc_23` nằm trong `_5Up`).
+
+**Một cái bẫy đã mắc, đúng loại im lặng mà `CLAUDE.md` cảnh báo.** `_tao_rig` gọi
+`SngRig.build(..., true)` — bật bộ lọc xương tên `Layer*` (đặt ra cho nhân vật,
+xem `CLUTTER_PREFIXES`). Nhưng xương của armature **hiệu ứng** đều tên `Layer*`:
+với cả 11 biến thể hiệu ứng sao, **100%** xương tầng ngoài cùng tên `Layer*` →
+lọc là ra rig **0 xương**. Rig 0 xương vẫn `play()` được (trả `true`) và vẫn có
+tên động tác, nên phép kiểm "chạy không lỗi" **không thấy gì** — chỉ phép **đếm
+xương** mới bắt được. Đo rộng ra: **1319/2935** biến thể trong `assets_ref` có
+toàn bộ xương tầng ngoài cùng tên `Layer*`, gần như tất cả là armature hiệu ứng
+(`Artillery_Effect_Boom`, `BatFlight_WakeEffect`, …). Nên nay `_tao_rig(ten,
+giu_layer)` có công tắc ấy, đường hiệu ứng sao đi bằng `giu_layer = true`, và
+`LuaRuntime.rig_rong` **đếm** mọi armature dựng ra rỗng để lỗi này không im lặng
+nữa. **Chưa sửa** chỗ rộng hơn: armature hiệu ứng gọi tên qua
+`getSpriteFromSpriteCatch` vẫn đi qua `_tao_rig` mặc định (lọc) — muốn sửa cho
+đúng thì phải đo lại luật theo **từng khung** (bản gốc chỉ loé xương `Layer*` của
+nhân vật vài khung rồi tắt), không phải đổi mặc định cho có.
+
+**Làm:** `ui/star_ref.gd` (`StarRef`, đọc `data_ref/star_ref.json` do
+`brave-cross/work/star_ref.py` sinh từ khối `<star>` rồi đối chiếu chéo với file
+armature — `lech: 0`), `LuaRuntime._hieu_ung_sao`, và
+`Node:_Lua_addStarLevelEffect` trong `lua/cocos.lua`. Cấp 2..7 gắn 1–2 armature
+vào **chính node tướng**, danh sách giữ ở meta `hieu_ung_sao` (bản gốc xoá theo
+tiền tố tên; ở đây danh sách chết theo node, màn nào bỏ node tướng thì không còn
+vết). Cấp 1 và ngoài 2..7 trả 0 và **xoá sạch** cái cũ.
+
+**Một chỗ hiểm đã đo và khoá lại:** rig của lớp giả lập lấy bằng **con ĐẦU TIÊN**
+có `animations` + `play` (`_rig_cua`), nên hộp armature hiệu ứng phải thêm **SAU**
+rig của tướng — thêm trước là mọi `_Lua_playAnimation` / `_lua_stop` /
+`_lua_setOpacity` của tướng trỏ nhầm sang hiệu ứng. Bộ kiểm đòi `get_child(0)`
+sau khi gắn **vẫn là** rig tướng, cùng `instance_id`.
+
+**Không khôi phục được (ghi ra, không bịa):** node nào là **cha** của các armature
+ấy — mã máy cho thấy chúng được tạo theo khoá cấu hình rồi đặt tên, nhưng không
+đọc ra chỗ gắn, nên bản dựng gắn vào chính node tướng; và **thứ tự vẽ** của `_Up`
+so với `_Down` — bản dựng giữ đúng thứ tự trong cấu hình, chưa đo bên nào vẽ trên.
+
+Khoá bằng `tools/verify_sao.gd` (**151 đạt / 0 hỏng**), bốn tầng: A bảng số liệu +
+`StarRef`; B dựng thẳng 11 biến thể bằng `SngRig` (số xương, một động tác, không
+thiếu ảnh, rig lồng nhau **không rỗng**, và phép kiểm giữ lại chính cái bẫy: bật
+bộ lọc thì rig **rỗng**); C đường Lua qua lớp giả lập (số armature, thứ tự, rig
+tướng không bị cướp, cấp 5 thay cấp 3, cấp 1 xoá sạch); D **chính mã gốc**, đi qua
+`g_ClientPaperDoll:ShowStarEffectWithHeroData`.
+
 
 - [~] Ải vô tận / Epic / SB / COG (11 màn) — **con số 11 sai, và sai kiểu đã
       cảnh báo ở trên**: nó đếm theo đường dẫn file ném lỗi nên gộp **bốn họ
@@ -2893,7 +2973,7 @@ hơn số lần bộ quét **chạy** bắt gặp vì phần lớn nằm ở mà
 | `setText` | 38 | **đã xong** — cả 38 chỗ đều là `CCEditBox`, xem mục "Ô nhập chữ" |
 | `_ShowShadow` | 20 | **đã xong** — cả 20 đều gọi trên node armature (`getSpriteFromSpriteCatch` → `SngRig`), chỗ làm là `rig/sng_rig.gd`. Kèm theo `_SetSyncShadowPosY` (3 chỗ) và `_UpdateShadowPosY` (0 chỗ) — xem mục "Bóng của armature" |
 | `_lua_CollisionSize` | 6 | **đã xong** — trả về MỘT CẶP số (rộng, cao); công thức và 590 biến thể ở mục "Hộp chạm của armature" |
-| `_Lua_addStarLevelEffect` | 4 | |
+| `_Lua_addStarLevelEffect` | 4 | **đã xong** — khoá cấu hình `lsStarLevelEffect_<cấp>`, 11 biến thể, cấp 1 rỗng; xem mục "Hiệu ứng sao của tướng". Kèm theo: bộ lọc xương `Layer*` từng làm armature hiệu ứng ra **rỗng** — nay có `giu_layer` + bộ đếm `rig_rong` |
 | `setLuaCallbackObjAndFunc` | 3 | **đã xong** — nối ô nhập chữ với hàm Lua, cùng lượt với `setText` |
 | `setSoundStrArr` | 2 | |
 

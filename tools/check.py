@@ -175,6 +175,21 @@ SUITES = [
     # (`sourceSize`, ke ca anh `_res-44` khong cat duoc PNG), va luat doi khong
     # gian (dich truot 140,43 -> ket qua doi dung -(140, 43)).
     ('xuong armature',       'script', 'tools/verify_xuong.gd',     False, []),
+
+    # HIEU UNG SAO theo cap sao cua tuong (`_Lua_addStarLevelEffect`) — 4 cho goi
+    # (tui / doi hinh / thong tin tuong / hang / ai vo tan qua `ClientPaperDoll`,
+    # va san tran qua `CUIGame.lua:953`). Truoc luot nay ten khong co trong bang
+    # Node nen roi vao `__index`: gac `~= nil` luon dung, khong mot loi nao, chi
+    # la hieu ung khong bao gio hien — nen phep kiem phai DEM so armature duoc
+    # gan chu khong chi doi "chay khong loi". Bon tang: bang so lieu rut tu khoi
+    # `<star>` cua `global_config.xml` va doi chieu ten voi `map/StarLevelEffect.xml`
+    # (sau cap sao, 11 ten, moi bien the DUNG mot dong tac `PluginPlay`, cap 1
+    # KHONG co muc nao), 11 bien the dung thang tu `assets_ref` (so xuong phan
+    # biet "chon dung bien the" voi "chon nham", va hai bien the co rig long nhau
+    # nam trong `parts` chu khong trong `spriteFiles`), duong Lua do ca THU TU va
+    # viec rig cua tuong VAN la con dau tien (neu khong thi `_rig_cua` tro nham
+    # sang hieu ung), va chinh `g_ClientPaperDoll` chay nguyen van.
+    ('hieu ung sao',         'script', 'tools/verify_sao.gd',         False, []),
 ]
 
 SCORE = re.compile(r'dat (\d+), hong (\d+)')

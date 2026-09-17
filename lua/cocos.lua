@@ -1961,6 +1961,42 @@ function Node:_UpdateShadowPosY()
 	if r ~= nil and r:has_method('cap_nhat_bong_y') then r:cap_nhat_bong_y() end
 end
 
+-- Hieu ung sao theo cap sao cua tuong ----------------------------------------
+-- `_Lua_addStarLevelEffect(n)`: ten ham co DUNG MOT lan trong libgame.so
+-- (`.rodata 0x7b50d9`) va hai bang bind tro toi cung dia chi ham `0x41ba6d`.
+-- Trong do, `0x41b9ec` la chuoi `"lsStarLevelEffect_%d"` di qua `snprintf`
+-- (`0x20261c`) roi vao ham tao armature THEO KHOA CAU HINH — chu khong phai
+-- theo ten tai nguyen; moi node tao ra duoc dat ten `StarLevelEffect_`
+-- (`0x41b9aa`), va khi co co thi `0x418628(self, "StarLevelEffect_")` xoa cai cu
+-- truoc. Bang khoa -> ten do `map/global_config.xml` khoi `<star>` dinh nghia:
+-- cap 2 → `StarLevelEffect_2Up`, cap 3..7 → `..._NUp` + `..._NDown`.
+-- **CAP 1 KHONG CO MUC NAO** trong cau hinh, nen khong co gi de hien.
+--
+-- Bon cho goi trong ma goc: `ClientPaperDoll.lua:271` va `:288` (hai ham
+-- `ShowStarEffectWithHeroData` / `WithHeroID`, tu do ra man tui / doi hinh /
+-- thong tin tuong / hang / ai vo tan), va `CUIGame.lua:953` cho san tran. Ca bon
+-- deu gac bang `if spHeroSprite._Lua_addStarLevelEffect then` — ma `__index` cua
+-- lop gia lap tra ve mot ham cho MOI ten, nen phep gac ay luon dung va thieu ham
+-- nay thi **khong mot dong loi nao**: hieu ung sao don gian la khong bao gio hien.
+--
+-- Viec that o day nam ben GDScript (`LuaRuntime._hieu_ung_sao`): xoa cac
+-- armature cu (danh sach giu trong meta cua chinh node) roi voi moi ten trong
+-- bang tao mot armature va phat dong tac `PluginPlay`. File armature co 23 bien
+-- the: 11 bien the ma cau hinh goi ten — moi cai dung MOT dong tac `PluginPlay`
+-- — va 12 ten `StarLevelEffect_mc_*` la rig LONG NHAU (dong tac `Play`), do cac
+-- xuong `Layer*` cua 11 bien the kia tro toi. Xem `ui/star_ref.gd` va
+-- `brave-cross/work/star_ref.py`.
+-- Toa do cua hai bo xuong da o HE CUA TUONG voi goc o chan (`_NUp` y −231,3..0,
+-- `_NDown` y −113,5..+13), nen chung dat ngay (`0, 0`) — khong doi cho.
+--
+-- CHUA DO (ghi lai, khong doan): node nao la CHA trong ban goc — o day gan vao
+-- chinh node tuong, dung nhu cu phap goi cua ma goc, va do cung la cho duy nhat
+-- lam hieu ung DI THEO tuong; va thu tu ve cua `_Up` so voi `_Down` (giu theo
+-- thu tu trong cau hinh, them sau thi ve tren).
+function Node:_Lua_addStarLevelEffect(cap)
+	return _godot_hieu_ung_sao(raw(self), cap)
+end
+
 -- Hop cham cua armature (6 cho goi: CUIBarracksMain 1043/1091, CUICavern
 -- 363/408/454, CUIInfiniteLevelMain 848). Bon cho dung be CAO de dat nhan/nut
 -- len tren dau nhan vat (`setPosition(0, y*1.3)`, `y*1.7`, hoac

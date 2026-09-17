@@ -544,6 +544,37 @@ hệ số ấy, và chỗ gọi thật truyền node **thường** nên không d
 Chi tiết đầy đủ + số đo: `ROADMAP.md`, mục "Hai hàm xương"; khoá bằng
 `tools/verify_xuong.gd` (59 đạt / 0 hỏng).
 
+Hiệu ứng sao của tướng (`_Lua_addStarLevelEffect`) — **XONG**. Khoá cấu hình
+`lsStarLevelEffect_<cấp>` của khối `<star>` (`map/global_config.xml`) quyết
+định, không phải tên tài nguyên: cấp 2 → `_2Up`, cấp 3..7 → `_<cấp>Up` +
+`_<cấp>Down`, **cấp 1 không có gì** (đúng lý do `NumberUtils.Range(..., 1, 7)`
+trả 1 thì không thấy hiệu ứng). Bảng dữ liệu: `brave-cross/work/star_ref.py` →
+`data_ref/star_ref.json` → `ui/star_ref.gd` (`StarRef`); chỗ chạy:
+`LuaRuntime._hieu_ung_sao` + `Node:_Lua_addStarLevelEffect` trong `lua/cocos.lua`.
+Bốn chỗ gọi của bản gốc (`ClientPaperDoll.lua:271,288` → 5 màn, `CUIGame.lua:953`
+→ sân trận) đều **gác bằng `if ... then`**, mà `__index` của lớp giả lập trả hàm
+cho **mọi** tên — nên thiếu API này thì **không một dòng lỗi**, hiệu ứng chỉ đơn
+giản là không bao giờ hiện. `tools/verify_sao.gd` (151 đạt / 0 hỏng) khoá bốn
+tầng, tầng D đi **chính mã gốc**.
+
+**Bẫy đã mắc, đáng nhớ (một loại im lặng mới).** `_tao_rig` gọi
+`SngRig.build(..., true)` — bật bộ lọc xương tên `Layer*` đặt ra cho **nhân vật**.
+Nhưng xương của armature **hiệu ứng** đều tên `Layer*`: 100% xương tầng ngoài
+cùng của **cả 11** biến thể hiệu ứng sao, nên lọc là ra rig **0 xương** — mà rig
+0 xương **vẫn `play()` được** (trả `true`) và vẫn có tên động tác, nên "chạy không
+lỗi" không thấy gì; **chỉ phép đếm xương** mới bắt được. Đo rộng: **1319/2935**
+biến thể trong `assets_ref` có toàn bộ xương tầng ngoài cùng tên `Layer*` (gần hết
+là armature hiệu ứng). Nay `_tao_rig(ten, giu_layer)` có công tắc,
+`LuaRuntime.rig_rong` đếm mọi rig dựng ra rỗng. **Chưa sửa** chỗ rộng hơn:
+armature hiệu ứng gọi qua `getSpriteFromSpriteCatch` vẫn đi đường lọc — sửa cho
+đúng thì phải đo lại luật theo **từng khung** (bản gốc chỉ loé xương `Layer*` của
+nhân vật vài khung rồi tắt), không phải đổi mặc định cho có.
+
+Đọc nhầm đã sửa, ghi lại: file `StarLevelEffect.xml` có **23** biến thể, không
+phải 11 — **11** của cấu hình (động tác `PluginPlay`) + **12** tên
+`StarLevelEffect_mc_*` là **rig lồng nhau** (động tác `Play`); và **cả 11** biến
+thể hiệu ứng đều có rig lồng nhau, không phải hai cái như tài liệu cũ nói.
+
 Bấm được: `lua/cocos.lua` (`M.cham`) + `LuaRuntime.touch_at`, kiểm bằng
 `tools/verify_cham.gd`. Số màn mở được: xem bảng đầu `ROADMAP.md` (đo bằng
 `tools/quet_show.gd`, con số dao động ±3 giữa các lần chạy). Phần lớn màn hỏng

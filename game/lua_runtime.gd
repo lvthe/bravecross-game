@@ -39,12 +39,24 @@ var errors: Array[String] = []
 ## theo diem goc cua no. Khong co du lieu thi tra hop rong va ghi ten lai.
 var rig_thieu: Dictionary = {}
 
+## Armature dung ra nhung RONG (0 xuong). Khong bao gio dung: mot armature ma
+## ban goc dung thi phai co xuong. Day la cho bat dung loai loi im lang — vd loc
+## `Layer*` lam rong ca armature hieu ung (xem `_tao_rig`). Dem theo ten.
+var rig_rong: Dictionary = {}
+
 ## Am thanh (xem game/am_thanh.gd va lua/am_thanh.lua). Tao ngay o day chu
 ## khong doi den lan phat dau tien: ben kiem doc thang `am.so_phat` de biet
 ## duong noi co chay khong, va doi thi khong con gi de doc.
 var am := AmThanh.new()
 
-func _tao_rig(ten: String) -> Control:
+## `giu_layer` = true thi KHONG loc cac xuong ten `Layer*` (xem CLUTTER_PREFIXES
+## cua `SngRig`). Mac dinh la loc, dung cho nhan vat; nhung co nhom armature ma
+## TOAN BO xuong deu ten `Layer*` — do la armature HIEU UNG, va loc thi rig ra
+## RONG. Do tren 2935 bien the: **1319** bien the nhu vay (Artillery_Effect_Boom,
+## BatFlight_WakeEffect, ca 11 bien the hieu ung sao...). Rieng hieu ung sao:
+## 11/11 bien the, 100% xuong tang ngoai cung ten `Layer*` (2Up 7, 7Up 11...).
+## Nen cho nao goi vao nho kiem `rig.bones` chu dung tin `rig != null`.
+func _tao_rig(ten: String, giu_layer := false) -> Control:
 	var hop := _new_node("node")
 	hop.set_meta("kind", "rig")
 	hop.set_meta("rig_ten", ten)
@@ -64,12 +76,53 @@ func _tao_rig(ten: String) -> Control:
 				break
 	var tep := "%s/%s.json" % [thu_muc, thu_muc.get_file()]
 	if FileAccess.file_exists(tep):
-		var rig := SngRig.build(thu_muc, bien_the, true)
+		var rig := SngRig.build(thu_muc, bien_the, not giu_layer)
 		if rig != null:
+			if rig.bones.is_empty():
+				rig_rong[ten] = int(rig_rong.get(ten, 0)) + 1
+				if rig_rong[ten] == 1:
+					push_warning("LuaRuntime: armature '%s' dung ra RONG (0 xuong) — ten go sai, hoac bo loc `Layer*` an het (xem `_tao_rig`)" % ten)
 			hop.add_child(rig)
 			return hop
 	rig_thieu[ten] = int(rig_thieu.get(ten, 0)) + 1
 	return hop
+
+
+## Hieu ung sao cua tuong — `Node:_Lua_addStarLevelEffect` cua lop gia lap goi
+## vao day (xem `lua/cocos.lua` va dau `ui/star_ref.gd`).
+##
+## Ban goc XOA cac armature hieu ung cu (`0x418628(self, "StarLevelEffect_")`)
+## roi tao lai theo khoa cau hinh `lsStarLevelEffect_<cap>`. O day danh sach cu
+## giu trong meta cua CHINH node tuong, nen khong can mot bang tra rieng va no
+## chet theo node — man hinh nao bo node tuong di thi khong con vet.
+##
+## Tra ve so armature da tao. Cap 1 (va ngoai 2..7) tra 0 va khong tao gi —
+## dung nhu khoi `<star>` cua cau hinh goc, von bat dau tu cap 2.
+func _hieu_ung_sao(node: Node, cap: int) -> int:
+	if node == null or not is_instance_valid(node):
+		return 0
+	for cu in node.get_meta("hieu_ung_sao", []) as Array:
+		if is_instance_valid(cu):
+			if cu.get_parent() != null:
+				cu.get_parent().remove_child(cu)
+			# Huy han chu khong go ra: node nay do chinh ta tao ra, khong ai
+			# nhan lai (khac cac be chua nhu CElementPond — xem removeChildByTag).
+			cu.queue_free()
+	var moi: Array = []
+	for ten in StarRef.dongtac(cap):
+		# `giu_layer = true`: xuong cua moi bien the hieu ung sao deu ten
+		# `Layer*`, loc chung thi ca hieu ung ra rong (do: 11/11 bien the).
+		var hop := _tao_rig(String(ten), true)
+		node.add_child(hop)
+		# Phat SAU khi vao cay: duong phuong thuc cua AnimationPlayer khong chay
+		# ngoai cay (bong armature da mac bay nay mot lan).
+		if hop.get_child_count() > 0:
+			var rig := hop.get_child(0)
+			if rig.has_method("play"):
+				rig.play(StarRef.DONG_TAC)
+		moi.append(hop)
+	node.set_meta("hieu_ung_sao", moi)
+	return moi.size()
 
 
 ## Cau noi mong sang game/am_thanh.gd. Moi ham o day chi de dua qua Lua duoc
@@ -121,6 +174,7 @@ func open() -> bool:
 	state = ClassDB.instantiate("LuaState")
 	state.open_libraries()
 	state.globals["_godot_tao_rig"] = _tao_rig
+	state.globals["_godot_hieu_ung_sao"] = _hieu_ung_sao
 	state.globals["_godot_read"] = _read
 	state.globals["_godot_log"] = func(s): print("[lua] ", s)
 	state.globals["_godot_copy"] = _copy

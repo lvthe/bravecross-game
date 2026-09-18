@@ -1137,7 +1137,7 @@ và đo ra thì cả kho chỉ có **9 node** vượt quá ngưỡng ấy nên k
 
 12. ~~**Hai hàm xương của armature — `_lua_getBonePosInNode` /
     `_lua_getBoneRectInNode`**~~ — **xong**, khoá bằng `tools/verify_xuong.gd`
-    (**59 đạt / 0 hỏng**, `check.py` bộ thứ **36** — con số "40" ghi ở đây trước
+    (**63 đạt / 0 hỏng**, `check.py` bộ thứ **36** — con số "40" ghi ở đây trước
     kia là **sai**, đếm lại trên chính `check.py`: `SUITES` lúc thêm bộ này có
     **36** mục và nó là mục cuối; ba mục ngay trước đó ghi 33/34/35 thì **đúng**). Khác mọi API thiếu khác ở
     một chỗ quan trọng: **thiếu thì không im lặng**. Chỗ gọi

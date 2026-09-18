@@ -37,7 +37,13 @@ var errors: Array[String] = []
 ## Tra ve mot HOP Control co 0 (de cac API node cua lop gia lap dung duoc),
 ## voi SngRig lam con, goc cua rig trung diem dat cua hop — Cocos dat armature
 ## theo diem goc cua no. Khong co du lieu thi tra hop rong va ghi ten lai.
+##
+## Hop ay mang san ti le `TI_LE_BAT` — xem chu thich trong `_tao_rig`.
 var rig_thieu: Dictionary = {}
+
+## Ti le SAN CO cua moi doi tuong `getSpriteFromSpriteCatch` tra ve, do tren may
+## ao (`work/emu_ti_le.py`, 2026-09-18): 1,02. Node Cocos THUONG thi ti le 1.
+const TI_LE_BAT := 1.02
 
 ## Armature dung ra nhung RONG (0 xuong). Khong bao gio dung: mot armature ma
 ## ban goc dung thi phai co xuong. Day la cho bat dung loai loi im lang — vd loc
@@ -60,6 +66,24 @@ func _tao_rig(ten: String, giu_layer := false) -> Control:
 	var hop := _new_node("node")
 	hop.set_meta("kind", "rig")
 	hop.set_meta("rig_ten", ten)
+	# Ti le SAN CO 1,02 cua doi tuong bat duoc — do tren may ao, khong suy doan
+	# (`work/emu_ti_le.py`, 2026-09-18, ban vn; ho so day du o chu thich dau file do):
+	# lay `ZhangLiangBao` lam NGUON, do vao bon dich la armature KHAC nhau
+	# (Hoplite, Gashapon, YuJin, BaiHuZi) thi hieu hai lan dat dich ra y nguyen
+	# `-(137,25499343872, 42,156997680664)` = `140/1,02` — tuc chuoi cua DICH ti le
+	# 1,02; con do vao mot node Cocos THUONG (`spMainUITheme_halloween_4`) thi ra
+	# dung `-(140, 43)`. Phep do thu hai: hop ra `178,5 x 232,04899597168` =
+	# `175 x 227,5` nhan 1,02 khi dich la node thuong (hop la KICH THUOC nen bi
+	# nhan ti le cua NGUON), va ra lai dung `175 x 227,5` khi dich cung la armature
+	# (hai he so triet tieu) — nen chu so huu la chinh doi tuong bat duoc, chu khong
+	# phai "node dich kieu armature". Doi chieu tinh: `libgame.so` co hai cho giong
+	# nhau goi `vcall(+0x6c)(1.02f)` ngay sau mot duong nhan ban sprite.
+	#
+	# Dat o HOP (chu khong phai o SngRig con) vi `Node:setScale` cua lop gia lap dat
+	# thang `scale` cua node nay — nen mot lenh `setScale` cua Lua THAY duoc ti le
+	# nay, dung nhu `CCNode::setScale` cua ban goc thay ti le san co. Goc cua rig
+	# trung diem dat cua hop, nen ti le nay phong ra tu goc armature.
+	hop.scale = Vector2(TI_LE_BAT, TI_LE_BAT)
 	var thu_muc := "res://assets_ref/%s" % ten
 	var bien_the := ""
 	# Ten la BIEN THE nam trong mot file armature khac ten: "UITongYong_ItemLight"

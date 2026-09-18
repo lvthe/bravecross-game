@@ -27,6 +27,14 @@
 #
 # Bon so khac nhau hoan toan, nen mot lan gan sai xuong la lech hang tram px.
 #
+# MOT HE SO phai tinh khi so: doi tuong do `getSpriteFromSpriteCatch` tra ve MANG
+# SAN ti le `1,02` (do tren may ao o `brave-cross/work/emu_plug.py`, 2026-09-18 —
+# xem chu thich `TI_LE_BAT` duoi day). Vi tri XUONG doc thang ra thi khong dinh
+# (muc A: `SngRig.plug()` tra moc trong file), nhung moi thu di qua mot node
+# THUONG deu bi nhan he so ay (muc B), va doan lech ra TOA DO TOAN CUC cung vay.
+# Bo qua no thi bon phep kiem cuoi tut dung 1,02 lan — do la trieu chung that da
+# gap, khong phai loi cua ban dung.
+#
 # Ca khong the trung thu hai, doc thang tu ma goc: armature Gashapon co dung bon
 # diem gan ten PlugIn_4_Hero / _5_Word / _6_Light / _7_HeroName, va
 # sc/user/Public/CUIUnlockHeroAnimation.lua:166-169 goi _lua_clearPlugIn dung bon
@@ -39,6 +47,21 @@ const DONG_TAC := "Star1"
 const PLUG := [4, 5, 6, 7]
 ## Sai so cho phep, tinh bang px. Vi tri trong file ghi 2 chu so thap phan.
 const LECH := 0.01
+
+## Ti le SAN CO cua doi tuong bat duoc (`getSpriteFromSpriteCatch` tra ve), do tren
+## may ao o `brave-cross/work/emu_plug.py` (2026-09-18):
+##
+##   cung mot cap xuong diem gan, doc qua dich la CHINH NGUON : hieu `(1, 37)`
+##   cung cap ay,                 doc qua dich la node THUONG: hieu `(1,02002, 37,74)`
+##   ti so                                                     : `1,02`
+##
+## Ti so giua hai phep ay CHINH LA ti le cua NGUON (dich la chinh nguon thi he so
+## cua no triet tieu trong `inv(dich) * nguon:to_global(v)`), va phep do khong phu
+## thuoc tu the nen no dung ke ca khi dong tac chua ap. Nen moi gia tri di qua mot
+## node THUONG deu mang he so nay. Ban dung mang san o hop rig — xem `TI_LE_BAT`
+## trong `game/lua_runtime.gd` — nen bon phep kiem duoi day KHANG DINH he so ay,
+## chu khong con so thang voi file.
+const TI_LE_BAT := 1.02
 
 ## Node treo thu: co kich thuoc va neo KHAC 0 de phep do bat duoc ca loi dao
 ## dau truc y lan loi tinh neo. Dat ca hai bang 0 thi moi cong thuc sai deu ra
@@ -283,8 +306,9 @@ func _init() -> void:
 	# --- B: _lua_getPlugInPositionInNode, do bang HIEU hai diem gan ---------
 	# Tra ve o he COCOS cua cha (y huong LEN), con file ghi o he xuong (y huong
 	# XUONG, giong Godot — SngRig.FLIP_Y = false). Nen hieu hai diem gan doc ra
-	# phai bang hieu trong file voi truc y DAO DAU. Hieu so khong dinh gi toi
-	# chieu cao cha hay diem neo, nen phep do nay sach.
+	# phai bang hieu trong file voi truc y DAO DAU, ROI NHAN ti le san co cua doi
+	# tuong bat duoc (`TI_LE_BAT` — do tren may ao, xem chu thich dau file). Hieu
+	# so khong dinh gi toi chieu cao cha hay diem neo; cai con lai dung la ti le.
 	print("\nB. Ba ham Lua cua lop gia lap:")
 	var g6: Vector2 = goc[ten[6]]
 	var p6 := (phan[2] as String).split(",")
@@ -295,9 +319,11 @@ func _init() -> void:
 		var doc := Vector2(p[0].to_float() - p6[0].to_float(),
 				p[1].to_float() - p6[1].to_float())
 		var mong := goc[ten[PLUG[i]]] as Vector2
-		var doi := Vector2(mong.x - g6.x, -(mong.y - g6.y))
+		var doi := Vector2(mong.x - g6.x, -(mong.y - g6.y)) * TI_LE_BAT
 		_ghi_chu((doc - doi).length() < LECH,
-				"plug %d so voi plug 6: doc ra %s, file noi %s" % [PLUG[i], doc, doi])
+				"plug %d so voi plug 6: doc ra %s, file noi %s x %s = %s"
+				% [PLUG[i], doc, Vector2(mong.x - g6.x, -(mong.y - g6.y)),
+					TI_LE_BAT, doi])
 
 	# --- B: _lua_addChildToPlugIn ------------------------------------------
 	var con_pos := (phan[4] as String).split(",")
@@ -311,6 +337,9 @@ func _init() -> void:
 
 	# Kiem doc lap ben GDScript, khong qua Lua: con phai nam DUNG goc cua diem
 	# gan, lech di mot doan bang so nguoi goi viet, doi qua he cua chinh diem gan.
+	# Doan lech ay di tu diem gan ra TOA DO TOAN CUC nen no di qua hop rig va bi
+	# nhan ti le san co cua doi tuong bat duoc (`TI_LE_BAT` — xem chu thich dau
+	# file); bo qua he so ay thi lech dung 1,02 lan do lon cua doan lech.
 	var rig_b := _tim_rig(san)
 	if rig_b == null:
 		_ghi_chu(false, "khong tim thay rig trong cay de do vi tri con")
@@ -323,10 +352,12 @@ func _init() -> void:
 			_ghi_chu(false, "plug 4 khong co con nao")
 		else:
 			var them := Vector2(CON_X - CON_AX * CON_W, -CON_Y - (1.0 - CON_AY) * CON_H)
-			var lech: float = (con.global_position - (plug4.global_position + them)).length()
+			var lech: float = (con.global_position
+					- (plug4.global_position + them * TI_LE_BAT)).length()
 			_ghi_chu(lech < LECH,
-					"con toan cuc %s = goc diem gan %s + %s, lech %.3f px"
-					% [con.global_position, plug4.global_position, them, lech])
+					"con toan cuc %s = goc diem gan %s + %s x %s = %s, lech %.3f px"
+					% [con.global_position, plug4.global_position, them, TI_LE_BAT,
+						them * TI_LE_BAT, lech])
 
 	# --- B: go ra ----------------------------------------------------------
 	var r2 = lua.run(_LUA_XOA, "go diem gan")

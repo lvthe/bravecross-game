@@ -2316,21 +2316,26 @@ end
 --     — doi node dich tu `(-40, 7)` len `(100, 50)` thi ket qua doi dung
 --     `-(140, 43)`, tuc ti le cua dich la 1.
 --
--- MOT CHO CHUA KHOP, ghi lai chu khong doan: khi node dich la ARMATURE thi ban
--- goc lech he so `1,02` so voi ta, va lech CA HAI DAU nguoc chieu nhau —
---   diem: doi node dich hai lan thi ban goc ra `-(137,255, 42,157)`, ta ra
---         `-(140, 43)`, tuc ta LON hon `1,02` lan;
---   rect: dich la armature thi ban goc ra `178,5 x 232,04899597168`, ta ra
---         `175 x 227,5` (cung phep do, dich la node Cocos THUONG), tuc ta NHO
---         hon `1,02` lan — nguoc chieu voi dau tren.
--- Hai chieu NGUOC NHAU, nen 1,02 KHONG the la mot ti le duy nhat nam tren node
--- dich: mot ti le nhu vay di vao phep nghich dao thi ca hai ket qua deu bi chia
--- cung mot chieu. `tools/verify_xuong.gd` IN hai phep do nay ra, khong khang dinh.
--- **Khong biet 1,02 thuoc node nao**: `getScale` lan `setScale` deu GIET CA
--- TIEN TRINH do (pcall khong do duoc loi native), ca tren armature lan tren
--- `CCSprite` thuong. Ta theo dung khuon `_lua_getPlugInPositionInNode` — cong
--- thuc ma bon cho goi cua no da kiem — va khong nhan them he so nao. Cho goi
--- that (`:3105`) truyen node THUONG, nen no khong dinh cho nay.
+-- MOT CHO TUNG CHUA KHOP, NAY DA DO DUOC (2026-09-18): khi node dich la ARMATURE
+-- thi ban goc lech he so `1,02` — va chu so huu KHONG phai node dich ma la CHINH
+-- DOI TUONG BAT DUOC (`CDFSpriteRole`): no mang san ti le `1,02`, con node Cocos
+-- THUONG thi ti le 1. Do tren may ao, `work/emu_ti_le.py`, nguon `ZhangLiangBao`:
+--   diem: do vao BON armature KHAC nhau (Hoplite, Gashapon, YuJin, BaiHuZi) deu ra
+--         `-(137,25499343872, 42,156997680664)` = `140/1,02`; do vao
+--         `spMainUITheme_halloween_4` (CCSprite thuong) ra dung `-(140, 43)`.
+--   rect: do vao node THUONG ra `178,5 x 232,04899597168` = `175 x 227,5` nhan
+--         1,02 (hop la mot KICH THUOC nen bi NHAN ti le cua NGUON); do vao
+--         armature thi hai he so triet tieu, ra lai dung `175 x 227,5`.
+-- Tuong quan cu — "hai chieu nguoc nhau nen 1,02 khong the nam tren node dich" —
+-- la do doc lech PHEP DO: con so `178,5` von la phep do voi node dich THUONG,
+-- khong phai voi node dich armature. Voi cung mot kieu dich thi chieu nhat quan:
+-- diem bi CHIA ti le cua dich, hop bi NHAN ti le cua nguon.
+--
+-- Nay ban dung mang san ti le ay: `TI_LE_BAT` trong `game/lua_runtime.gd`, dat o
+-- HOP (khong phai o rig con) de mot lenh `setScale` cua Lua van THAY duoc no, dung
+-- nhu `CCNode::setScale` thay ti le san co cua ban goc. Hai ham duoi day vi vay
+-- khong nhan them he so nao, dung khuon `_lua_getPlugInPositionInNode`; va
+-- `tools/verify_xuong.gd` KHANG DINH ca bon phep do tren.
 --
 -- Ghep cap nhu the nao: `pFace:addChild` vao `spTargetPos` roi
 -- `pFace:setPosition(facePosX, facePosY)` (CUIHeroInfoFightSoulUI.lua:3127-3132),

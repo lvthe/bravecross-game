@@ -23,6 +23,10 @@
 #   D. DUONG LUA. Dung armature that qua `getSpriteFromSpriteCatch` roi goi hai
 #      ham, ke ca hai tham so: bo trong (ban goc tra thang cap da luu), truyen
 #      node dich (doi khong gian), ten xuong khong co, va node khong phai rig.
+#      Them TI LE SAN CO 1,02 cua chinh doi tuong bat duoc — do rieng o
+#      `work/emu_ti_le.py` (2026-09-18): dich la armature thi diem bi CHIA 1,02,
+#      dich la node thuong thi hop bi NHAN 1,02, dich cung la armature thi hop ra
+#      lai dung `_lua_CollisionSize` (hai he so triet tieu).
 #
 # Phep do phan biet that la LUAT DOI KHONG GIAN, chu khong phai "ham chay duoc":
 # doi node dich tu cocos `(-40, 7)` len `(100, 50)` thi ket qua phai doi dung
@@ -61,13 +65,23 @@ const DICH_TRUOC := Vector2(-40.0, 7.0)
 const DICH_SAU := Vector2(100.0, 50.0)
 const DICH_HIEU := Vector2(-140.0, -43.0)
 
-## Do tren may ao khi dich LA ARMATURE: hieu chi con `-(137,255, 42,157)` — nho
-## hon dung `1/1,02`, va `rect` ra `178,5 x 232,04899597168` = `175 x 227,5` nhan
-## `1,02`. Ban dung KHONG nhan he so ay (xem chu thich dau `lua/cocos.lua`): khong
-## biet 1,02 thuoc node nao, va ca `getScale` lan `setScale` deu giet ca tien
-## trinh do nen khong do duoc chu so huu. In ra chu KHONG khang dinh.
+## Do tren may ao (`work/emu_ti_le.py`, 2026-09-18, ban vn) — CHOT: chu so huu he
+## so 1,02 la CHINH DOI TUONG `getSpriteFromSpriteCatch` tra ve (lop
+## `CDFSpriteRole`), khong phai "node dich kieu armature". Bon doi tuong bat duoc
+## KHAC nhau (Hoplite, Gashapon, YuJin, BaiHuZi) ra y nguyen tung chu so, con node
+## Cocos THUONG thi ti le 1. Bon phep do, va chieu cua tung phep:
+##   * diem, dich LA ARMATURE: `-(137,255, 42,157)` = `140/1,02` — diem bi CHIA
+##     cho ti le chuoi cua node dich.
+##   * diem, dich la node THUONG: `-(140, 43)`, dung ti le 1 (`DICH_HIEU`).
+##   * rect (mot KICH THUOC), dich la node THUONG: `178,5 x 232,04899597168` =
+##     `175 x 227,5` nhan `1,02` — rect NHAN ti le cua NGUON, ma nguon cung la
+##     mot doi tuong bat duoc. Dong nay tung bi doc lech thanh "dich la armature",
+##     va chinh tu do ma ra nghi ngo sai "hai chieu nguoc nhau nen 1,02 khong the
+##     nam tren node dich" (xem chu thich dau `lua/cocos.lua`).
+##   * rect, dich LA ARMATURE: hai he so triet tieu -> lai dung `175 x 227,5` =
+##     `_lua_CollisionSize` (dung nhu muc C cua `emu_xuong.py`).
 const DO_AMATURE_HIEU := Vector2(-137.255, -42.157)
-const DO_AMATURE_HOP := Vector2(178.5, 232.04899597168)
+const DO_THUONG_HOP := Vector2(178.5, 232.04899597168)
 
 ## Do dai dong tac cua phan A. Sai so rong hon cac phep kiem khac vi `hop_xuong`
 ## tinh tu so DA LAM TRON 4 chu so thap phan trong `.json`, ma `sx` co the len toi
@@ -130,32 +144,34 @@ const _LUA_DO := """
 	local e2, f2 = sp:_lua_getBoneRectInNode('Collision', dich)
 	ra[#ra + 1] = string.format('DICH|%.4f,%.4f|%.4f,%.4f|%.4f,%.4f|%.4f,%.4f',
 		a1, b1, a2, b2, e1, f1, e2, f2)
-	-- Cung hai lan dat ay nhung dich LA ARMATURE, de in ra phan con lech 1,02.
+	-- Cung hai lan dat ay nhung dich LA ARMATURE, de khang dinh ti le san co 1,02
+	-- cua doi tuong bat duoc: diem bi CHIA ti le CUA CHINH node dich.
 	--
-	-- Phai la mot armature KHAC: truyen chinh rig dang hoi lam dich thi phep nghich
-	-- dao khu luon do doi cua chinh no va luon ra (0, 0) — do duoc, va do la loi cua
-	-- phep do chu khong phai cua ban dung.
+	-- Phai la mot doi tuong bat duoc KHAC (o day `Hoplite`): truyen chinh rig dang
+	-- hoi lam dich thi phep nghich dao khu luon do doi cua chinh no va luon ra
+	-- (0, 0) — do duoc, va do la loi cua phep do chu khong phai cua ban dung.
 	--
-	-- Dat cho armature bang THANG toa do Godot: duong `setPosition` cua lop gia lap
-	-- doi node co `size` (de doi neo va lat truc y), ma node armature o day la
-	-- `Node2D` khong co o — goi vao la loi `attempt to index local 'sz'`. Do doi thi
-	-- KHONG can o: cocos `(-40, 7)` -> `(100, 50)` la `+140` theo x va `+43` theo y
-	-- cocos, tuc `(140, -43)` trong he Godot (y huong xuong), y het moi node khac.
+	-- Doi bang DUONG LUA, dung nhu may ao: `emu_ti_le.py` doi CHINH doi tuong bat
+	-- duoc (`n3:setPosition(100, 50)`), chu khong doi rig con cua no — 1,02 nam tren
+	-- chinh node ay. Doi rig con thi van ra `-(140, 43)`, vi cong thuc la
+	-- `inv(dich) * nguon:to_global(v)` va do doi nam BEN TRONG phep doi cua chinh
+	-- node dich: ti le cua cac node CHA triet tieu giua hai lan dat.
 	local sp2 = getSpriteFromSpriteCatch('Hoplite')
 	cha:addChild(sp2)
-	local rig2 = sp2:getChildren()[1]
-	local gd2 = c.raw(rig2)
-	gd2.position = Vector2(0, 0)
-	local g1, h1 = sp:_lua_getBonePosInNode('Collision', rig2)
-	local i1, j1 = sp:_lua_getBoneRectInNode('Collision', rig2)
-	gd2.position = Vector2(140, -43)
-	local g2, h2 = sp:_lua_getBonePosInNode('Collision', rig2)
-	local i2, j2 = sp:_lua_getBoneRectInNode('Collision', rig2)
+	-- Truyen CHINH doi tuong bat duoc lam node dich, truoc khi doi cho: ban goc cung
+	-- ra dung cap da luu, y nhu khi bo trong tham so 2.
+	local s1, s2 = sp2:_lua_getBonePosInNode('Collision', sp2)
+	sp2:setPosition(-40, 7)
+	local g1, h1 = sp:_lua_getBonePosInNode('Collision', sp2)
+	local i1, j1 = sp:_lua_getBoneRectInNode('Collision', sp2)
+	sp2:setPosition(100, 50)
+	local g2, h2 = sp:_lua_getBonePosInNode('Collision', sp2)
+	local i2, j2 = sp:_lua_getBoneRectInNode('Collision', sp2)
 	-- In hieu cua DIEM nhung in GIA TRI cua HOP: hop la mot KICH THUOC nen doi cho
-	-- node dich khong doi no (da khang dinh o tren), cai doi khi dich la armature la
-	-- chinh kich thuoc ay — may ao do 178,5 x 232,04899597168.
-	ra[#ra + 1] = string.format('RIG|%.4f,%.4f|%.4f,%.4f|%.4f,%.4f',
-		g2 - g1, h2 - h1, i2, j2, i1, j1)
+	-- node dich khong doi no (da khang dinh o tren). Dich la armature thi nguon va
+	-- dich CUNG ti le 1,02 nen hop ra lai dung `_lua_CollisionSize` — 175 x 227,5.
+	ra[#ra + 1] = string.format('RIG|%.4f,%.4f|%.4f,%.4f|%.4f,%.4f|%.4f,%.4f',
+		g2 - g1, h2 - h1, i2, j2, i1, j1, s1, s2)
 	-- Node KHONG phai rig: im lang tra (0, 0), khong nem loi.
 	local thuong = c.new_node('layer')
 	cha:addChild(thuong)
@@ -400,30 +416,44 @@ func _init() -> void:
 		_ghi_chu((h2 - h1).length() <= 1e-3,
 				"  hop voi dich la node Cocos thuong: %s roi %s — khong doi (dich chi truot)"
 				% [h1, h2])
-		if thay.has("ZhangLiangBao"):
-			var cham_zlb := _cap((thay["ZhangLiangBao"] as Array)[4])
-			_ghi_chu((h1 - cham_zlb).length() <= LECH_HOP,
-					"  hop ay = %s = _lua_CollisionSize() cua ZhangLiangBao = %s — may ao do bang nhau"
-					% [h1, cham_zlb])
-		else:
-			_ghi_chu(false, "  thieu dong cua ZhangLiangBao de doi chieu hop")
+		_ghi_chu((h1 - DO_THUONG_HOP).length() <= LECH_HOP,
+				"  hop ay = %s = may ao do khi dich la node THUONG %s (= 175 x 227,5 nhan 1,02)"
+				% [h1, DO_THUONG_HOP])
 
 	if dong_rig == "":
 		_ghi_chu(false, "doan Lua khong tra ve dong RIG")
 	else:
-		# KHONG khang dinh — in ra de nguoi doc thay. Chua biet chu so 1,02 thuoc node
-		# nao: `getScale`/`setScale` tren may ao deu giet ca tien trinh do (pcall khong
-		# bat duoc SIGSEGV cua ma native), nen khong do duoc.
 		var q := (dong_rig as String).split("|")
 		var hieu := _cap(q[1])
 		var hop_am := _cap(q[2])
-		var hop_thuong := _cap(q[3])
-		print("   GHI CHU  dich LA ARMATURE: diem doi %s, may ao ra %s — ti le %s"
-				% [hieu, DO_AMATURE_HIEU, hieu / DO_AMATURE_HIEU])
-		print("            hop = %s, may ao ra %s — ti le %s (dich thuong: %s)"
-				% [hop_am, DO_AMATURE_HOP, hop_am / DO_AMATURE_HOP, hop_thuong])
-		print("            (hai ti le NGUOC CHIEU nhau, nen 1,02 khong phai mot ti le"
-				+ " nam tren node dich; chu so huu CHUA RO — xem chu thich dau lua/cocos.lua)")
+		var hop_am_truoc := _cap(q[3])
+		_ghi_chu((hieu - DO_AMATURE_HIEU).length() <= 1e-3,
+				"dich LA ARMATURE: diem doi %s — may ao do %s (diem chia ti le cua dich)"
+				% [hieu, DO_AMATURE_HIEU])
+		# Hop la KICH THUOC nen no khong doi khi dich chi TRUOT — lan thu ba (hai lan
+		# kia o khoi DICH: dich la node thuong, va chinh phep do nay luc chua doi cho).
+		_ghi_chu((hop_am - hop_am_truoc).length() <= 1e-3,
+				"  hop voi dich la armature: %s roi %s — khong doi (dich chi truot)"
+				% [hop_am_truoc, hop_am])
+		if thay.has("ZhangLiangBao"):
+			# Nguon va dich CUNG la doi tuong bat duoc -> hai he so 1,02 triet tieu,
+			# hop ra lai dung bang `_lua_CollisionSize` (muc C cua `emu_xuong.py`).
+			var cham_zlb := _cap((thay["ZhangLiangBao"] as Array)[4])
+			_ghi_chu((hop_am - cham_zlb).length() <= LECH_HOP,
+					"  hop ay = %s = _lua_CollisionSize() cua ZhangLiangBao = %s — hai he so triet tieu"
+					% [hop_am, cham_zlb])
+		else:
+			_ghi_chu(false, "  thieu dong cua ZhangLiangBao de doi chieu hop")
+		# Truyen CHINH doi tuong bat duoc lam node dich -> dung cap da luu, y nhu khi
+		# bo trong tham so 2 — do la `pos-self` ma may ao da do (muc C cua
+		# `emu_xuong.py`), va o day no chay tren dung node ma may ao da truyen.
+		if q.size() >= 5 and thay.has("Hoplite"):
+			var pos_nil_hop := _cap((thay["Hoplite"] as Array)[1])
+			_ghi_chu((_cap(q[4]) - pos_nil_hop).length() <= 1e-6,
+					"  truyen chinh doi tuong bat duoc lam node dich -> %s (= pos-nil cua Hoplite %s)"
+					% [_cap(q[4]), pos_nil_hop])
+		else:
+			_ghi_chu(false, "  dong RIG thieu o, hoac thieu dong cua Hoplite")
 
 	if dong_thuong == "":
 		_ghi_chu(false, "doan Lua khong tra ve dong THUONG")

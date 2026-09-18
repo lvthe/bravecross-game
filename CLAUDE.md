@@ -650,16 +650,32 @@ hộp của các sprite `_res-44` (ô 0×0 trong atlas nên `spriteFiles` là `n
 hẳn** — đo được **2.112/32.395** cặp xương→ảnh (6,52%) ở **171/397** rig — nay có
 bản đồ `sourceSize` cho mọi tên sprite; và `json.dump` ghi `NaN`
 làm Godot **từ chối cả file** JSON của một rig (`XSJiYouHeTiJi`), nay số không
-hữu hạn bị thay bằng `0.0` và **đếm lại**. Còn **một chỗ CHƯA KHỚP** ghi rõ:
-node đích là **armature** thì bản gốc lệch đúng **1,02** ở **cả hai** hàm nhưng
-**ngược chiều nhau** (điểm: bản gốc `(−137,255, −42,157)` còn bản dựng
-`(−140, −43)`, tức bản dựng **lớn hơn**; hộp: bản gốc `178,5 × 232,04899597168`
-còn bản dựng `175 × 227,5`, tức bản dựng **nhỏ hơn**), nên 1,02 **không thể** là
-một tỉ lệ nằm trên node đích — và chủ nhân hệ số ấy chưa biết
-(`getScale`/`setScale` giết cả tiến trình dò trên máy ảo); bản dựng không nhân
-hệ số ấy, và chỗ gọi thật truyền node **thường** nên không dính.
+hữu hạn bị thay bằng `0.0` và **đếm lại**. Chỗ từng ghi là **CHƯA KHỚP** — hệ số
+**1,02** — nay **đã đo xong**: chủ nhân là **chính đối tượng
+`getSpriteFromSpriteCatch` trả về** (`CDFSpriteRole`, tức cây armature), nó mang
+sẵn tỉ lệ 1,02; node Cocos **thường** thì tỉ lệ 1. Đo trên máy ảo
+(`brave-cross/work/emu_ti_le.py`, 2026-09-18) với bốn armature khác nhau: **điểm**
+thì bị **chia** tỉ lệ của **chính node đích** (nên đích là armature ra
+`140/1,02 = 137,25499`, đích là node thường ra `−(140, 43)`), còn **hộp** là một
+**kích thước** nên bị **nhân** tỉ lệ của **nguồn** rồi chia tỉ lệ của **đích**
+(nguồn là armature, đích là node thường → `175 × 1,02 = 178,5`; đích cũng là
+armature → hai hệ số triệt tiêu → đúng `175 × 227,5`). Tương quan cũ "hai chiều
+ngược nhau nên 1,02 không thể nằm trên node đích" là **đọc lệch phép đo**: con số
+`178,5` vốn đo với node đích **thường**. Nay bản dựng mang sẵn tỉ lệ ấy
+(`TI_LE_BAT` trong `game/lua_runtime.gd`, đặt ở **hộp** để một lệnh `setScale` của
+Lua vẫn thay được nó, đúng như `CCNode::setScale`).
 Chi tiết đầy đủ + số đo: `ROADMAP.md`, mục "Hai hàm xương"; khoá bằng
-`tools/verify_xuong.gd` (59 đạt / 0 hỏng).
+`tools/verify_xuong.gd` (63 đạt / 0 hỏng, **khẳng định** cả bốn phép đo trên).
+
+Ba hàm **điểm gắn** (`_lua_getPlugInPositionInNode` / `_lua_addChildToPlugIn` /
+`_lua_clearPlugIn`, 48 chỗ gọi) dính **đúng hệ số ấy** và đã đo riêng
+(`brave-cross/work/emu_plug.py`, 2026-09-18): cùng một cặp xương điểm gắn đọc qua
+đích là **chính nguồn** ra hiệu `(1, 37)`, đọc qua đích là **node thường** ra
+`(1,02002, 37,74)` — **tỉ số đúng 1,02**, và tỉ số ấy *chính là* tỉ lệ của nguồn
+(đích là chính nguồn thì hệ số của nó triệt tiêu). Phép đo này **không phụ thuộc
+tư thế**, nên nó đứng vững kể cả khi động tác chưa áp. `tools/verify_plug.gd`
+trước đây so thẳng với file nên **tụt 8/4** khi bản dựng mang hệ số; nay nó
+**khẳng định** hệ số (`TI_LE_BAT` trong chính bộ kiểm ấy) và xanh trở lại.
 
 Hiệu ứng sao của tướng (`_Lua_addStarLevelEffect`) — **XONG**. Khoá cấu hình
 `lsStarLevelEffect_<cấp>` của khối `<star>` (`map/global_config.xml`) quyết

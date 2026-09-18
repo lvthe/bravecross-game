@@ -1918,20 +1918,58 @@ hữu hạn bằng `0.0`, **đếm lại** và in con số ra dòng tổng kết
 `XSJiYouHeTiJi`/`BingYing`, xem `anim.py` mục `d`/`dur`), kèm `allow_nan=False`
 để lần sau có chỗ nào lọt thì `json.dump` **ném lỗi ngay**.
 
-**Một chỗ CHƯA KHỚP, ghi rõ và KHÔNG đoán:** nếu node đích **là armature** thì
-bản gốc lệch hệ số **1,02** ở **cả hai** hàm, và lệch **ngược chiều nhau** — điểm
-`(−137,255, −42,157)` thay vì `(−140, −43)` (bản dựng **lớn** hơn 1,02 lần), hộp
-`178,5 × 232,04899597168` thay vì `175 × 227,5` (bản dựng **nhỏ** hơn 1,02 lần).
-Hai chiều ngược nhau ấy **loại trừ** cách giải thích dễ nghĩ nhất: 1,02 **không
-thể** là một tỉ lệ duy nhất nằm trên node đích, vì một tỉ lệ như vậy đi vào phép
-nghịch đảo thì **cả hai** kết quả đều bị chia cùng một chiều. Chủ nhân của hệ số
-ấy **chưa biết**: `getScale` lẫn `setScale` đều **giết cả tiến trình dò** trên máy
-ảo (`pcall` không bắt được SIGSEGV của mã native), nên không đo được nó thuộc node
-nào. Bản dựng **không** nhân hệ số ấy — và chỗ gọi thật (`:3105`) truyền node
-**thường**, nên nó không dính. Bộ kiểm **in** hai phép đo này ra chứ không khẳng
-định.
+**Một chỗ từng CHƯA KHỚP, nay đã đo xong: chủ nhân của hệ số 1,02.** Nếu node
+đích **là armature** thì bản gốc lệch hệ số **1,02** ở **cả hai** hàm — điểm
+`(−137,25499343872, −42,156997680664)` thay vì `(−140, −43)`, hộp
+`178,5 × 232,04899597168` thay vì `175 × 227,5`. Chỗ này từng được ghi là "hai
+chiều ngược nhau nên **loại trừ** cách giải thích dễ nghĩ nhất" — lập luận ấy
+**sai vì đọc lệch phép đo**: con số `178,5 × 232,04899597168` vốn là phép đo với
+node đích **thường** (mục G của `emu_xuong.py`), không phải với node đích
+armature. Đo lại cho đúng cặp (`work/emu_ti_le.py`, 2026-09-18, bản vn) thì chủ
+nhân là **chính đối tượng `getSpriteFromSpriteCatch` trả về** (`CDFSpriteRole`,
+tức cây armature): nó mang sẵn tỉ lệ **1,02**, còn node Cocos **thường** thì tỉ lệ
+**1**. Bốn đối tượng bắt được **khác nhau** (Hoplite, Gashapon, YuJin, BaiHuZi) ra
+**y nguyên từng chữ số**, nên đây không phải dữ liệu riêng của một rig. Chiều của
+từng phép đo cũng nhất quán: **điểm** bị **chia** tỉ lệ của đích (nên đích là
+armature thì `140/1,02 = 137,25499`), còn **hộp** là một **kích thước** nên bị
+**nhân** tỉ lệ của **nguồn** rồi chia tỉ lệ của **đích** — nguồn là armature, đích
+là node thường thì `175 × 1,02 = 178,5`; đích cũng là armature thì hai hệ số triệt
+tiêu và ra lại đúng `175 × 227,5`, y như mục C của `emu_xuong.py`. Đối chiếu tĩnh:
+`libgame.so` có **đúng hai** chỗ giống nhau gọi `vcall(+0x6c)(1.02f)` ngay sau một
+đường nhân bản sprite, và hàm `0x2aa3ea` mà chúng gọi **chỉ** có đúng hai chỗ gọi
+ấy. Nay bản dựng mang sẵn tỉ lệ này (`TI_LE_BAT` trong `game/lua_runtime.gd`, đặt ở
+**hộp** chứ không phải ở rig con, để một lệnh `setScale` của Lua vẫn **thay** được
+nó đúng như `CCNode::setScale`), và `tools/verify_xuong.gd` **khẳng định** cả bốn
+phép đo thay vì chỉ in ra.
 
-Khoá bằng `tools/verify_xuong.gd` (**59 đạt / 0 hỏng**, bộ thứ 40 của
+**Lượt đo thứ hai, cho BA HÀM ĐIỂM GẮN** (`brave-cross/work/emu_plug.py`,
+2026-09-18, xong sau 9s). Cài hệ số vào bản dựng làm `tools/verify_plug.gd`
+**tụt 12/0 → 8/4**, cả bốn lỗi đúng `1,02` (`HONG plug 4 so voi plug 6: doc ra
+(-1.54, -116.39), file noi (-1.51, -114.11)`; `HONG con toan cuc ..., lech 1.020
+px`). Bộ kiểm ấy gọi `spA:_lua_getPlugInPositionInNode(n, cha)` với `spA` là đối
+tượng bắt được và `cha` là node **thường** — đúng cặp mà `emu_ti_le.py` kết luận
+"nguồn bị nhân 1,02" — nhưng đó là **hàm khác** (48 chỗ gọi), nên phải đo thẳng.
+
+Phép đo **không phụ thuộc tư thế**: lấy hiệu hai điểm gắn, đọc qua hai đích. Đích
+là **chính nguồn** thì hệ số của nguồn triệt tiêu trong `inv(dich) *
+nguon:to_global(v)`, ra **số nền** `(1, 37)`; đích là **node thường** thì ra
+`(1,02002, 37,74)`. **Tỉ số giữa hai phép chính là tỉ lệ của NGUỒN = 1,02.** Vậy
+bản gốc **có** nhân 1,02 của đối tượng bắt được khi trả điểm gắn vào node thường,
+tức bản dựng đúng và **kỳ vọng trong `verify_plug.gd` mới là phần lỗi thời**. Nay
+bộ kiểm ấy mang `TI_LE_BAT` và **khẳng định** hệ số; xanh trở lại **12/0**.
+
+Hai lượt đọc sai ghi lại để khỏi lặp: (1) lượt đầu lấy đích là `Hoplite` — cũng
+là đối tượng bắt được, tỉ lệ 1,02 — nên tỉ số 1,02 chỉ là tỉ lệ của **đích**,
+không nói gì về nguồn; (2) `adb push` cần `adb root` trước, mà `chay()` không
+kiểm kết quả đẩy, nên triệu chứng là **không một dòng nào hiện ra** y hệt probe
+hỏng cú pháp (bản `game.lua` cũ còn nằm trên máy). Một điều **chưa giải quyết**:
+**động tác không được áp** trong harness này (đối chứng: `PlugIn_4_Hero` là xương
+duy nhất của Gashapon đổi giữa `Star1` y=115,54 và `Star5` y=112,74, mà đọc sau
+hai động tác ra y hệt nhau, thử cả có lẫn không `addChild`), nên **số tuyệt đối**
+trong lượt đo là tư thế nghỉ và không dùng được; phép **tỉ số** thì không phụ
+thuộc tư thế nên vẫn đứng.
+
+Khoá bằng `tools/verify_xuong.gd` (**63 đạt / 0 hỏng**, bộ thứ 40 của
 `tools/check.py`): tầng A đọc lại khoá 0 từ chính file `.json` bằng GDScript (hai
 đường độc lập), tầng B đối chiếu năm phép đo máy ảo, tầng C tính lại `hop_xuong`
 từ `(w, h, rot, rot2, sx, sy)` và so với `ho_cham()` (hai nguồn dữ liệu khác

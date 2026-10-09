@@ -244,8 +244,20 @@ Máy chủ cũ đã chết. Mỗi tính năng cần một handler đọc luật 
       tự dựng hình dạng gốc — nó dùng `CraeteUserCavern`, không phải `InitData`
       nên lọt qua bộ quét ở trên). Handler gọi luật `CavernLogic` gốc: lên tầng
       (`CompeleteProgress`, đo được P 0→1), đánh (`CompeleteFight`), nhận thưởng,
-      đặt lại, hồi sinh, mua đồ. **CHƯA**: làm mới hàng cửa hàng và quét nhanh
-      (luật sinh danh sách hàng không nằm trong `CavernLogic`, chưa tìm ra)
+      đặt lại, hồi sinh, mua đồ. **CHƯA — ĐO ÂM, không tìm ra vì KHÔNG TỒN TẠI trong
+      cây chỉ-đọc**: làm mới hàng cửa hàng + quét nhanh chạy **server-side**. Đã dò
+      kỹ cả `VN-assets` + `TQnew-assets`, cả tiếng Trung (`刷新`/`商店`/`生成`): client
+      chỉ `CallServer(..., "G_CavernLogic", "ClientRefreshGoodsList"/"ClientRefreshGoodsWithCurrency"/
+      "ClientCavernSweepAll")` (`ClientCavernLogic.lua:211/218/238`), UI `CUICavernStore:OnRefreshGoodsList`
+      (`:94-121`) chỉ **nhận `userGoodsList` từ server rồi vẽ**. `CavernLogic.lua` có 19 hàm
+      nhưng **0 hàm sinh `GoodsList`** — chỉ `BuyCavernGoods(goodsIndex)` (`:713`, mua 1 ô ĐÃ CÓ,
+      đọc `GameCavernGoodsConfig`), `GetRefreshCurrency` (`:680`, giá làm mới `100+(count-2)*50`),
+      hằng `GoodsListCount=10`/`RefreshHours={21}`/`RefreshGoodsDailyMaxCount=10` (`ctor`). Mã lỗi
+      `CreateGoodsListFaild=2504` tồn tại nhưng **hàm phát sinh ở server đã chết**. Sweep: callback
+      `OnCavernSweepAll`/`OnCavernDirectSweep` đều bị `--[[ ]]` (chết); thưởng theo tầng tính được
+      bằng `GetGoldCountWithPassLevel` (`:808`) nhưng việc QUYẾT thắng/thua từng tầng ở server.
+      ⇒ muốn "làm nốt" phải **TỰ CHẾ luật random chọn 10 ô từ `GameCavernGoodsConfig`** (trọng số
+      thật không khôi phục được) — là **BỊA**, không làm.
 - [~] `endless` — Ải vô tận: **hai màn hết vỡ vì dữ liệu** (xem mục "Chưa có"
       ngay dưới), và bảng xếp hạng trả lời trung thực là **rỗng** — offline chỉ
       có một người chơi, cùng loại với `ClientGetGuildInfo`. 10 RPC còn lại của

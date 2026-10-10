@@ -7,6 +7,38 @@ từ bản đã dịch ngược. Hai repo, nằm cạnh nhau:
   hình, đo tag từ máy ảo Android.
 * `bravecross-game/` — game Godot. **Thư mục làm việc chính.**
 
+> **GHI CHÚ 11/10 — câu "Hai repo" LỖI THỜI.** Workspace `D:\PROJECT\ProjectOut\game` nay gom
+> **sáu** thư mục anh em (xem `../CLAUDE.md`): thêm **`bravecross-ax/`** — client dựng lại trên
+> **Axmol + LuaJIT**, và nay là **repo chính** của dự án (đường Lua chạy mã gốc ra tới HUD); và
+> **`bravecross-server/`** — máy chủ riêng Node + TypeScript + Postgres; cùng `decompiler/`,
+> `bravecross-source/`, `error-test/`. Nhánh Godot trong thư mục này **ngủ đông từ 18/09/2026**
+> (commit cuối) — nên câu "thư mục làm việc chính" là của lúc viết, không còn đúng.
+
+## Cửa vào
+
+`godot --path .` chạy `run/main_scene = res://ui/vao_game.tscn` — màn cửa vào
+dựng **chuỗi Login → Main của lớp Lua** trong một màn thật (có autoload `Game`,
+có theme, chạm được). Ba điều phải nhớ:
+
+* Lần đầu chờ **~5 giây** (`_NAP` 1,3 s + chuỗi 4 chặng 3,5 s) và trong lúc ấy
+  màn hình chỉ có "Đang vào game…". Không phải treo. Ba lần chạy máy rảnh:
+  `nap` **1312/1482/1293 ms**, chuỗi **3630/3957/3499 ms**. **Con số "~15 giây"
+  ghi trước đây là SAI — nó đo lúc máy ảo Android (`swiftshader_indirect`)
+  đang chạy nền**; cùng lúc ấy `nap` — đường **không vẽ gì cả** — cũng phình
+  lên 1738–4509 ms, và chính chỗ ấy tố cáo thủ phạm là cái máy chứ không phải
+  chuỗi khởi động. Chạy nền máy ảo thì chuỗi lên 7–15 giây.
+* Runtime Lua sống trong autoload `Game` (`Game.lua`, `Game.lop_lua`) nên nó
+  **không** bị `change_scene_to_file` hạ xuống: `Game.MENU` chính là màn cửa
+  vào, nên bấm Back từ battle/equip/formation/roster/tasks về Main **tức thì**
+  (đo **5 ms** so với ~5.000 ms nạp lại).
+* `Game.lop_lua` là `CanvasLayer` với `layer = -1` — sân khấu Lua **luôn ở dưới**
+  mọi màn, và nó **tự ẩn** khi rời màn cửa vào (`ui/vao_game.gd:_exit_tree`).
+  Thiếu phép ẩn ấy thì lớp Lua vẫn hit-test cú chạm và bấm xuyên qua màn trên.
+
+`ui/menu.tscn` (màn chữ scaffold) **vẫn còn trên đĩa** nhưng không còn là cửa
+vào — nó là chỗ **duy nhất** trỏ tới roster/formation/equip/tasks, nên vào bằng
+`godot --path . ui/menu.tscn`.
+
 ## Nguyên tắc
 
 1. **Giữ đúng luật và con số của bản gốc.** Chỗ nào dữ liệu gốc không khôi phục
@@ -27,7 +59,7 @@ từ bản đã dịch ngược. Hai repo, nằm cạnh nhau:
 ## Trước khi làm gì
 
 ```bash
-python tools/check.py          # 44 dòng kết quả (40 bộ trong SUITES + 4 bộ Python), phải xanh hết
+python tools/check.py          # 57 dòng kết quả (52 bộ trong SUITES + 5 bộ Python), phải xanh hết
 ```
 
 Kéo `brave-cross` mới về thì dựng lại `ui_ref` + `layout_ref` + tag (README,
@@ -63,6 +95,12 @@ Máy này Godot không có trong PATH:
 * Thông điệp commit: một dòng tiêu đề nói **kết quả**, rồi thân bài nói cách
   kiểm chứng và con số. Không dùng tiền tố kiểu `feat:`.
 
+> **GHI CHÚ 11/10 — câu này THẮNG khi lệch với file mẫu.** `.claude/docs/coding-standards.md:8`
+> bắt dùng **Conventional Commits** (`feat:` / `fix:` / …) — **ngược hẳn** câu trên. Xử theo
+> **lịch sử git của chính repo**: mọi commit đều là câu tiếng Việt **không tiền tố**. Nên
+> `coding-standards.md` là **file mẫu chưa bản địa hoá**, không phải quy ước của dự án; nó đã
+> được ghi chú lại cho khớp (cùng ngày).
+
 ## Đang làm dở
 
 Danh sách đầy đủ mọi phần cần làm và chỗ đang đứng: **`ROADMAP.md`**.
@@ -80,7 +118,11 @@ chạy trọn và `g_MainUIScene` lên màn hình,
 (6) vẽ `Main` — **xong phần chính**: trời (dải màu `.xgg`), thành phố, nhà
 (armature qua `SngRig`), dải nút trên cùng, biển tên nhà (chữ nhãn đọc từ
 `+0x138`, căn chữ `+0x100`/`+0x104`), số của người chơi. Chụp:
-`godot --path . --script tools/vao_main.gd -- --chup=main.png`; mở cửa sổ
+`godot --path . -- --shot=main.png` (màn Main thật nay LÀ cửa vào mặc
+định — xem mục "Cửa vào" ở đầu; `--at` đếm từ lúc **vào được** Main nên mặc
+định 6 giây đã đủ, muốn bắt hoạt ảnh xa hơn thì thêm `--at=20`); đường cũ `godot
+--path . --script
+tools/vao_main.gd -- --chup=main.png` vẫn chạy; mở cửa sổ
 để bấm tay: `... -- --xem` (bấm tới trận được — khoá bằng `tools/bam_that.gd`;
 lớp phủ nào nuốt cú bấm thì bộ đó chỉ ra node và vết gọi),
 (7) **`sngFixInfoReflash` — XONG.** Số nằm ngay trong `.xgg` ở `+0x38`..`+0x54`,
@@ -123,7 +165,8 @@ trận đã có (nút binh chủng `btnBattlefieldArmy` + thống soái trong
 `lua/san_tran.lua`; cách hồi thống soái là ĐẶT). Thức tỉnh: dòng điều khiển
 nút theo bản gốc (`InitSkillButton`, `SetSkillButton*`, `NoticeCastSkill`),
 còn hiệu ứng kỹ năng: SỐ lấy từ cấu hình gốc qua `WakeRef`, luật ghép vẫn ở
-các lớp C++ `CDFSpriteFight*Wake` (xem mục "Thức tỉnh" bên dưới). Chỗ đứng theo số thật (1 ô = 100 px, `PosX`
+các lớp C++ `CDFSpriteFight*Wake` — và **HÌNH thì nay cũng đã vẽ** (24 trường
+chuỗi `s*` của `WakeRef`, xem "(2) hiệu ứng thức tỉnh" bên dưới). Chỗ đứng theo số thật (1 ô = 100 px, `PosX`
 tính theo ô, làn theo `Location` — xem mục "Chỗ đứng quân" bên dưới), camera
 bám quân với hằng số của `map/global_config.xml` và nền trôi theo hệ số
 parallax `+0x30` của bản ghi node (cách bám là ĐẶT). Minimap: XONG.
@@ -131,8 +174,65 @@ Sát thương trận có hình dùng CÔNG THỨC THẬT của bản gốc (`bat
 cấu trúc hàm C++ `0x380c94` + hằng số `<formula>` của `global_config.xml`;
 bật bằng `rules['harm_real']`, chỉ trận có hình). Mô hình đối chiếu ba bên
 (`combat.gd` mặc định / `sim` / `server`) GIỮ NGUYÊN. Ánh xạ trường sang bên
-đánh/chịu ĐÃ ĐO, không còn ĐẶT — xem mục riêng bên dưới. Chưa có:
-Đo và khoá: `tools/do_chien_dich.gd`
+đánh/chịu ĐÃ ĐO, không còn ĐẶT — xem mục riêng bên dưới. Bộ đo và khoá:
+`tools/do_chien_dich.gd` (`--kiem` 32/0, `--kichban` 18/0).
+**Cập nhật 2026-09-21 — bốn lời phàn nàn của người dùng về trận trong ải.** Ba
+điều đã vá và đã kiểm: (a) **sàn đấu hẹp** — `_trai`/`_phai` lấy theo Control
+ngoài cùng (bề ngang **khung nhìn** 1152 px) trong khi sàn thật là bốn dải
+`gb1_0..3` trải **4096 px = 40,96 ô**, tức con số cũ hẹp hơn sàn thật **3,56
+lần**; (b) **bộ parallax đọc `get_meta(t, null)`** — Godot 4.7.2 báo lỗi **y hệt**
+`get_meta(t)` khi giá trị mặc định là `null`, 5/34 node sinh một dòng lỗi mỗi lần
+vào trận; (c) **đường trận nay gọi đường gắn đồ** (`dua_dong_minh` → `_gan_do` →
+`rig.dat_do`) và **báo số gắn được ra nhật ký** (`do N/M ok` / `truot: ...`) —
+đo được `do 0/1, truot: equip_8_6`, và cú trượt ấy **đúng dữ liệu**. Bảng hiệu
+ứng trúng đòn **8 khoá `<kit>_0_0`** nay được đọc và **đã đếm**: 107 đòn → **77
+hiệu ứng vẽ được, 30 im**; cả 30 im đều vì armature không có mục trong
+`trung_don["danh"]` (dữ liệu gốc thiếu), **0** vì thiếu art.
+**Hai chỗ còn treo, đã đo — nay CẢ HAI ĐÃ XONG (2026-09-21):** **số sát thương nổi** —
+`work/nhan_ref.py` → `data_ref/nhan_ref.json` → `ui/nhan_ref.gd` (`NhanRef`) →
+`battle/nhan_sat_thuong.gd` (`NhanSatThuong`) → nối vào
+`san_tran_ve.gd:_phat_trung_don`. Sáu loại, hệ số nổi và trần số nhãn là **số
+thật** của `global_config.xml` khối `<label>` (Foe 0,825/30; Troop 1,000/50;
+Critical 1,000/40; Increase 0,710/100; Bonus 0,700/30; Shield 0,700/50); **bảng
+ghép loại → phông là ĐẶT** (xref chết — xem `ROADMAP.md` §5, `ImpactBlue` bỏ
+trống). Phông xuất bằng `work/fontart.py` ra `assets_ref/fonts/`: **11 tệp `.fnt`**
+(**không phải 7** như ghi trước) nhưng **chỉ 10 trang PNG**, vì
+`RedBackgroundWriteBorder.fnt` là bản sao y nguyên của `ReduceBloodFont.fnt`
+(md5 `cee13dd7c268`). **Đo trên trận THẬT** (`do_chien_dich --kiem`): 107 đòn →
+**107 nhãn vẽ được, 0 bị từ chối**, `theo_loai` Foe 56 / Troop 43 / Critical 8.
+Khoá bằng `tools/verify_nhan.gd` (87 đạt / 0 hỏng). **Câu SAI cần bỏ:** "thiếu
+phông nên chữ trên màn Main sai màu" — 38/38 nhãn của `UI_Main_960_640` trỏ khoá
+`#FONT_TTF`, mà phông ở đây chỉ có chữ số.
+(2) **hiệu ứng thức tỉnh** — **nay ĐÃ XONG 2026-09-21.** Art vốn **có sẵn**
+trong kho (**43/53** tên trong các trường `s*` của `wake_ref.json` là **biến thể
+đúng tên của rig ĐÃ xuất**, **172/172** biến thể chứa chuỗi `Wake` đều vẽ được);
+việc còn thiếu chỉ là **đọc 24 trường chuỗi `s*` ấy**. Nay đã đọc, và **24
+trường tách làm HAI nhóm theo GIÁ TRỊ** (chỗ nối thật nằm trong ~80 lớp C++
+`CDFSpriteFight*Wake`, không đọc được — nên đây là ĐẶT, nhưng **cả hai đầu mút
+đều đo**): **14 trường SINH HIÊN** (giá trị là một armature RIÊNG phải vẽ: 37
+cặp → 23 tên, 22 tra ra thư mục, 18 dựng được rig, 16 chạy `PluginPlay`) và
+**10 trường TỰ THÂN** (giá trị là biến thể của **chính** rig người niệm: 74 cặp
+→ 40 tên, 35 tên chứa `Weapon`, **0** có `PluginPlay` — sinh ra là vẽ **một bản
+sao thứ hai của tướng**). Một ngoại lệ **có tên** và được assert:
+`SiMaYi_WakeEffect` nằm trong `sWeaponWake` nhưng đúng là hiệu ứng (13 tầng,
+động tác `Wake`/`WakeLoop`/`WakeEnd`) → **không** sinh.
+**Hai lỗi thật lộ ra khi nối, cả hai đều im lặng:** (a) `_richest_variant()`
+chọn nhóm nhiều động tác nhất, mà với tên là **chính thư mục** (`CaiWenJiCircle`)
+nó chọn `Born/Death/Standby` — **không `PluginPlay`**, nên vòng hiệu ứng **đứng
+im**; nay có `SngRig.bien_the_hieu_ung(dir)` + **một** đường tra dùng chung.
+(b) **Đường thức tỉnh bằng NÚT — đường người chơi dùng — chưa bao giờ sinh hiệu
+ứng**: `_mot_buoc` làm `_play_lai("Wake")` mà không gọi hiệu ứng. Đó đúng là cái
+người dùng báo ("hoạt hóa vẫn không đúng").
+**Một lỗ hổng DỮ LIỆU, nay có TÊN:** trên ải `L_N_01_01` nhân vật chính mang
+`Player000M03W`, mà VN 1.26 **không có khối `fight_<X>Wake` nào** cho tên ấy
+(đối chiếu cả bốn `*config*.xml`) → `ve 0, im 1` với lý do
+`khong-co-bang:Player000M03W`. Luật: mọi hiệu ứng không vẽ được phải **đếm kèm
+lý do** (`dem_thuc_tinh` trả `{ve, im, im_vi_sao}`), không bao giờ im.
+Đo: `tools/verify_thuc_tinh.gd` **33/0**; `--kiem` **32/0**; `--kichban`
+**18/0**. Chi tiết + số đo đầy đủ + **chỗ còn treo** (cổng `_xong` nuốt hiệu ứng
+biến thân của **cảnh kết** — trận kết ở giây 22, lệnh `Wake` của kịch bản tới ở
+30,7; **chưa đo** bản gốc có vẽ hay không nên **không** sửa): `ROADMAP.md` §5,
+mục "Hiệu ứng thức tỉnh — XONG 2026-09-21".
 
 (9) **thanh / vòng tiến độ** (`CCProgressTimer`) — **xong**, xem mục "Thanh
 tiến độ" bên dưới. Trước đó **cả 325 node** bị coi là sprite và **vẽ đầy đặc ở
@@ -143,8 +243,10 @@ chỗ gọi, `S_CCProgressFromTo` 14) là **bóng** cho tới lượt này — x
 
 (10) **bốn nhóm API còn lại — xong**: đổi ô hiển của xương
 (`_lua_changeTextureDisplay` / `_lua_changeArmtureDisplay` — hai hàm, `idx` là
-**THAY** chứ không phải THÊM), cánh (`_Lua_changeWingAnimation` trả `false` là
-đúng vì không đường nào gắn cánh), tiếng chạm (`setSoundStrArr`), vùng chạm
+**THAY** chứ không phải THÊM), cánh (`_Lua_changeWingAnimation` — màn gắn cánh đi
+qua `setGear`, hàm ấy **đã làm**, nên nó trả `true` ngay khi có màn nào gắn; xem
+`ROADMAP.md` mục "Bốn nhóm API của lớp giả lập"), tiếng chạm
+(`setSoundStrArr`), vùng chạm
 (`setIsOpenDetection` + `pushDetectionAreaInPatentSpace` — bốn số là **hai góc
 đối nhau trong hệ node CHA**). Khoá bằng `tools/verify_o_hien.gd` (93 đạt /
 0 hỏng). **Ba bẫy im lặng** đo được cùng lượt, đừng quên: bảng Lua đưa vào
@@ -200,6 +302,26 @@ diễn hết.
 Còn ghi-lại: lớp phủ `g_CGuideLogical`.
 (`--kiem`; chụp giữa trận: `--chup=tran.png`, thêm `--cam=2500` để thấy nền
 trôi; chơi thử một trận: `--xem`; hai chế độ sau chạy KHÔNG `--headless`).
+
+**Hai lỗi làm màn trận không chơi được, đã vá 2026-09-18** — cả hai đều **im
+lặng**, và cả hai chỉ lộ ra khi mở một trận THẬT (không bộ kiểm nào bắt được;
+chi tiết + số đo ở `ROADMAP.md` §5). (a) `g_BlackEffectLayer` của bố cục HUD gốc
+là tấm đen **đục** 2000×1000 phủ kín sàn: dựng nguyên trạng thái trong file thì
+khung hình ra **đúng một màu** `(0,0,0)`. Bản gốc tắt nó bằng cờ
+`bShowBattleBlackEffectLayer` (ải thường đặt `false`), mà cờ ấy **chỉ được gán,
+không file Lua nào đọc** — engine C++ tìm node theo **tên**. Đường chiến dịch đã
+tắt sẵn ở phía Lua (`san_tran.lua:481`); `battle.tscn` là màn trận đứng riêng
+nên không được hưởng, nay tắt trong `_build_hud()`. (b) `SpriteName` trong bảng
+quân chủng là tên **loại quân**, không phải tên armature (`Archer(new)`,
+`Stakes`, `witch doctor`) — **62/80** tên không có armature nào, kể cả trong kho
+atlas của bản gốc, nên mỗi đơn vị sinh một dòng `SngRig: khong thay ...`. Đơn vị
+thiếu art **vẫn đánh**, chỉ vô hình (`battle.gd:co_art()` — **chỉ nhận đúng thư
+mục trùng tên**; luật tiền tố của kho "cứu" được 32/62 tên nhưng 0/80 tên là biến
+thể thật sự, nên áp luật ấy là gán `Archer(new)` vào hình `Archer` cũ). Bộ kiểm
+mới `tools/verify_man_tran.tscn` khoá cả hai, và **kiểm chứng ngược cả ba** (cho
+cờ đen về `true`, cho `co_art` luôn trả `true`, và đổi `co_art` sang luật tiền tố)
+đều ra đỏ.
+
 Armature đổi ảnh theo khung: `+0x2C` (chỉ số ảnh, −1 ẩn) và `+0x40` (số khung
 giữ) của bản ghi khung, `anim.py` ghi thành `d` / `dur`; `SngRig` làm theo.
 Sửa `anim.py` thì xuất lại JSON: `python ../brave-cross/work/export.py --all
@@ -254,6 +376,11 @@ kho bang hội, nên `ClientGetGuildInfo` trả đúng mã `GuildNotExist` (3501
 bản gốc chứ không dựng một cái bang giả. `GuildId ~= 0` là phép thử "có bang"
 mà chính client dùng. Tạo bang / xin vào / quyên góp / chiến bang đều cần
 người chơi khác — nếu làm thì thuộc về máy chủ thật, không phải lớp offline.
+
+> **GHI CHÚ 11/10 — "máy chủ thật" nay ĐÃ CÓ.** Câu trên vẫn đúng cho **lớp offline trong repo
+> này**; nhưng workspace đã có repo **`bravecross-server`** (Node + TypeScript + Postgres, JSON
+> qua WebSocket) và ở đó **nhóm GUILD đã được port** (Mốc 4 `bang_hoi` · Mốc 23 `bang_chuong`).
+> Nên đây không còn là chuyện "thuộc về tương lai" nữa.
 
 Tốc độ di chuyển: **đừng dùng `MovingSpeed`** của bảng chỉ số trận. Nó không
 hề có trong `libgame.so` — quét bảng tên chỉ số của engine (quanh `0x7b42f0`)
@@ -405,7 +532,31 @@ luật thật ở ~80 lớp C++ `CDFSpriteFight*Wake`.
 Lỗi đã sửa, đáng nhớ: `SetRoleChangeFight` bị ta coi là AoE ở MỌI lần gọi, kể
 cả khi nó chỉ đổi tư thế (`Fight`, `Fight20`). Ở ải 1 là 2 Triệu Vân × 3 lần
 gọi = 6 lần AoE không có thật — chính nó (chứ không phải số đòn) là thứ giữ
-cho ải 1 thắng. Nay chỉ `Wake*` / `Talent*` mới gây sát thương.
+cho ải 1 thắng.
+
+**Thẩm quyền nay là tham số 3 (`form`), không phải tên động tác.** Đo cả 17
+chỗ gọi trong `sc/plot/drama_*.lua`: form 1 ⟺ `Fight`/`Fight3`/`Fight20` (5
+chỗ, đổi tư thế), form 2 ⟺ `Wake`×7 / `Super4`×2 / `Super`×1 (10 chỗ, biến
+thân / tuyệt chiêu), form 4 ⟺ `Talent` (1 chỗ, kích thiên phú) — **17/17**. Ý
+nghĩa đọc từ chính chú thích bản gốc: `--吕布变身` đi với form 2 + `Wake`,
+`--赵云触发龙胆` đi với form 4 + `Talent`. Trên **đúng 17 chỗ ấy hai luật cho ra
+cùng kết quả**, nên lượt này **không đổi kết quả trận nào** — đổi là để tên
+động tác thôi làm thẩm quyền (3 chỗ `Super`/`Super4` đều là `doi = 1`, mà
+nhánh AoE vốn đã bỏ qua lời gọi của bên địch). `form = 0` (không truyền) thì
+lùi về phép thử theo tên, tức đường cũ. Khoá bằng 5 phép kiểm trong
+`do_chien_dich --kichban` (11 → **16 đạt / 0 hỏng**); bắt buộc phải **đọc lại
+vết `tuyet_chieu` thu được** (`san_tran_ve.vet_tuyet_chieu`) chứ không thể đòi
+"không thấy lỗi" — `goi_tran` của `lua/kich_ban.lua` bọc lời gọi trong `pcall`
+nên lệch số tham số **im lặng, không một dòng lỗi**. Phép kiểm có lực: bỏ lại
+tham số thứ 5 thì 4 phép đỏ (`12 đạt / 4 hỏng`).
+
+Còn **chưa** đo được: chỗ nào trong 17 lời gọi ấy là **bên ta** mà tên động tác
+không bắt đầu bằng `Wake`/`Talent` — hiện **không có chỗ nào**, nên luật theo
+tên chưa từng sai trên dữ liệu đang có. `Evil` không thiếu armature: bốn tên
+mà `sc/plot/*.lua` gọi (`LvBuEvil`, `DongZhuoEvil`, `ZhangJiaoEvil`,
+`ZhangLiangEvil`) đều có trong `assets_ref`; `ZhaoYunEvil` **chỉ là chân dung**
+(`string_gb.lua:16` → `png/half_hero/Head_ZhaoYunEvil.png`, `--龙胆赵云`) và
+không lời gọi nào coi nó là armature.
 
 Canh điện ảnh: đối chiếu 56 file `sc/plot/drama_*.lua` với `lua/kich_ban.lua`
 cho danh sách lệnh còn thiếu — trước là 35/60, nay **60/60**. Chữ ký đọc từ
@@ -482,6 +633,199 @@ Godot không có chế độ tương ứng `(GL_DST_COLOR, GL_ONE_MINUS_SRC_ALPH
 `'multiply'` (`BLEND_MODE_MUL` là `dst*src`, khác hẳn) — gặp thật thì phải viết
 shader riêng. Còn `'screen'` thì khớp sẵn: `CanvasItemMaterial.BLEND_MODE_ADD`
 = `GL_SRC_ALPHA, GL_ONE`.
+
+**Tấm nền của nhãn — ĐÃ SỬA 2026-09-18.** Tấm vàng trong ảnh gốc **không phải**
+chuyện của chữ: nó là ảnh nền `buildingname_16.png` (144×34, viền vàng trên/dưới)
+mà `CCLabelTTF` mang **cùng lúc** với `text`. `xgg_layout.gd` có gọi
+`UiFrames.set_frame(node, img)` cho cả nhãn, nhưng `ui_frames.gd:set_frame` chỉ
+nhận `TienDo` / `UiONhap` / `NinePatchRect` / `TextureRect` và **trả `false` cho
+`Label`** — node vẫn có meta `img` mà không có `img_applied`, nên **im lặng** mất
+tấm. **202 nhãn** trong 11 bố cục dính; nhiều nhất là `ui_background018.png`
+(150) và `buildingname_16.png` (28). Sửa bằng ô theme `normal` của `Label` (nó
+vẽ nền ngay dưới chữ của chính nó), **không** bọc thêm node cha — `ui/equip.gd`
+quét `c is Label` trên cây nên bọc lại là vô hiệu nó. Cũng **không** đặt ô theo
+ảnh như đường chung: ô của nhãn là ô **chữ**, ảnh nền chỉ kéo giãn cho vừa.
+
+Kho có **16** tấm `buildingname_*` chứ không một: `01..15` là **34×133** (bảng
+**dọc** treo trên toà nhà), chỉ `16` là **144×34**. Nên phép khớp kích thước của
+`imgFrom: size` chọn đúng, không mơ hồ — đo trên Main: **14/14** nhãn gác được
+tấm, tất cả đều `buildingname_16.png`. Gác bằng `tools/verify_layout.gd` khối 6b
+(đếm theo `img_applied`, vì theo `img` thì không thấy gì).
+
+Câu cũ ở đây — "ô của nhãn và tấm **khớp 1:1 ở mọi trường hợp**" — **SAI**, đã đo
+lại trên **cả 296 bố cục** (không phải chỉ Main) và đếm đủ **202** nhãn: **196 gác
+được, 6 không**. Con số 1:1 chỉ đúng cho **190/196**: `ui_background018.png` 50×30 ↔
+50×30 (**146**), `buildingname_16.png` 144×34 ↔ 144×34 (**26**),
+`ui_background112.png` 30×30 ↔ 30×30 (10), `ui_background762.png` 94×94 ↔ 94×94
+(4), `ui_button12.png` 127×51 ↔ 127×51 (2), `ui_button27.png` 143×61 (1),
+`ui_background240.png` 35×35 (1).
+
+**Năm cái còn lại KÉO THEO TRỤC DÀI**: `ui_background018.png` 50×30 vào ô **79×30**
+(2 cái) và vào ô **71×30** (1), `buildingname_16.png` 144×34 vào ô **166×34** (2) —
+tức dài ra **21–29 điểm ảnh**, đúng trục mà viền vàng chạy dọc theo nên **không
+bóp viền**, nhưng **không phải 1:1**. Vì thế câu "không cần 9-slice" chỉ còn đúng
+ở dạng: kéo giãn thẳng **không làm hỏng viền** (viền nằm trên trục dài); muốn biết
+bản gốc có kéo 21–29 điểm ấy hay vẽ tấm ở cỡ gốc rồi canh giữa thì **phải đo bản
+gốc** — chưa đo. Bản ghi `.xgg` chỉ nói `imgFrom: size`, tức là phép khớp **theo
+kích thước**, nên nó không trả lời được câu ấy.
+
+**Sáu cái KHÔNG gác được nay là một lời TỪ CHỐI có tên, không còn là một lỗ
+hổng giấu mặt**: cả 6 là `@v6/ui_words357.png` trong `UI_ActivityMode_Finish_960_640`,
+gác ra tấm **176×64** còn ô chữ **152×68** — **cạnh ngắn lệch 4 điểm** (64 so với
+68), kéo thì bóp viền. Trước khi `key_of` biết hậu tố ngôn ngữ thì 6 nhãn này được
+đếm vào "thiếu dữ liệu" (tên `ui_words357` **không có** trong `ui_ref/index.json`
+vì bản gốc ship bản `_vi`); nay chúng được `tools/verify_layout.gd` khối 6b **in ra
+theo tên**. Còn **1** nhãn `ui_background018.png` đo ra ô **50×29** mà vẫn
+`gac=true` — lúc gác ô là 50×30 rồi bị đổi đi 1 điểm sau đó; **chưa truy** nguyên
+nhân, ghi lại làm việc còn treo.
+
+**Hai lỗi bố cục của màn Doanh Trại — ĐÃ SỬA 2026-09-18.** Người dùng chụp màn
+`CUIBarracksMain` rồi báo "layout chưa đúng". Truy ra **hai** nguyên nhân độc lập,
+cả hai đều **im lặng**, và cả hai đều là lỗi chung chứ không riêng màn ấy.
+
+**(A) Khung xương vẽ lệch 640 điểm ảnh.** `CUIBarracksMain.lua:1059` gọi
+`parent:addChild(pArmature, 1, index*10)` — **không** `setPosition`. Khung xương là
+một `Control` do `_new_node` sinh lúc chạy, mà `_new_node`
+(`game/lua_runtime.gd:522`) đặt cho **mọi** node như thế `parent_h = 640.0` — một
+con số **BIA**, vì node chưa có cha thật. `Node:addChild` bên `lua/cocos.lua` khi
+ấy hỏi `to_cocos(c)` để quy vị trí hiện tại về hệ Cocos, `to_cocos` lấy chiều cao
+trong meta `parent_h` → ra cocos y = **640**, rồi `to_godot` với chiều cao cha
+**thật** 40 cho ra y = 40 − 640 = **−600**. Đo được: `g=(304.91,−334.00)`.
+Sửa: node `Control` **chưa từng được đặt chỗ** (`Node:setPosition` nay ghi meta
+`dat_cho`) và **chưa có cha** thì lấy thẳng toạ độ từ meta `cocos`. Sau khi sửa:
+`g=(304.91,306.00)` = mép dưới của ô cha (304.91, 266.00) + 40 — tức nhân vật
+**đứng trên ô chọn quân**. Đo trên cả cây: **92 dòng** có `g=(304.91,−334.00)` →
+**0**; 7 dòng y âm còn lại là **của chính hộp thoại** (`lBarracksMainUI` ở
+`g=(160,−64)`, cố ý tràn ra ngoài màn) và **không đổi** trước/sau.
+
+**(B) Ảnh có tiền tố `@` không bao giờ tra ra.** `@` trong tên ảnh của `.xgg`
+**không phải ký tự rác** — nó đánh dấu tên **theo NGÔN NGỮ**. Đo trên 296 bố cục /
+13.667 node có ảnh: **562 node** (145 tên, 130 bố cục) mang `@`, và **482 node /
+128 tên CHỈ ra ảnh khi thêm hậu tố `_vi`**; 72 node ra cả hai đường (và đường `_vi`
+mới đúng theo thư mục bố cục ghi); 8 node không ra đường nào (thiếu tài nguyên
+thật); 2 node **chỉ** ra khi **không** thêm hậu tố (`@v6/ui_background941/942.png`)
+— nên bước lùi về tên gốc là **bắt buộc**, không phải tuỳ tiện. Hậu tố phải chèn
+**trước phần mở rộng** (`@v6/ui_words86.png` → `@v6/ui_words86_vi.png`), không
+phải nối vào cuối chuỗi — nối sai thì ra `@v6/ui_words86.png_vi`, tra trượt, và
+tưởng nhầm là `_vi` không cứu được tên nào (**0/145** thay vì **128/145**). Nguồn
+sự thật của giá trị `_vi` là `DEFAULT_LANGUAGE = 'vi'`
+(`lua/bootstrap.lua:317`), không phải một lựa chọn của ta — `tools/verify_lua_actions.gd`
+đọc giá trị ấy **từ chính file Lua** rồi đối chiếu với `UiFrames.HAU_TO_NGON_NGU`.
+Trên màn Doanh Trại: **12 → 0** dòng `[KHONG GAN]`, và 12 dòng ấy đúng là
+6×`@v6/ui_words94.png` (`CanUnlock`, `CUIBarracksMain.lua:1074`) + 6×`@v6/ui_words93.png`
+(`CanUpgrade`, `:1073`); số ảnh gác được **43 → 55**. Nhìn thấy được: chữ **"Mở
+Khóa"** hiện trên các ô quân chưa mở.
+
+Ảnh A/B dựng bằng chính bộ đo, cùng cỡ cửa sổ 960×640 nên từng điểm ảnh so được:
+`godot --path . --script tools/do_doanh_trai.gd -- --ra=<dump> --chup=<png> --khung=45`
+(chế độ chụp mới của bộ đo; `--khung=` là số khung chờ trước khi chụp). Ảnh:
+`../error-test/doanh-trai-truoc.png` / `doanh-trai-sau.png`; cả cây node ra
+`279` dòng **y hệt nhau** ở hai lượt — chỉ **ảnh gác** và **vị trí khung xương**
+đổi, tức cây không hề khác hình dạng.
+
+**Một lỗi ghi lại, KHÔNG sửa:** meta `cocos` **cũ đi** ngay khi `setPosition` chạy
+sau `setAnchorPoint`, mà `UiFrames.set_frame` (`ui/ui_frames.gd:312-316`) **đặt lại
+vị trí node từ meta ấy** mỗi lần gác ảnh — nên một sprite bị dời đi rồi mới được
+gác ảnh sẽ **nhảy về** toạ độ bố cục. Ghi (x, y) vào meta trong `setPosition` là
+sửa được, nhưng đổi hành vi cho **mọi** sprite như thế nên cần A/B riêng.
+
+**Cửa vào của mọi tấm nền — ĐÃ SỬA 2026-09-18, và là chỗ nặng nhất từ trước tới
+nay.** Người dùng báo "các nút như ma đồng", "không có background", "nút trên Main
+phải hiện rõ nền". Truy ra **ba** lỗi xếp tầng, cả ba đều **im lặng**; sửa xong
+số node gác được ảnh đi từ **13.673 → 17.280** trên cả 296 bố cục.
+
+**(A) `work/xgg.py` thiếu hẳn cỡ bản ghi 248.** `IMG_FIELD` có 244/256/260/324 mà
+**không có 248** — mà 248 **chính là** `CCScale9Sprite` (đo trên 580 file), tức
+toàn bộ tấm nền 9 phần của cả game rơi xuống đường dự phòng `_anh_theo_co` (khớp
+ảnh theo kích thước). Đường ấy gần như luôn trượt với 9 phần vì **ô của node là
+ảnh gốc bị KÉO**, nên cỡ không bao giờ bằng. Trường thật là **`+0xF0`**: quét mọi
+cặp `(off, len)` của bản ghi 248 byte rồi nhóm theo số lần ra `.png` thì `+0xF0`
+thắng một mình — **4.126** lần. Cặp `+0xE0` mà tài liệu cũ nhắc chỉ có **19 node**
+và **toàn bộ** là `../png/guide/ui_guide_background.png`, một trường khác.
+
+Câu cũ *"cỡ 248 → +0xF0 chỉ 4% khớp, không dùng được, bỏ hẳn"* là **một phép đo
+sai**: 4% ấy (đo lại: **16,4%**) chính là phép tự kiểm `_xac_nhan` so **ô của
+node** với **cỡ ảnh gốc ở section C** — với 9 phần thì phép ấy **không thể** đúng,
+nên tỉ lệ thấp là **điều phải thấy**, không phải bằng chứng chống lại trường.
+Đối chiếu: `CCSprite` 244 → **99,9%**, `CCButton` 260 → **99,9%**.
+
+Chứng minh **độc lập, không dùng offset nào**: pool chuỗi ghi các khối liền nhau
+nên đoạn ngay sau tên node là tài nguyên của nó. Kiểm trên **cả 4.126** node bản
+ghi 248 byte có cả tên lẫn ứng viên ảnh: ứng viên nằm **sau** tên trong pool —
+**2.676** liền ngay, **1.450** trong vòng 400 byte, **0 ngoại lệ**; và
+**4.126/4.126** đều kết thúc bằng `.png`.
+
+**(B) Luật `guess` của `ui/xgg_layout.gd` loại luôn tên đọc từ bản ghi.** Tên ở
+`+0xF0` đọc thẳng ra, nhưng phép kiểm cỡ (không thể đúng, xem (A)) gắn cho nó nhãn
+`guess`, mà `guess` **mặc định bị bỏ**. Đo: **3.449** node `CCScale9Sprite` rơi
+vào đúng cái bẫy ấy — **161 tên khác nhau, TẤT CẢ đều là ảnh giao diện thật**
+(`ui_background002.png` 465, `green/ui_green_05.png` 347, `ui_background041.png`
+308, `ui_blood_14.png` 115…). Đây là **chỗ thứ ba cùng một lý do** với
+`CCProgressTimer` (314 node) và `CCEditBox` (37 node) vốn đã được miễn — nên miễn
+luôn cho `kind == "scale9"`. `guess` của `CCSprite` (**9** node) và `CCButton`
+(**1** node) thì **vẫn bị loại**: hai lớp ấy khớp cỡ 99,9%, nên trượt là bất
+thường thật.
+
+**(C) `UiFrames.set_frame` kéo ô của node về cỡ ẢNH — sai với 9 phần.** Bật ảnh
+cho 3.449 node xong thì `bam that Main -> tran` **tụt từ 5 đạt / 0 hỏng xuống 0
+đạt / 5 hỏng**: cú bấm vào nút tấn công `lMainExtraUIAttack` ở `(888, 576)` bị
+`btnBackpackUI` **nuốt**, vì tấm 9 phần ấy bị đổi kích thước. `CCScale9Sprite` của
+bản gốc **giữ nguyên `contentSize` rồi kéo 9 phần vào đó**, đúng như
+`NinePatchRect` của Godot — nên `set_frame` nay **đặt ảnh rồi thôi** với
+`NinePatchRect`, cùng lý do đã có sẵn cho `TienDo` và `UiONhap`. 677 node có ô
+**đúng bằng** cỡ ảnh thì không đổi gì (kéo vào ô bằng chính nó).
+
+Hệ quả nhìn thấy được: **44 node trên Main** từ chỗ không có ảnh nay có — và
+**toàn bộ là nút**: `btnOK`, `okButton`, `btnUse`, `btnGetAllPrize`,
+`btnDeployIntoBarracks`, `btnHeroInfoUIUseExp`, `返回按钮`… đều ra
+`ui_button01.png` (nền nút gỗ) hoặc `ui_button14/03/09.png`; trong bộ kiểm là
+`action + anh (Lua)` **67 đạt / 0 hỏng**. Đúng cái người dùng hỏi: "khi bấm các
+nút trên main cần hiển thị rõ các nút background".
+
+Chữ trên Main: **vàng + viền đen** so với **trắng, không viền** — **CHƯA SỬA,
+chưa biết nguồn**. Đo được, ở mức phóng 6×: bản gốc `Võ Hội` vàng `(≈255,200,60)`
+viền đen, ta trắng xám không viền. Nhưng **không phải mọi nhãn bản gốc đều
+vàng**: trên cùng ảnh ấy, tên người chơi `Eromanga-Sensei` và các số tiền
+`999/120`, `42646306` là **trắng không viền**. Vậy nó **theo từng nhãn**, không
+phải một kiểu chung.
+
+Bốn đường đã **loại**:
+
+* **Không phải phông khác nhau.** Cả 38 nhãn của `UI_Main_960_640` trỏ **cùng
+  một** khoá phông `+0x130 = '#FONT_TTF'` (đếm: 38/38). `FONT_TTF` chỉ là tên
+  phông mặc định (`GetStringWithKey("FONT_TTF")`, 13 file dùng), không mang màu.
+  Nên **không** phải chuyện phông bitmap vàng.
+* **Không nằm trong `.xgg`.** So **trực tiếp** một nhãn vàng với một nhãn trắng ở
+  hai file khác nhau — `#MainBuilding_Name7` (`UI_Main_960_640`) với `+9999999`
+  và `999999` (`UI_Main_ControlPanel_960_640`): chúng khác nhau **đúng hai float
+  và một byte**, và đó là **độ lệch bóng/viền**, không phải màu —
+  `+0xE4..+0xE7` = `2.0` (vàng) so với `0.0` (trắng), `+0xE8..+0xEB` = `-2.0` so
+  với `-3.0`. Quét cả 352 byte của cả hai bản ghi tìm nhóm 4 byte kiểu RGBA có
+  alpha 255: **không có nhóm nào**. Byte `+0xE7 = 64` mà tôi tưởng là màu bám
+  theo **cỡ ô** (`h=34` ra 64, `h=30` ra 0) — và nó **không** phải cờ "có tấm":
+  đo trên 38 nhãn Main, `h=34` có **14 có tấm + 7 không**, nên `+0xE7` không phân
+  biệt được. Bảy nhãn `h=34` không tấm là `#MainBuilding_Name9/10/12/14` (bề rộng
+  **150/160/170** chứ không 144 — phép khớp kích thước trượt), `#ContestUI_Champion`
+  (`w=0`) và hai chuỗi CJK thử `a名字四个字`, `应用宝`. **Chưa đo**: bản gốc có kéo
+  giãn tấm vàng cho bốn tên toà nhà rộng 150/160/170 đó không — nếu có thì phải
+  dùng 9-slice, và đó là việc còn lại.
+* **Không nằm trong `CUIMainBuildingManager.lua`.** Nhãn tên toà nhà là tag
+  `5001`; file đó chỉ đọc tag `5000` (`pUnlockText`) và `8384` (`pRedPoint`),
+  **không** đụng `5001`.
+* **Không nằm trong 13 file gọi `enableOutline` của `sc/`.** Liệt kê hết: toàn
+  viền **đen** `(0,0,0,255)` cho phụ đề / tab / cá cảnh / nhãn phụ, hoặc màu lấy
+  từ bảng cấu hình của chính màn đó. Không chỗ nào chạm nhãn thành phố màn Main.
+  Mặc định của bản gốc vẫn là **trắng** (`lua/cocos.lua:1609`), đúng như các số
+  tiền.
+
+Nghi vấn còn lại: một lượt trang trí **của engine** đi qua `CCLabelTTF` sau khi
+nạp bố cục — dữ liệu không có, Lua không có, nên chỉ còn engine. Đường đúng để
+trả lời là **móc bản gốc lúc chạy** (`work/emu_*.py` đã có sẵn cách móc hàm C++)
+và xem `setColor`/`enableOutline` bị gọi trên node nào — **không đoán**.
+
+Cùng ảnh ấy còn hai lệch nữa chưa sửa: bản gốc có **chấm đỏ** báo việc ở góc
+phải trên tấm tên (tag `8384`, Lua tạo), ta không có; và nhãn **lệch theo trục
+x** khoảng **+25 điểm ảnh** ở 960×640.
 
 Hộp chạm của armature (`_lua_CollisionSize`) — **XONG**, và nó là một CẶP số
 (rộng, cao) chứ không phải một số: `W = w·sx·|cos rot1| + h·sy·|sin rot1|`,
@@ -697,11 +1041,31 @@ cùng của **cả 11** biến thể hiệu ứng sao, nên lọc là ra rig **0
 0 xương **vẫn `play()` được** (trả `true`) và vẫn có tên động tác, nên "chạy không
 lỗi" không thấy gì; **chỉ phép đếm xương** mới bắt được. Đo rộng: **1319/2935**
 biến thể trong `assets_ref` có toàn bộ xương tầng ngoài cùng tên `Layer*` (gần hết
-là armature hiệu ứng). Nay `_tao_rig(ten, giu_layer)` có công tắc,
-`LuaRuntime.rig_rong` đếm mọi rig dựng ra rỗng. **Chưa sửa** chỗ rộng hơn:
-armature hiệu ứng gọi qua `getSpriteFromSpriteCatch` vẫn đi đường lọc — sửa cho
-đúng thì phải đo lại luật theo **từng khung** (bản gốc chỉ loé xương `Layer*` của
-nhân vật vài khung rồi tắt), không phải đổi mặc định cho có.
+là armature hiệu ứng). `LuaRuntime.rig_rong` đếm mọi rig dựng ra rỗng.
+
+**Đã sửa 2026-09-18** bằng cách bỏ bộ lọc khỏi **đường Lua** (`_tao_rig` gọi
+`SngRig.build(..., false)`; tham số `giu_layer` không còn, vì cả đường chỉ có một
+luật). Bộ lọc **vẫn còn** cho **màn trận** — ba chỗ gọi `SngRig.build(..., true)`
+đều nằm trong `battle/`, và đó là chỗ duy nhất nó từng được đo. Lý do bỏ: `Layer*`
+ở đường Lua không phải vết tích Photoshop mà là **chính đối tượng** — toà nhà Võ
+Hội (`UIJianZhuWuDaoHui`) chỉ có hai xương, `PlugIn_1` (ảnh 4×4 rỗng, đúng bị luật
+marker bỏ) và `LayerName000`, mà `LayerName000` mới là toà nhà (ô hiện của nó là
+các rig lồng nhau `_Base_Main*`). Đo trên màn Main: rig ấy **0 → 17** node có ảnh,
+**5 đang hiện**, kéo theo cả chợ, chùa, rương và đảo nổi.
+
+Màn trận **không đổi** — nhưng **không phải vì phép đo điểm ảnh**, mà vì ba chỗ gọi
+đó truyền `true` tường minh và lượt này không đụng tới chúng. Phép đo điểm ảnh ở
+đây **không có lực**: hiệu trước/sau 63.827 điểm (10,3885%) so với 66.068 điểm
+(10,7533%) giữa hai lần chạy **cùng cấu hình** — mà nhìn ảnh khác thì thấy nhiễu ấy
+là **đơn vị đứng ở chỗ khác nhau**, tức RNG của trận, không phải nhiễu vẽ. Hai con
+số đều đang đo "hai trận khác nhau", nên so chúng không nói được gì về một thay đổi
+nhỏ ở tầng rig. Muốn đo màn trận thì phải ghim được hạt RNG (in ra ở dòng nhật ký
+trên màn, vd `RDYmADaDCy`).
+
+Còn **chưa đo**: rig **nhân vật** hiện trong giao diện (chân dung tướng, paper
+doll) nay cũng không lọc, nên lớp `Layer*` của nhân vật — thứ bản gốc chỉ loé vài
+khung rồi tắt — có thể hiện thường trực ở đó. Sửa cho đúng thì phải đo lại luật
+theo **từng khung**.
 
 Đọc nhầm đã sửa, ghi lại: file `StarLevelEffect.xml` có **23** biến thể, không
 phải 11 — **11** của cấu hình (động tác `PluginPlay`) + **12** tên
@@ -712,3 +1076,88 @@ Bấm được: `lua/cocos.lua` (`M.cham`) + `LuaRuntime.touch_at`, kiểm bằn
 `tools/verify_cham.gd`. Số màn mở được: xem bảng đầu `ROADMAP.md` (đo bằng
 `tools/quet_show.gd`, con số dao động ±3 giữa các lần chạy). Phần lớn màn hỏng
 là vì thiếu dữ liệu người chơi, không phải thiếu engine.
+
+<!-- BEGIN StudioForge -->
+# StudioForge -- Game Studio Agent Architecture + Asset Production
+
+Indie game development managed through 49 coordinated Claude Code subagents,
+with a working AI asset-generation pipeline attached. Each agent owns a specific
+domain, enforcing separation of concerns and quality.
+
+Base framework: [Claude Code Game Studios](https://github.com/Donchitos/Claude-Code-Game-Studios).
+Asset generation: the `asset-gen` skill from [godogen](https://github.com/htdt/godogen).
+See `docs/STUDIOFORGE.md` for what was merged and why.
+
+## Technology Stack
+
+- **Engine**: Godot **4.7.2** (GL Compatibility) — đã chốt sẵn, xem `project.godot:11`
+- **Language**: GDScript, cộng **Lua** (mã bản gốc chạy trong `game/lua_runtime.gd`)
+- **Version Control**: Git with trunk-based development
+- **Build System**: không có bước build riêng — chạy thẳng `godot --path .`
+- **Asset Pipeline**: `/asset-spec` → `/asset-produce` → `/asset-audit` (engine-agnostic; outputs PNG / GLB / sprite sheets into `assets/`)
+
+## Asset Production
+
+Visual assets are generated, not hand-drawn, unless the art director says otherwise:
+
+| Step | Skill | Produces |
+|------|-------|----------|
+| 1 | `/art-bible` | shape language, color system, asset standards |
+| 2 | `/asset-spec` | per-asset specs + art-bible-anchored generation prompts |
+| 3 | `/asset-produce` | **real files** via Gemini / Grok / Tripo3D — gated on cost approval |
+| 4 | `/asset-audit` | validates delivered files against their specs |
+
+`/asset-gen` is the low-level tool reference (flags, costs, pitfalls). Prefer
+`/asset-produce` — it reads the specs and manifest for you. Reach for `/asset-gen`
+directly only for one-off generation outside the spec flow.
+
+**These are paid APIs.** `/asset-produce` requires explicit cost approval before every
+batch and that approval never carries between runs. Setup and cost control:
+`docs/asset-pipeline-setup.md`.
+
+`design/assets/asset-manifest.md` is the single source of truth for asset state —
+never track assets in `README.md`.
+
+> **Note**: Engine-specialist agents exist for Godot, Unity, and Unreal with
+> dedicated sub-specialists. Use the set matching your engine.
+
+## Project Structure
+
+@.claude/docs/directory-structure.md
+
+## Engine Version Reference
+
+@docs/engine-reference/godot/VERSION.md
+
+## Technical Preferences
+
+@.claude/docs/technical-preferences.md
+
+## Coordination Rules
+
+@.claude/docs/coordination-rules.md
+
+## Collaboration Protocol
+
+**User-driven collaboration, not autonomous execution.**
+Every task follows: **Question -> Options -> Decision -> Draft -> Approval**
+
+- Agents MUST ask "May I write this to [filepath]?" before using Write/Edit tools
+- Agents MUST show drafts or summaries before requesting approval
+- Multi-file changes require explicit approval for the full changeset
+- No commits without user instruction
+
+See `docs/COLLABORATIVE-DESIGN-PRINCIPLE.md` for full protocol and examples.
+
+> **Repo này KHÔNG phải dự án mới.** Engine đã chốt (Godot 4.7.2) và game đã có
+> mã, nên **đừng chạy `/start`** — nó sẽ hỏi lại từ đầu. Đọc `ROADMAP.md` để biết
+> đang làm dở gì, và `CLAUDE.md` mục "Quy ước viết" trước khi sửa dòng nào.
+
+## Coding Standards
+
+@.claude/docs/coding-standards.md
+
+## Context Management
+
+@.claude/docs/context-management.md
+<!-- END StudioForge -->

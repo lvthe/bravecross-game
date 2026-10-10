@@ -32,8 +32,11 @@ static var debug_boxes := false
 ##
 ## Truong chua ten anh trong ban ghi node moi chi do bang thong ke chu chua
 ## doc tu libgame.so, nen ten nao khong doi chieu duoc voi section C thi coi
-## la phong doan. Tren 296 man: 11631 ten xac minh duoc, 360 phong doan.
-## Mac dinh bo qua 360 cai do — hien thieu anh con hon hien nham anh.
+## la phong doan. Tren 296 man / 33.472 node: 17.290 node co ten anh, gom
+## 12.308 'verified' + 1.172 'size' + 3.810 'guess'. Trong 3.810 cai 'guess'
+## ay thi 3.800 duoc dung vi da do duoc ly do truot (xem `_make`), con lai
+## dung 10 cai — 9 CCSprite + 1 CCButton — la phong doan that. Mac dinh bo qua
+## 10 cai do: hien thieu anh con hon hien nham anh.
 static var use_guessed_images := false
 
 ## Nghe theo co hien/an cua ban goc. MAC DINH CO.
@@ -223,6 +226,16 @@ static func build(json_path: String) -> Control:
 ## giua cha (lSubDialogMask 960x640 tai 480,320), nen giu cach ap neo.
 static func bo_qua_neo(tn: String) -> bool:
 	return tn == "CCLayer" or tn == "CCScene"
+
+
+## Ten lop cua "lop chua noi dung" ma engine sinh LUC CHAY ben trong moi lop cuon.
+## Node that mang ten nay khong bao gio co trong .xgg, nen day la cho duy nhat dat
+## no — va cung la dau hieu de nhan ra no o cac tep khac.
+const TEN_LOP_CHUA := "_noi_dung"
+
+
+static func la_lop_cuon(tn: String) -> bool:
+	return tn == "CCScrollLayer" or tn == "CCScrollLayerList"
 
 
 ## Dat lai cho cac node neo khi lop doi co — ban sao cua `sngFixInfoReflash`.
@@ -544,9 +557,28 @@ static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 	# dang dung no (mot CCButton 30x30 'verified'), trong khi cac o dung no la
 	# 150x30, 204x35, 200x90, 260x60, 410x45. Nen 'guess' o day chi co nghia
 	# la "anh khong bap be o", khong phai "ten anh doan ra".
+	#
+	# CHIN-PHAN-NAM (CCScale9Sprite) la cho thu BA cung ly do ay, va o day phep
+	# kiem kich thuoc khong chi hay truot ma la KHONG THE dung: o cua node la
+	# anh goc bi keo 9 phan, nen kich thuoc hai ben khong bao gio bang nhau.
+	# Do tren 296 bo cuc: 4.126 node ban ghi 248 byte mang ten o +0xF0, chi 677
+	# (16,4%) qua duoc phep kiem; CCSprite la 99,9%. Nen 3.449 node dang mang
+	# ten doc THANG tu ban ghi ma bi phep kiem ay loai — 161 ten khac nhau,
+	# TAT CA deu ket thuc bang '.png' va deu la anh giao dien that
+	# (ui_background002.png 465, green/ui_green_05.png 347,
+	# ui_background041.png 308, v6/ui_blood_14.png 115 ...). Doi chieu DOC LAP
+	# khong dung offset nao: trong pool chuoi cac khoi duoc ghi lien nhau nen
+	# doan ngay sau ten node chinh la tai nguyen cua no — 377/377 node 248 byte
+	# co ten deu khop. Va duong 'size' cu la mot su TRUNG HOP: no tra
+	# ui_background039.png 72x72 cho o 72x72 trong khi chinh ban ghi ghi ro
+	# green/ui_green_05.png. Nen nhan 'guess' o day khong phai noi long do tin
+	# cay, ma la doc dung cho da do.
+	#
+	# 'guess' cua CCSprite (9 node) va CCButton (1 node) thi VAN bi loai: hai
+	# lop ay khop kich thuoc 99,9%, nen mot ten khong khop la bat thuong that.
 	if img != "" and (from == "verified" or from == "size"
 			or (from == "guess" and (use_guessed_images or kind == "progress"
-					or kind == "edit"))):
+					or kind == "edit" or kind == "scale9"))):
 		node.set_meta("img", img)
 		node.set_meta("img_from", from)
 		if UiFrames.set_frame(node, img):
@@ -564,8 +596,65 @@ static func _make(nd: Dictionary, parent_size: Vector2) -> Control:
 		var child := _make(c, Vector2(w, h))
 		if child != null:
 			node.add_child(child)
+	# LOP CHUA LUC CHAY cua lop cuon.
+	#
+	# Ban goc KHONG de cac muc nam truc tiep trong lop cuon: luc nap no sinh mot
+	# node con (tag 0) roi don het muc vao trong do, va cuon chinh node ay. Do
+	# duoc tren 283 man, KHONG dung den phep ghep nao (brave-cross/work/emu_join.py,
+	# bo do do_a2b.py): 94/94 lop cuon co ten rieng va co duong engine deu bao
+	# DUNG MOT con truc tiep, va luon la con so 1; con cac node thuong bao dung so
+	# con cua file (318/318 voi 2 con, 210/210 voi 3, 150/150 voi 4). Ke ca lop
+	# cuon KHONG co muc nao trong file cung bao mot con — nen lop nay tao VO DIEU
+	# KIEN, khong phai chi khi co muc.
+	#
+	# Thieu no thi hong hai duong, ca hai deu IM LANG:
+	#   * ma goc goi thang `getChildByTag(0)` tren lop cuon — CUIActivity.lua:201
+	#     (`g_lActivityTagRoot:getChildByTag(0):getChildByTag(nShowIndex)`), va
+	#     chinh hoa si ghi chu o :718: '这里是个坑，滑动层有一层0tag的节点来处理裁剪'.
+	#   * `lua/cuon.lua` cuon TUNG muc thay vi cuon ca khoi, va the la
+	#     `getContentOffset` khong con la do lech cua lop chua nhu ban goc.
+	#
+	# O cua lop chua bang chinh o cua lop nen TOA DO CUA CAC MUC KHONG DOI: goc
+	# (0,0) cua hai lop trung nhau, va meta `parent_h` da ghi chieu cao cua lop
+	# tu truoc. Doi cha bang lenh Godot TRAN (khong qua `Node:addChild` cua Lua)
+	# de khong doi lai toa do lan nao nua.
+	if la_lop_cuon(tn):
+		_boc_lop_chua(node, nd, Vector2(w, h))
 	sap_xep_theo_z(node)
 	return node
+
+
+## Boc cac muc cua lop cuon vao lop chua.
+##
+## `tag` 0 va `zorder` 0 la cua ban goc, khong phai mac dinh cua ta: engine tra
+## tag 0 cho lop chua, va do la thu ma `getChildByTag(0)` cua ma goc di tim.
+static func _boc_lop_chua(lop: Control, nd: Dictionary, co: Vector2) -> void:
+	var chua := Control.new()
+	chua.name = TEN_LOP_CHUA
+	chua.size = co
+	chua.position = Vector2.ZERO
+	chua.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	chua.set_meta("lop_chua", true)
+	chua.set_meta("tag", 0)
+	chua.set_meta("zorder", 0)
+	# 'CCNode' chu KHONG phai tn: `M.wrap` cua lua/cocos.lua chon lop Lua theo
+	# chinh chuoi nay, nen mang 'CCScrollLayer' thi lop chua bi boc bang lop CUON
+	# (va no tu cuon chinh no). Node tao luc chay (_new_node) cung mang 'CCNode'.
+	chua.set_meta("type_name", "CCNode")
+	chua.set_meta("kind", "container")
+	chua.set_meta("cls", nd.get("cls", ""))
+	chua.set_meta("res", "")
+	chua.set_meta("cocos", Vector4.ZERO)
+	chua.set_meta("parent_h", co.y)
+	for c in lop.get_children():
+		lop.remove_child(c)
+		chua.add_child(c)
+	# Xep z cho cac MUC, khong phai cho lop chua: `_make` goi sap_xep_theo_z tren
+	# chinh node no dung, ma cac muc nay la con cua LOP (chua bi boc) — boc xong
+	# thi phep xep o cuoi `_make` chi con mot con de xep nen khong lam gi ca.
+	sap_xep_theo_z(chua)
+	lop.add_child(chua)
+	lop.move_child(chua, 0)
 
 
 ## Xep lai con theo zOrder cua Cocos, GIU NGUYEN thu tu goc khi bang nhau

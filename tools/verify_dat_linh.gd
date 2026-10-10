@@ -11,26 +11,28 @@
 #      bằng `do_chien_dich --kiem`: PosX = 7 ô = 700 px. `tran_goc.moc_toan` là chỗ
 #      ĐỊNH NGHĨA duy nhất, `tran_goc.doc_quan` đặt lính CÓ SẴN ở đó.
 #
-#   2. CHỖ ĐẶT TOÁN LÍNH ĐƯA RA — ĐẶT, đã đo lại (2026-09-18) và bộ đo KHÔNG
-#      phân biệt được. `dua_linh` đặt ở ô 0 (mép trái sàn) và KHÔNG dùng mốc của
-#      toán. Đã THỬ dùng mốc (2026-09-17) và phải bỏ: `do_chien_dich --kichban`
-#      tụt từ 9 đạt / 0 hỏng xuống 6 đạt / 3 hỏng, vì toán đứng trong sàn thì gặp
-#      địch sớm hơn ~1,4 giây, trận KẾT THÚC trước bước kế tiếp của kịch bản, và
-#      lúc ấy ĐỒNG HỒ KỊCH BẢN CHẾT THEO TRẬN (`dung_tran` gọi `T.hen:stop()`) —
-#      kịch bản đứng hẳn ở lệnh 27/43. **Lý do đó là một lỗi thật, đã vá**
-#      (`dung_tran` nay chỉ đặt `T.ket`; `hen:buoc` thôi bước trận nhưng VẪN bước
-#      kịch bản cho tới khi kịch bản diễn xong), nên câu ấy đã **ĐO LẠI** cùng
-#      ngày: đặt ngay mốc ra **11 đạt / 0 hỏng**, nhật ký kịch bản **y hệt** lượt
-#      đặt ở ô 0, cùng **1379 khung**; chỉ khác trận xong sớm hơn theo giờ trận
-#      (`song 0 giay 18` so với `giay 57`). Vì hai chỗ đặt **không phân biệt được
-#      bằng bộ đo**, và `dispatch()` của engine không tính toạ độ nào (nên cả hai
-#      đều là SUY RA), ta giữ nguyên ô 0 — đổi là đổi hành vi mà không có bằng
-#      chứng nào đổi theo. Xem `dua_linh` để có đủ chuỗi bằng chứng.
+#   2. CHỖ ĐẶT TOÁN LÍNH ĐƯA RA — nay cũng dùng MỐC CỦA TOÁN (đổi 2026-09-20).
+#      Lượt 2026-09-17 đã thử dùng mốc rồi phải bỏ: `do_chien_dich --kichban` tụt
+#      từ 9 đạt / 0 hỏng xuống 6 đạt / 3 hỏng, vì toán đứng trong sàn thì gặp địch
+#      sớm hơn ~1,4 giây, trận KẾT THÚC trước bước kế tiếp của kịch bản, và lúc ấy
+#      ĐỒNG HỒ KỊCH BẢN CHẾT THEO TRẬN (`dung_tran` gọi `T.hen:stop()`) — kịch bản
+#      đứng hẳn ở lệnh 27/43. **Lý do đó là một lỗi thật, đã vá** (`dung_tran` nay
+#      chỉ đặt `T.ket`; `hen:buoc` thôi bước trận nhưng VẪN bước kịch bản cho tới
+#      khi kịch bản diễn xong), nên câu ấy đã **ĐO LẠI** cùng ngày: đặt ngay mốc
+#      ra **11 đạt / 0 hỏng**, nhật ký kịch bản **y hệt** lượt đặt ở ô 0, cùng
+#      **1379 khung**.
+#      Lượt ấy kết luận "hai chỗ đặt bộ đo không phân biệt được" rồi giữ ô 0. Câu
+#      ấy chỉ đúng với BỘ ĐO; hình thì phân biệt được, và 2026-09-20 đo ra vế còn
+#      thiếu: dòng `khung san` của `do_chien_dich --kiem` in thế đứng ban đầu của
+#      cả hai bên, và **toán ĐỊCH theo đúng `PosX`** (1200/1800/2400 px = 12/18/24
+#      ô, khớp `GROUPS DICH`) trong khi 12 lính ta ra ở **0 .. −422** — ngoài mép
+#      trái sàn (`trai 0`), cách mốc của chính toán mình **700 px**. Nên nay dùng
+#      mốc. Xem `dua_linh` để có đủ chuỗi bằng chứng.
 #
 # Vì thế bộ này kiểm: mốc đọc đúng từ dữ liệu và `doc_quan` dùng nó; `dua_linh`
-# đặt ở ô 0 như đã ghi; và BẰNG CHỨNG còn nguyên trong Lua gốc (mất hai dòng ấy
-# thì mốc lại thành suy luận, phải biết ngay — cùng lối với chú thích
-# `<!-- 道宽 格 -->` ở `tools/verify_lan.gd`).
+# neo đúng ở mốc; và BẰNG CHỨNG còn nguyên trong Lua gốc (mất hai dòng ấy thì mốc
+# lại thành suy luận, phải biết ngay — cùng lối với chú thích `<!-- 道宽 格 -->` ở
+# `tools/verify_lan.gd`).
 extends SceneTree
 
 const STV := preload("res://battle/san_tran_ve.gd")
@@ -114,9 +116,13 @@ func _init() -> void:
 			"%d -> %d" % [n0, t1._doi[0].size()])
 	var x0 := float(t1._doi[0][n0].sx)
 	var x1 := float(t1._doi[0][n0 + 1].sx)
-	# ĐẶT, ghi ro: o 0 (mep trai san), KHONG phai moc cua toan — xem dua_linh.
-	t("toan linh dua ra dat o o 0 (ĐẶT, khong dung moc cua toan)",
-			is_equal_approx(x0, 0.0) and not is_equal_approx(x0, MOC * O),
+	# Neo la MOC CUA TOAN (truoc 2026-09-20 la o 0 — xem dua_linh). Du lieu o day
+	# KHONG co linh co san (`Troop.Soldiers` rong) nen o dau tien cua luoi con
+	# trong, va nguoi dua ra dau tien dung NGAY tai moc. Trong tran that thi linh
+	# co san da chiem o 0 (cung khoa `_dem` "0/<moc>"), nen toan dua ra noi tiep
+	# chu khong de len — do la y muon khi dung chung mot neo.
+	t("toan linh dua ra neo o moc cua toan, khong phai o 0",
+			is_equal_approx(x0, MOC * O) and not is_equal_approx(x0, 0.0),
 			"x %.1f px, moc %.1f" % [x0, MOC * O])
 	t("nguoi thu hai lui dung fArmySpace (110 px)",
 			is_equal_approx(x0 - x1, STV.ARMY_SPACE * O), "x %.1f -> %.1f" % [x0, x1])

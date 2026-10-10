@@ -19,33 +19,18 @@
 # KDBGameCommonConfig (brave-cross/work/offline/sc/offline/bootstrap.lua).
 extends SceneTree
 
-const KHUNG := 1.0 / 30.0
-
-## [ten chang, viec lam (Lua), dieu kien xong (Lua), so khung toi da]
-const CHANG := [
-	["vao canh Login",
-		"g_CSceneManager:RepaleceSceneWithoutLoading('Login') return true",
-		"return g_CSceneManager.CurrentScene == 'Login' and not g_CSceneManager.isLoading",
-		300],
-	["dang nhap (go tai khoan, bam dang nhap)",
-		"G_Login:Login('offline', '', 0) return true",
-		"local l = g_CUILoginServerList.tRecommendServer"
-			+ " return g_CUILogin.LoginLogicUid ~= nil and l ~= nil and next(l) ~= nil",
-		120],
-	["chon may chu",
-		"local _, sv = next(g_CUILoginServerList.tRecommendServer)"
-			+ " g_CUILogin:setSelectServer(sv) return true",
-		"return g_CUILogin.szGameServerIP ~= nil",
-		5],
-	["bam 'vao game'",
-		"g_CUILogin:onTouchEnd_OnEnterGame(nil, true) return true",
-		"return g_CSceneManager.CurrentScene == 'Main' and not g_CSceneManager.isLoading",
-		600],
-]
+# Chuoi khoi dong nam o `game/khoi_dong.gd` — MOT cho dinh nghia duy nhat, de
+# man THAT cua game cung dung duoc (xem chum dau tep do). O day chi con nam
+# dong a-li-at, giu lai de 9 tep dang `preload` tep nay roi dung `VM._NAP` /
+# `VM.chay(...)` khong phai sua.
+const KD := preload("res://game/khoi_dong.gd")
+const _NAP := KD.NAP
+const _CHUAN_BI := KD.CHUAN_BI
+const _BAO := KD.BAO
 
 
 func _init() -> void:
-	if not FileAccess.file_exists("res://sc/share/class.lua"):
+	if LuaRuntime.thieu_ma_goc():
 		print("thieu ma goc — chay: python tools/import_lua.py")
 		quit(1)
 		return
@@ -271,112 +256,9 @@ func _process(dt: float) -> bool:
 
 ## Chay ca chuoi tren mot LuaRuntime da nap (_NAP). verify_main.gd dung lai.
 ## Tra ve {"qua": [chang da xong], "dung": chang/loi dung lai, "" neu toi Main}.
+##
+## Nay la vo mong cua `KD.Tien` — vong lap that nam o `game/khoi_dong.gd`, nen
+## ca kho chi con MOT ban. `static func` chu KHONG `const chay := KD.chay`:
+## kieu sau bien phuong thuc thanh mot Callable va mat kiem kieu tham so.
 static func chay(lua: LuaRuntime) -> Dictionary:
-	var out := {"qua": [], "dung": ""}
-	if lua.run(_CHUAN_BI, "chuan bi") == null:
-		out["dung"] = "chuan bi: " + ", ".join(lua.errors)
-		return out
-	for c in CHANG:
-		if lua.run(c[1], c[0]) == null:
-			out["dung"] = "%s: %s" % [c[0], ", ".join(lua.errors)]
-			return out
-		var xong := false
-		for i in range(int(c[3])):
-			lua.tick(KHUNG)
-			if lua.run(c[2], "doi " + c[0]) == true:
-				xong = true
-				break
-		if not xong:
-			out["dung"] = c[0]
-			return out
-		out["qua"].append(c[0])
-	return out
-
-
-const _NAP := """
-	local boot = require('bootstrap')
-	boot.install_cocos()
-	boot.install()
-	local bao = boot.boot_goc()
-	local out = Dictionary()
-	out['nap'] = bao.nap .. '/' .. bao.so
-	out['cau hinh'] = boot.init_config()
-	-- Bat loi ma ban goc tu bao qua KDebug.PrintError: coroutine doi canh do
-	-- loi ra do (CSceneManager.lua:500, :533) va khong nem len tren. Loi CHET
-	-- (sngLoadingNext / RepaleceScene) giu het; loi thuong chi dem.
-	loi_goc, loi_chet, so_loi = {}, {}, 0
-	local goc = KDebug.PrintError
-	KDebug.PrintError = function(...)
-		local t = {}
-		for i = 1, select('#', ...) do t[#t + 1] = tostring((select(i, ...))) end
-		local s = table.concat(t, ' ')
-		so_loi = so_loi + 1
-		if s:find('sngLoadingNext :', 1, true) or s:find('RepaleceScene', 1, true) then
-			loi_chet[#loi_chet + 1] = s
-		elseif #loi_goc < 12 then
-			loi_goc[#loi_goc + 1] = s:sub(1, 400)
-		end
-		if type(goc) == 'function' then pcall(goc, ...) end
-	end
-	-- Phan con lai cua sc/game.lua sau G_ConfigManager:Init (xem bootstrap).
-	local n_kd, hong_kd, tong_kd = boot.khoi_dong_game()
-	out['khoi dong game.lua'] = n_kd .. '/' .. tong_kd
-	for k, e in pairs(hong_kd) do out['HONG khoi dong: ' .. k] = e end
-	return out
-"""
-
-## Lop offline thay may chu, va nguoi choi MOI TINH.
-const _CHUAN_BI := """
-	-- Nhat ky THIEU / WARN / ERROR cua lop offline di vao bao cao: loi cua no
-	-- bi pcall nuot.
-	require('offline.log')
-	local ghi = OfflineLog.write
-	OfflineLog.write = function(self, tag, msg)
-		if tag ~= 'info' and #loi_goc < 60 then
-			loi_goc[#loi_goc + 1] = 'offline ' .. tostring(tag) .. ': ' .. tostring(msg)
-		end
-		return ghi(self, tag, msg)
-	end
-	require('offline.init')
-	-- Mac dinh XOA de moi lan chay la nguoi choi moi tinh (test on dinh). Bat
-	-- co GIU_SAVE (do_chien_dich --giu) thi GIU ban luu de thu tien trinh chien
-	-- dich qua nhieu ai (thang ai 1 -> len cap -> mo ai 2 -> choi tiep).
-	if rawget(_G, 'GIU_SAVE') ~= true then
-		Offline:wipe()
-	end
-	-- Cong tac co san cua ban goc (game.lua:457, CloseGuide trong set.xgg).
-	-- Khong bat thi nguoi choi moi tinh vao ai huong dan (CUILogin2.lua:3714)
-	-- — dung voi ban goc, nhung la canh Battle chu khong phai Main.
-	g_CUIMain.bIgnoreGuide = true
-	return true
-"""
-
-const _BAO := """
-	local c = require('cocos')
-	local out = Dictionary()
-	out['CurrentScene'] = tostring(g_CSceneManager.CurrentScene)
-	out['dang doi canh'] = tostring(g_CSceneManager.isLoading)
-	out['canh dang chay'] = tostring(c.canh_dang_chay ~= nil and c.raw(c.canh_dang_chay):get_meta('xgg_name'))
-	out['LoginLogicUid'] = tostring(g_CUILogin.LoginLogicUid)
-	out['may chu chon'] = tostring(g_CUILogin.szGameServerIP)
-	out['IsEnterGame'] = tostring(G_GameWorld and G_GameWorld.IsEnterGame)
-	local okL, lv = pcall(function() return select(2, G_UserLogic:GetLevel()) end)
-	out['Level'] = tostring(okL and lv)
-	local okG, gv = pcall(function() return select(2, G_UserLogic:GetGold()) end)
-	out['Gold'] = tostring(okG and gv)
-	out['g_MainUIScene'] = tostring(rawget(_G, 'g_MainUIScene') ~= nil)
-	out['lMainBtnLayer'] = tostring(rawget(_G, 'lMainBtnLayer') ~= nil)
-	out['tag hut'] = tostring(c.tag_misses) .. '/' .. tostring(c.tag_lookups)
-	out['so loi goc'] = tostring(so_loi)
-	for i, e in ipairs(loi_chet) do out['LOI CHET ' .. i] = e end
-	for i, e in ipairs(loi_goc) do out['loi goc ' .. i] = e end
-	for i, e in ipairs(c.loi_hen) do
-		if i <= 8 then out['loi hen ' .. i] = e end
-	end
-	local ghost = require('bootstrap').report()
-	local ds = {}
-	for k, v in pairs(ghost) do ds[#ds + 1] = { k, v } end
-	table.sort(ds, function(a, b) return a[2] > b[2] end)
-	for i = 1, math.min(10, #ds) do out['bong ' .. i] = ds[i][1] .. ' x' .. ds[i][2] end
-	return out
-"""
+	return KD.chay(lua)

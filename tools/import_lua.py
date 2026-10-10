@@ -111,6 +111,8 @@ def main() -> int:
     else:
         print('   (khong thay lop offline o %s)' % offline)
 
+    n_131, trung_131, dung_131 = be_lop_mang_131(DST)
+
     # Hai file thiet lap mac dinh cua ban goc: engine.lua:238 chep set_org.xgg
     # thanh set.xgg luc khoi dong, va set.lua:83 tron default.xgg vao. Lua doc
     # chung qua LGG_GetPathWithFileName('conf/...') -> res://data_ref/conf/.
@@ -127,6 +129,8 @@ def main() -> int:
     (DST / '.gdignore').write_text('', encoding='utf-8')
     print('%d file lua, %d dong -> %s' % (n, lines, DST))
     print('   + %d file lop offline -> sc/offline' % n_off)
+    print('   + %d file lop mang 1.31 -> sc/ (%d file da y nguyen)'
+          % (n_131, trung_131))
     print('   + %d file thiet lap mac dinh -> data_ref/conf' % n_set)
     if vet:
         print('   %d cho vet dich nguoc (so dinh tu khoa) da chen lai dau cach'
@@ -143,7 +147,93 @@ def main() -> int:
     if n_gan >= 0:
         print('   + %d bien toan cuc do CHINH Lua ban goc dat -> data_ref/bien_gan.json'
               % n_gan)
+
+    # Dung NGAY SAU khi chep xong chu khong chan truoc: luat chi-them nen chay
+    # lai la vo hai, con dung truoc thi mot tep dung ten lam ca luot import
+    # khong chay — keo theo ca sc/ khong duoc dung lai.
+    if dung_131:
+        print('')
+        print('DUNG: %d file 1.31 trung ten ma KHAC noi dung voi cay VN:'
+              % len(dung_131))
+        for r in dung_131:
+            print('   %s' % r)
+        print('Khong ghi de. Day la quyet dinh cua NGUOI, khong phai cua luat:')
+        print('muon thay that thi bo sung ten vao THU_MUC_131 / TEP_131_LE.')
+        return 1
     return 0
+
+
+# LOP MANG 1.31 — xem ROADMAP.md, muc "pb".
+#
+# `pb` la mo-dun C (lua-protobuf), khong bao gio chay duoc o port: Lua o day la
+# addon Godot nen `require("pb")` khong giai ra ma C. Lop mang 1.31 goi no o sau
+# tep (`Framework/Network/pb/protoc.lua`), con `lua/pb.lua` la ban viet lai bang
+# Lua thuan thay cho no.
+#
+# Nguon la cay CN 1.31, KHONG phai cay VN 1.26 — giong loi da co cho `offline/`
+# o tren. Do TRUOC khi viet luat nay: cay VN khong co thu muc `Framework/`,
+# `def/` hay `ide/` nao ca (0 tep moi thu muc), nen ba thu muc ay chep sang la
+# 0 kha nang dung ten. Rieng `system/` thi nguoc lai: CN 23 tep, VN 19, va
+# **18 trong 19 tep trung ten KHAC noi dung** — chep ca thu muc la de len nen
+# du lieu VN ma khong phep kiem nao bat. Nen chi lay DUNG MOT tep cua `system/`.
+#
+# `ide/**` (4 tep) de ngoai: `ide/XRpc.lua` chi la `AccountRpc = AccountRpc:new()`
+# va doi lop `AccountRpc` cua man dang nhap 1.31 — ngoai lop mang.
+#
+# Va 23 tep ay chep sang la TRO voi cay hien tai, khong chi "0 trung ten": quet
+# ca cay VN thi `require("Framework...")`, `require("def...")` va
+# `require("system.LoadProto")` deu **0 lan**. Nghia la khong module VN nao doi
+# hanh vi vi chung xuat hien — muon lop 1.31 chay that thi phai co mot cho goi
+# no, va cho do chua co (xem `system/LoadProto.lua` ben duoi).
+#
+# `system/LoadProto.lua` chep sang nhung CON NAM IM: no la cho vao cua lop 1.31,
+# ma `s_require.lua` cua cay VN **khong** require no (do lai: 0 lan trong 19
+# dong require) con ban CN thi co (`s_require.lua:26`). Muon no chay that thi
+# phai lay ca `s_require.lua` cua CN — ma do la tep VN da co va KHAC noi dung,
+# tuc dung cho luat nay tu choi. Do la quyet dinh cua nguoi, khong phai cua luat.
+THU_MUC_131 = ('Framework', 'def')
+TEP_131_LE = ('system/LoadProto.lua',)
+
+# CHEP NGUYEN BYTE, KHONG va vet dich nguoc. Do tren dung 22 tep se chep: ca 22
+# da la UTF-8 san, va ca 22 chi co DUNG MOT cho khop luat `va_dau_cach` — cho do
+# nam TRONG MOT CHUOI LUA, giua blob descriptor.proto nhung trong
+# `Framework/Network/pb/protoc.lua` (`\3end`). Ap luat vao do thi no thanh
+# `\3 end`: ten truong `end` cua `DescriptorProto.ExtensionRange` am tham thanh
+# ` en`, ma `pb.load` VAN THANH CONG — dung loai hong im lang khong phep kiem nao
+# bat. Hau qua da thay that: cay thu co protoc.lua 33400 byte, cay CN 33399.
+
+
+def be_lop_mang_131(dst):
+    """Chep lop mang 1.31 vao `sc/`. Tra (so them, so da y nguyen, ds dung).
+
+    LUAT CHI-THEM, va day khong phai chuyen hinh thuc: `sc/` sinh lai tu cay VN
+    moi lan chay, nen mot lan de len la doi nen du lieu VN ngay bay gio, roi bi
+    lan import sau xoa di — tuc cai sai o lai con dau vet thi mat. Gap dich da
+    ton tai va KHAC noi dung thi DUNG va BAO, khong ghi.
+    """
+    nguon = (ROOT.parent / 'bravecross-source' / 'cn131' / 'decrypted'
+             / 'assets' / 'sc')
+    if not nguon.is_dir():
+        print('   (khong thay cay CN 1.31 o %s)' % nguon)
+        return 0, 0, []
+    can = []
+    for ten in THU_MUC_131:
+        can += [p for p in sorted((nguon / ten).rglob('*')) if p.is_file()]
+    can += [nguon / t for t in TEP_131_LE if (nguon / t).is_file()]
+    them, trung, dung = 0, 0, []
+    for src in can:
+        rel = src.relative_to(nguon)
+        out = dst / rel
+        if out.is_file():
+            if out.read_bytes() == src.read_bytes():
+                trung += 1
+            else:
+                dung.append(str(rel).replace('\\', '/'))
+            continue
+        out.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, out)
+        them += 1
+    return them, trung, dung
 
 
 # BIEN TOAN CUC CHAC CHAN NIL tren may that.

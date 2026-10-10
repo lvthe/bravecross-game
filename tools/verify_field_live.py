@@ -104,6 +104,48 @@ def main():
               % (e['result'], e['aliveA'], e['aliveB'], e['seconds'],
                  res, aa, bb, secs))
 
+    # Luot PvP: doi dich la NGUOI THAT. Day la duong ma tham so `foe` moi mo ra,
+    # va la duong DUY NHAT di qua hai so seed khac nhau — `chapter = 0` con
+    # `seed_value = 0` — nen phai doi chieu tren Nakama THAT chu khong chi tren
+    # lupa. Phai truyen `doc=doc`: doi thu co the tran rieng, ma buff the tran
+    # nam trong chinh battle_data.json nay.
+    foe = got.get('foeDesc', {})
+    print('\n=== doi thu la nguoi that: Nakama that khop mo hinh Python tung tran ===')
+    # Hai phep kiem ve LUC cua luot nay, khong phai ve so khop. Bai nay doc mo
+    # ta doi thu TU MAY CHU, nen mot module cu (Nakama giu battle.lua trong bo
+    # nho) se tu khai mot doi thu khac roi van khop — do la mot luot kiem
+    # khong co luc ma khong co gi do len tieng.
+    # `placement` o day la mang JSON (danh so tu 0), khac bang Lua (danh tu 1).
+    fl = dict((str(k), int(v)) for k, v in dict(foe.get('levels', {})).items())
+    fp = [int(x) for x in foe.get('placement', [1, 1, 2, 3])]
+    rows = got.get('foeBattles', [])
+    kinds = set()
+    for e in rows:
+        kinds.add((int(e['result']), int(e['aliveA']), int(e['aliveB']),
+                   round(float(e['seconds']), 3)))
+    check(len(fl) == 4 and min(fl.values()) > 1 and fp != [1, 1, 2, 3]
+          and str(foe.get('formation', '')) != '',
+          'may chu that khai mot doi thu co cap / cho dung / the tran rieng',
+          'cap %s, cho dung %s, the tran %s'
+          % (sorted(fl.values()), fp, foe.get('formation')))
+    check(len(kinds) > 1,
+          'nam seed ra nhieu hon mot kieu tran (luot kiem co luc)',
+          '%d kieu tren %d tran' % (len(kinds), len(rows)))
+    for e in got.get('foeBattles', []):
+        seed = int(e['seed'])
+        res, secs, aa, bb = F.lua_battle(hero_by_name, doc['armies'], doc['base'],
+                                         rules, mine, theirs, seed, 0, doc=doc,
+                                         foe=foe, seed_value=0)
+        same = (int(e['result']) == res and int(e['aliveA']) == aa
+                and int(e['aliveB']) == bb
+                and abs(float(e['seconds']) - secs) < 0.05)
+        check(same,
+              'seed %d: ket qua %d, con song %d-%d, %.1f giay'
+              % (seed, res, aa, bb, secs),
+              'Nakama %s/%s-%s/%.2fs  vs  Python %s/%s-%s/%.2fs'
+              % (e['result'], e['aliveA'], e['aliveB'], e['seconds'],
+                 res, aa, bb, secs))
+
     print('\n===== dat %d, hong %d =====' % (n_pass, n_fail))
     return 0 if n_fail == 0 else 1
 

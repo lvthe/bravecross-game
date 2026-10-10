@@ -67,6 +67,17 @@ SKILLS = {
 }
 
 
+def skills_uncovered(names):
+    """Ten ky nang KHONG co hieu ung trong SKILLS.
+
+    Tra ve de NOI THANG ra, khong doan bua: ban goc chi luu ten, hieu ung nam o
+    server. Day la khoang trong THAT cua mo hinh, va no lon dan khi mo them bac
+    pham chat — bac 5 co 66 ten rieng cho 70 tuong, gan nhu khong ten nao trung
+    bang cu.
+    """
+    return sorted(n for n in names if n and n not in SKILLS)
+
+
 class Rules(object):
     """Cac lua chon mo hinh. Doi o day roi chay lai de xem ket luan co vung."""
 

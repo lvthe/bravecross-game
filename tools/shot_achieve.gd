@@ -75,7 +75,7 @@ func _ready() -> void:
 
 
 func _kiem_du_lieu() -> String:
-	if not FileAccess.file_exists("res://sc/share/class.lua"):
+	if LuaRuntime.thieu_ma_goc():
 		return "thieu ma goc — chay: python tools/import_lua.py"
 	if not FileAccess.file_exists("res://data_ref/text_vi.json"):
 		return "thieu bang chu — chay: python ../brave-cross/work/text_table.py"

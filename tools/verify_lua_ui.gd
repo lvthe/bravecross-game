@@ -81,25 +81,65 @@ func _init() -> void:
 	# Va chung khop voi cai ma CUIAchieve.lua mong doi: tag 4 la nut nhan,
 	# tag 6 la khung phan thuong. Trong khung do, reward1/2/3 mang dung tag
 	# 1/2/3.
+	#
+	# Nhan dang node tra ve bang `getTag()` — cung mot gia tri do tu may ao,
+	# nen phep kiem khong tua vao chinh cai ham dang kiem.
+	#
+	# Con `getStringTag()`: do truc tiep trong may ao (`work/emu_tags.py
+	# --cay` -> `work/tags_cay.json`, 44.587 duong node) thi no tra ve TRUONG
+	# 'res' cua ban ghi: 2.742 duong khop 'res', 0 duong khop 'cls', va trong
+	# 2.742 do co 1.276 duong ma 'cls' KHAC HAN 'res' (res='CavernEffect_Fire3'
+	# con cls='CCNode') — ca 1.276 deu ra 'res'. Man thanh tuu nay res rong
+	# HET, nen o day phai ra chuoi rong.
+	#
+	# Truoc day bo kiem doi 'canget'/'rewardList2'/'reward1' — do la 'cls'
+	# (chu thich cua hoa si trong trinh sua), va chinh no lam hong thanh cong
+	# cu man Main: CUIMainMenuTool:sortUIItem (CUIMainMenuTool.lua:276-282)
+	# doc getStringTag roi tonumber; nam icon thanh cong cu co cls la chu
+	# Trung nen tonumber ra nil, ham thoat giua duong, thanh cong cu khong
+	# truot (do duoc: nRightToolButtonSizeLengh = 0).
 	r = lua.run("""
 		local tpl = lAchieveTemplate
 		local canget = tpl:getChildByTag(4)
 		local noget  = tpl:getChildByTag(10)
 		local rl     = tpl:getChildByTag(6)
+		local r1     = rl ~= nil and rl:getChildByTag(1) or nil
 		return {
-			canget = canget ~= nil and canget:getStringTag() or '',
-			noget  = noget  ~= nil and noget:getStringTag()  or '',
-			rlist  = rl     ~= nil and rl:getStringTag()     or '',
-			r1 = (rl ~= nil and rl:getChildByTag(1) ~= nil)
-			     and rl:getChildByTag(1):getStringTag() or '',
+			canget = canget ~= nil and canget:getTag() or -1,
+			noget  = noget  ~= nil and noget:getTag()  or -1,
+			rlist  = rl     ~= nil and rl:getTag()     or -1,
+			r1     = r1     ~= nil and r1:getTag()     or -1,
+			str    = canget ~= nil and canget:getStringTag() or nil,
 		}
 	""", "getChildByTag")
-	t("tag 4 ra canget", r != null and String(r["canget"]) == "canget",
-			"duoc '%s'" % (String(r["canget"]) if r != null else "?"))
-	t("tag 10 ra noget", r != null and String(r["noget"]) == "noget",
-			"duoc '%s'" % (String(r["noget"]) if r != null else "?"))
-	t("tag 6 ra rewardList2", r != null and String(r["rlist"]) == "rewardList2")
-	t("long hai tang: tag 1 ra reward1", r != null and String(r["r1"]) == "reward1")
+	t("tag 4 ra node mang tag 4", r != null and int(r["canget"]) == 4,
+			"duoc '%s'" % (str(r["canget"]) if r != null else "?"))
+	t("tag 10 ra node mang tag 10", r != null and int(r["noget"]) == 10,
+			"duoc '%s'" % (str(r["noget"]) if r != null else "?"))
+	t("tag 6 ra node mang tag 6", r != null and int(r["rlist"]) == 6)
+	t("long hai tang: con tag 1 cua tag 6 mang tag 1",
+			r != null and int(r["r1"]) == 1)
+	t("getStringTag() ra RONG khi 'res' rong (khong phai 'cls' = 'canget')",
+			r != null and r["str"] != null and String(r["str"]) == "",
+			"duoc '%s'" % (str(r["str"]) if r != null else "?"))
+
+	# 4b. setStringTag ghi vao cho RIENG, khong de len 'cls': doc lai ra dung
+	#     so vua ghi, va getChildByStringTag tim lai duoc chinh node do.
+	r = lua.run("""
+		local c = lAchieveTemplate:getChildByTag(4)
+		c:setStringTag('7')
+		local lai = lAchieveTemplate:getChildByStringTag('7')
+		return {
+			sau = c:getStringTag(),
+			lai = lai ~= nil and lai:getTag() or -1,
+			cls_con = c:getStringTag() == 'canget',
+		}
+	""", "setStringTag")
+	t("setStringTag roi doc lai ra dung so", r != null and String(r["sau"]) == "7",
+			"duoc '%s'" % (str(r["sau"]) if r != null else "?"))
+	t("getChildByStringTag tim lai duoc node vua ghi",
+			r != null and int(r["lai"]) == 4)
+	t("getStringTag khong con tra ve 'cls'", r != null and not bool(r["cls_con"]))
 
 	# 5. Lua SUA duoc node that khong — doi ben Godot phai thay.
 	var canget := _by_tag(XggLayout.find_node(root, "lAchieveTemplate"), 4)

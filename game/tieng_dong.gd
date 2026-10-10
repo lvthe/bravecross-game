@@ -65,6 +65,9 @@ var giap: Dictionary = {}
 var dung_lai: Dictionary = {}
 ## {"<kit>_<giap>_<do manh>": "event:/Impact/..."}
 var su_kien: Dictionary = {}
+## {"<kit>_0_0": "HitEffect_<loai>"} — hieu ung TRUNG DON phai chay. Tam muc,
+## MOT muc cho moi loai vu khi (xem `hieu_ung`).
+var hieu_ung_don: Dictionary = {}
 var co_bang := false
 
 ## Vi sao lan goi `trung_don` vua roi tra ve "": mot trong bon ma o duoi, hoac ""
@@ -88,6 +91,7 @@ func doc_bang() -> void:
 	giap = td.get("giap", {})
 	dung_lai = td.get("dung_lai", {})
 	su_kien = td.get("su_kien", {})
+	hieu_ung_don = td.get("hieu_ung", {})
 
 
 ## Tieng phai phat khi armature chay dong tac `dong_tac`, theo khung.
@@ -143,6 +147,44 @@ func trung_don(ten_danh: String, dong_tac: String, index: int,
 	var ev = su_kien.get("%d_%d_%d" % [kit, int(g), do_manh])
 	if ev == null:
 		ly_do = "khong-co-su-kien"
+		return ""
+	return String(ev)
+
+
+## HIEU UNG phai chay khi don danh trung — ten BIEN THE cua armature `HitEffect`
+## (vd "HitEffect_Sharp"), hoac "" neu khong tra duoc.
+##
+## Khoa la `<kit>_0_0`, KHONG phai `<kit>_<giap>_<do manh>` nhu tieng: do la
+## hinh dang THAT cua bang — `hit_config.xml` co dung 8 muc `hieu_ung`, va CA 8
+## deu ket thuc bang `_0_0` (1, 2, 3, 4, 5, 8, 9, 10), mot muc cho moi loai vu
+## khi; hai so sau vi vay la HANG SO, khong phai giap/do manh:
+##
+##   1, 2 -> HitEffect_Sharp (chem)   3  -> HitEffect_Shoot (ban)
+##   4    -> HitEffect_Music          5  -> HitEffect_Magic
+##   8    -> HitEffect_Ice            9  -> HitEffect_Fire
+##   10   -> HitEffect_Electric
+##
+## Loai 6 va 7 CO tieng (`su_kien` co `6_0_*`, `7_0_*`) nhung KHONG co hieu ung.
+##
+## Doi chieu doc lap: armature `HitEffect` trong `assets_ref` co dung 8 bien the
+## ay, moi bien the dung MOT dong tac ten `PluginPlay` (5..11 khung) — nen ben
+## goi khong phai chon dong tac nao.
+##
+## Tra "" thi `ly_do` noi vi sao (cung bon ma nhu `trung_don`, tru `khong-co-su-kien`).
+func hieu_ung(ten_danh: String, dong_tac: String, index: int) -> String:
+	ly_do = ""
+	if not co_bang:
+		doc_bang()
+	var kit := _kit(ten_danh, dong_tac, index)
+	if kit < 0:
+		ly_do = "khong-co-danh"
+		return ""
+	if kit == 0:
+		ly_do = "tay-khong"
+		return ""
+	var ev = hieu_ung_don.get("%d_0_0" % kit)
+	if ev == null:
+		ly_do = "khong-co-hieu-ung"
 		return ""
 	return String(ev)
 

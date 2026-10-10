@@ -204,5 +204,58 @@ try:
 except ImportError:
     print('  bo qua  lupa chua cai')
 
+print('\n=== 11. ky nang thien phu: du CA bon bac pham chat ===')
+# Bang goc co 280 dong = 70 tuong x 4 bac (2..5), va noi dung KHAC NHAU that:
+# len pham chat la DOI ky nang. Lop Talents truoc day chi lay bac thap nhat nen
+# nem di 210/280 dong — bon phep kiem duoi day khoa viec do khong tai dien.
+from tables import Talents
+from battle import SKILLS, skills_uncovered
+
+T = Talents(cfg)
+check(len(T.rows) == 280, 'bang goc co 280 dong', str(len(T.rows)))
+check(T.qualities() == [2, 3, 4, 5], 'bon bac pham chat 2..5',
+      str(T.qualities()))
+check(len(T.by_quality) == 280, 'nap du 280 cap (tuong, bac)',
+      str(len(T.by_quality)))
+check(len(T.by_id) == 70, '70 tuong', str(len(T.by_id)))
+
+# `get()` phai giu NGUYEN nghia cu, neu khong thi moi cho goi cu doi ket qua.
+check(all(T.get(h) == T.get_at(h, 2) for h in T.by_id),
+      'get() = get_at(bac 2) — nghia cu khong doi')
+
+# Moi tuong phai co du bon bac VA doi ky nang that su. Neu moi bac deu ra cung
+# mot ten thi "pham chat doi ky nang" chi la loi noi, khong phai du lieu.
+tiers = [T.tiers(h) for h in T.by_id]
+check(all(len(t) == 4 for t in tiers), 'moi tuong co du 4 bac',
+      str(sorted(set(len(t) for t in tiers))))
+khac = sum(1 for t in tiers if len({s for _, s in t}) > 1)
+check(khac == len(tiers), 'moi tuong DOI ky nang it nhat mot lan',
+      '%d/%d' % (khac, len(tiers)))
+
+check(len(T.names(3)) == 3, 'bac 3 chi co 3 ten (NuQi chiem 68/70)',
+      str(len(T.names(3))))
+check(len(T.names(5)) == 66, 'bac 5 co 66 ten rieng cho 70 tuong',
+      str(len(T.names(5))))
+check(len(T.names()) == 97, 'ca bon bac gop lai co 97 ten', str(len(T.names())))
+
+# Pho phai CONG DUNG, neu khong thi con so dan ra tu no sai.
+check(all(sum(T.spread(q).values()) == 70 for q in T.qualities()),
+      'moi bac co du 70 dong')
+check(sum(T.spread().values()) == 280, 'gop ca bon bac ra 280 dong',
+      str(sum(T.spread().values())))
+
+check(T.get_at(1, 99) == '', 'bac khong co du lieu thi tra mac dinh rong')
+
+# Khoang trong THAT: ten nao chua co hieu ung trong SKILLS. Phai NOI RA, khong
+# doan bua — day la ly do con so nay duoc in chu khong bi giau di.
+co = T.names() & set(SKILLS)
+thieu = skills_uncovered(T.names())
+check(len(co) + len(thieu) == len(T.names()), 'co + thieu = tong so ten',
+      '%d + %d vs %d' % (len(co), len(thieu), len(T.names())))
+check(len(thieu) == 88, 'dung 88 ten chua co hieu ung (9 ten co)',
+      '%d/%d' % (len(thieu), len(T.names())))
+check(len(skills_uncovered({'', 'NuQi'})) == 0,
+      'bo qua ten rong khi dem khoang trong')
+
 print('\n===== dat %d, hong %d =====' % (nPass, nFail))
 sys.exit(0 if nFail == 0 else 1)

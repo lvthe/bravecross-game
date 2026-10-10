@@ -116,26 +116,72 @@ return function(c)
 	-- nhap tran. Ta GHI dac ta luc tao, va THEM don vi that luc TakeUnitJoinBattle.
 	-- Chi so lay tu NPC config that (GetNpcConfigWithNpcId) theo dataKey
 	-- "<NpcID>-<Level>". Nho vay ai co kich ban thang duoc DUNG cach ban goc.
-	local function ghi_npc(self, sprite, doi, ten, data_key)
-		local spec = { sprite = tostring(sprite or ''), doi = tonumber(doi) or 0,
-			data_key = tostring(data_key or '') }
+	-- `sprite` co HAI dang, CA HAI deu la du lieu THAT cua kich ban:
+	--   * CHUOI ten armature — "Hero_Zhaoyun", "Soldier_Defender";
+	--   * BANG doi hinh — 54 cho goi truyen thang
+	--     `G_HeroLogic:GetCharacterArmatureData()`. Ham ay
+	--     (`sc/share/share_HeroLogic.lua:3411-3421`) tra ve DUNG
+	--     `copyTab(G_HeroLogic:GetHeroSkinState(tHero))` roi them
+	--     `Name = GetActualRoleName(...)` — tuc mot BANG DOI HINH (khoa
+	--     `Weapon` / `Wing` / `Mounts` / `Coat`, xem `HeroSkinType` o
+	--     `sc/share/Protocol.lua:839`) cong them ten armature. Do trong ban dung:
+	--     `{ Name = "Player000M03W", Weapon = "equip_3_0" }`.
+	--     Ban goc gan do cho doi hinh ay y nguyen:
+	--     `ClientPaperDoll:ChangePaperDollHelper`
+	--     (`sc/user/Logical/ClientPaperDoll.lua:300-302`) duyet MOI gia tri cua
+	--     bang roi goi `setGear(pRole, value)`. O day cung vay — `Name` la
+	--     armature, MOI gia tri CHUOI khac la mot ten do di tiep.
+	--     Truoc 2026-09-21 cho nay lam `tostring(sprite)`: mot bang thanh chuoi
+	--     `table: 0x...`, nen tuong ay KHONG ra hinh nao VA do bi mat sach.
+	-- `do_ngoai` la doi thu 11 cua CreateNpcAndMoveTo — mot ten do GHI THANG,
+	-- ngoai bang doi hinh ("equip_8_6", 10 cho goi trong 4 kich ban).
+	local function ghi_npc(self, sprite, doi, ten, data_key, do_ngoai)
+		local ten_hinh = ''
+		local do_ls = {}
+		if type(sprite) == 'table' then
+			ten_hinh = tostring(sprite.Name or '')
+			for k, v in pairs(sprite) do
+				if k ~= 'Name' and type(v) == 'string' and v ~= '' then
+					do_ls[#do_ls + 1] = v
+				end
+			end
+			-- `pairs` khong co thu tu: sap lai de nhat ky va lan gan do giong
+			-- nhau o moi luot chay.
+			table.sort(do_ls)
+		else
+			ten_hinh = tostring(sprite or '')
+		end
+		if type(do_ngoai) == 'string' and do_ngoai ~= '' then
+			do_ls[#do_ls + 1] = do_ngoai
+		end
+		local spec = { sprite = ten_hinh, doi = tonumber(doi) or 0,
+			data_key = tostring(data_key or ''), do_ls = do_ls }
 		if ten ~= nil and ten ~= '' then self._npc[tostring(ten)] = spec end
 		if spec.sprite ~= '' then self._npc[spec.sprite] = spec end
 		self._nhat_ky[#self._nhat_ky + 1] = 'TaoNpc ' .. spec.sprite
+			.. (#do_ls > 0 and (' do ' .. table.concat(do_ls, ',')) or '')
 		return hinh_nhan
 	end
 	-- CreateNpcAndMoveTo(sprite, side, offY, x, time, walk, standby, zorder,
 	--   name, dataKey, equip, ...)
-	function KB:CreateNpcAndMoveTo(sprite, side, _oy, _x, _t, _w, _s, _z, ten, data_key)
-		return ghi_npc(self, sprite, side, ten, data_key)
+	-- Do trong `sc/plot`: 166 cho dang 8 doi, 32 cho dang 14 doi. Doi thu 11
+	-- (`equip`) chi co o dang 14 va LUON la mot ten do that — `"equip_8_6"`,
+	-- 10 cho goi trong 4 tep (drama_L_N_01_01/02/03, drama_L_XSGK). Cac doi
+	-- 12..14 la tham so hien hinh (thoi gian cho, co hien...), chua dung.
+	function KB:CreateNpcAndMoveTo(sprite, side, _oy, _x, _t, _w, _s, _z, ten, data_key,
+			equip)
+		return ghi_npc(self, sprite, side, ten, data_key, equip)
 	end
 	-- CreateNpcWithAppear(sprite, side, name, dataKey, ...)
 	function KB:CreateNpcWithAppear(sprite, side, ten, data_key)
 		return ghi_npc(self, sprite, side, ten, data_key)
 	end
-	-- AddHero(sprite, x, side, id) — chua co dataKey; ghi theo sprite.
-	function KB:AddHero(sprite, _x, side, _id)
-		return ghi_npc(self, sprite, side, nil, nil)
+	-- AddHero(sprite, x, side, id, name) — 237 cho goi trong `sc/plot`; chua
+	-- thay dataKey o dang nao, nhung doi thu 5 la TEN chu khong phai chi so:
+	-- `AddHero(Soldier_Archer, 123, 0, 2105, "Archer2")` (drama_L_N_01_03.lua:29)
+	-- — bo qua no thi `TakeUnitJoinBattle("Archer2")` khong tim ra dac ta.
+	function KB:AddHero(sprite, _x, side, _id, ten)
+		return ghi_npc(self, sprite, side, ten, nil)
 	end
 
 	-- TakeUnitJoinBattle(nameOrSprite, side, ...): THEM don vi vao tran.
@@ -170,9 +216,25 @@ return function(c)
 			return
 		end
 		local doi = tonumber(side) or spec.doi or 0
-		local okd, kq = pcall(function() return tran:dua_dong_minh(spec.sprite, doi, js) end)
+		-- Do cua don vi: bang doi hinh luc tao (co the rong) + doi thu 11 cua
+		-- CreateNpcAndMoveTo. Gui sang duoi dang JSON de `dua_dong_minh` gan
+		-- tung mon bang `SngRig.dat_do` — cung duong ma `setGear` cua ban goc di.
+		local do_js = ''
+		if type(spec.do_ls) == 'table' and #spec.do_ls > 0 then
+			local okdo, s = pcall(cjson.encode, spec.do_ls)
+			if okdo and type(s) == 'string' then do_js = s end
+		end
+		local okd, kq = pcall(function()
+			return tran:dua_dong_minh(spec.sprite, doi, js, do_js) end)
+		-- So do gan duoc PHAI hien ra nhat ky: gan do hong thi tran van xanh,
+		-- nen khong doc so thi khong biet no co chay hay khong.
+		local gan = ''
+		if okd and kq then
+			local okg, g = pcall(function() return tran:do_vua_gan() end)
+			if okg and type(g) == 'string' and g ~= '' then gan = ' | ' .. g end
+		end
 		self._nhat_ky[#self._nhat_ky + 1] = 'JoinBattle ' .. tostring(khoa)
-			.. ' -> ' .. tostring(okd and kq)
+			.. ' -> ' .. tostring(okd and kq) .. gan
 	end
 	-- TakeUnitExpeBattle: dua vao "cho" (dung im); o day coi nhu nhap tran luon.
 	KB.TakeUnitExpeBattle = KB.TakeUnitJoinBattle
@@ -273,18 +335,37 @@ return function(c)
 	end
 
 	-- SetRoleChangeFight(sprite, side, form, action). Lenh nay doi DONG TAC cua
-	-- mot hinh; chi dong tac KY NANG ("Wake*", "Talent*") moi gay sat thuong,
-	-- con "Fight", "Fight20", "Standby"... chi la doi tu the. San tran loc lai
+	-- mot hinh. San tran quyet dinh co gay sat thuong hay khong
 	-- (battle/san_tran_ve.gd:tuyet_chieu).
+	--
+	-- THAM SO 3 (`form`) LA THAM QUYEN, khong phai ten dong tac. Do ca 17 cho
+	-- goi trong sc/plot/drama_*.lua thi form khop TUYET DOI voi ho dong tac:
+	--
+	--     form 1 -> "Fight", "Fight3", "Fight20"   (5 cho) doi TU THE
+	--     form 2 -> "Wake", "Super", "Super4"     (10 cho) BIEN THAN / tuyet chieu
+	--     form 4 -> "Talent"                       (1 cho) kich THIEN PHU
+	--
+	-- Nghia cua form doc tu chinh chu thich ban goc: `--吕布变身` (Lv Bo BIEN
+	-- THAN) di voi form 2 + "Wake"; `--赵云触发龙胆` (Trieu Van kich thien phu)
+	-- di voi form 4 + "Talent".
+	--
+	-- Truoc day tham so nay bi BO QUA (ten `_form`) va san tran phan loai theo
+	-- TEN dong tac. Do lai thi tren DUNG 17 cho goi hien co hai luat cho ra cung
+	-- ket qua, nen luot nay khong doi ket qua tran nao (ba cho "Super"/"Super4"
+	-- cua drama_L_XSGK.lua deu la `doi = 1` ma nhanh AoE von da bo qua loi goi
+	-- cua ben dich). Doi sang `form` vi ten dong tac la QUY UOC con `form` la con
+	-- so engine gui: mot ai sau nay goi ky nang ben TA bang ten khac se bi luat
+	-- ten bien thanh TU THE, khong mot dong loi nao.
+	--
 	-- So don lay tu CAU HINH GOC qua WakeRef (1 + so `fSectionIntervalWake_F<n>`,
 	-- chan tren boi `nAttackSectionLimitWake`): Trieu Van 1, Quan Vu 6, Tao Thuc 3.
 	-- Khong tra duoc thi 1 — khong nhan them con so nao cua ta.
 	-- Sat thuong moi don dung chi so + cong thuc THAT.
-	function KB:SetRoleChangeFight(sprite, side, _form, action)
+	function KB:SetRoleChangeFight(sprite, side, form, action)
 		self._nhat_ky[#self._nhat_ky + 1] = 'ChangeFight ' .. tostring(sprite)
-			.. ' ' .. tostring(action)
+			.. ' ' .. tostring(action) .. ' f' .. tostring(form)
 		goi_tran('tuyet_chieu', tostring(sprite), tonumber(side) or 0,
-			tostring(action or ''), 1)
+			tostring(action or ''), 1, tonumber(form) or 0)
 		self._wake_xong = true
 		return hinh_nhan
 	end

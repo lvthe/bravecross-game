@@ -113,7 +113,20 @@ dùng được.
 Chơi:
 
 ```bash
-godot --path . battle/battle.tscn
+godot --path .
+```
+
+Lệnh này mở thẳng **màn Main thật của bản gốc** (chuỗi Login → Main của lớp Lua,
+xem mục "Chạy thẳng mã Lua của bản gốc"). Lần đầu mất **~5 giây** (đo ba lần trên
+máy rảnh: `nap` 1,3 s + chuỗi 3,5 s) và màn hình còn hiện "Đang vào game…"; sau
+đó bấm được như bản gốc.
+
+Màn trận đứng riêng, và màn chữ scaffold cũ, vẫn vào được bằng đường dẫn tường
+minh:
+
+```bash
+godot --path . battle/battle.tscn       # một trận đứng riêng
+godot --path . ui/menu.tscn             # màn chữ cũ — cửa ngõ tới roster/formation/equip/tasks
 ```
 
 Chạy hết kiểm tra, một lệnh:
@@ -147,23 +160,35 @@ rồi đối chiếu ngược với chính file JSON — đủ bộ phận chưa
 độ dài và cờ lặp có đúng không, có bộ phận nào được chỉ định ảnh mà không dựng
 được không.
 
-Mở màn xem thử (mũi tên trái/phải đổi động tác, lên/xuống đổi trang phục,
-`[` `]` đổi nhân vật, `space` tạm dừng):
+Mở màn xem thử bộ nạp (mũi tên trái/phải đổi động tác, lên/xuống đổi trang phục,
+`[` `]` đổi nhân vật, `space` tạm dừng). `demo/` **không** còn là màn chính, nên
+phải nêu đường dẫn:
 
 ```bash
-godot --path .
+godot --path . demo/demo.tscn
 ```
 
-Chụp một khung rồi thoát, dùng để soi nhanh:
+Chụp một khung rồi thoát, dùng để soi nhanh (ba tham số `--char`/`--anim`/`--zoom`
+do **chính `demo/demo.gd`** đọc, nên phải kèm đường dẫn màn):
 
 ```bash
-godot --path . -- --shot=D:/tmp/x.png --char=CaoCao --anim=Standby --zoom=3
+godot --path . demo/demo.tscn -- --shot=D:/tmp/x.png --char=CaoCao --anim=Standby --zoom=3
 ```
 
 Bày cả một chu kỳ trên một ảnh:
 
 ```bash
-godot --path . -- --shot=D:/tmp/walk.png --char=Archer --strip=1 --anim=Walk --n=6
+godot --path . demo/demo.tscn -- --shot=D:/tmp/walk.png --char=Archer --strip=1 --anim=Walk --n=6
+```
+
+Riêng `--shot`/`--at` nằm trong autoload `Game` nên chạy ở **mọi** màn — nhờ đó
+chụp màn Main thật chỉ cần một dòng. `--at` (mặc định 6 giây) đếm từ lúc **vào
+được** Main, không phải từ lúc mở cửa sổ, nên không phải tự canh cho qua chuỗi
+khởi động:
+
+```bash
+godot --path . -- --shot=D:/tmp/main.png            # 6 giây sau khi vào Main
+godot --path . -- --shot=D:/tmp/main.png --at=20    # bắt hoạt ảnh xa hơn
 ```
 
 ## Dùng trong code
@@ -476,10 +501,45 @@ GDScript. Lý do: bản gốc có sẵn 952 file Lua / 518.585 dòng, riêng ph�
 diện đã ~324.000 dòng. Chép tay thì không bao giờ xong và không bao giờ giống.
 Nên ta **nạp chính mã đó** và chỉ viết phần engine bên dưới nó.
 
+**Cửa vào mặc định của game nay chính là đường này.** `godot --path .` mở thẳng
+chuỗi Login → Main của bản gốc, chạy trong một **màn thật** (`ui/vao_game.tscn`)
+chứ không qua `--script` — nên có autoload `Game`, có theme, và bấm chạm được.
+Cái giá là lần đầu chờ **~5 giây** (máy rảnh; chạy nền máy ảo Android thì lâu
+hơn — xem `CLAUDE.md` mục "Cửa vào"); đổi lại runtime Lua nằm trong autoload `Game`
+nên **bấm Back từ battle/equip/formation/roster/tasks về Main là tức thì** (đo
+được **5 ms**, so với ~5.000 ms nạp lại). Khoá bằng `tools/verify_vao_game.tscn`
+(`dat 54, hong 0`).
+
 ```bash
+godot --path .                                       # màn Main thật — cửa vào mặc định
 godot --path . tools/xem_man.tscn                    # bảng chọn 352 màn
 godot --path . tools/xem_man.tscn -- --mo=Backpack   # mở thẳng một màn
 ```
+
+Đường cũ `godot --path . --script tools/vao_main.gd -- --xem` **vẫn chạy** và vẫn
+là đường dùng cho các bộ đo headless (`--kiem`/`--chup`), nhưng nó gắn sân khấu
+Lua thẳng vào `root` nên **không có màn nào ở dưới** — chỉ `ui/vao_game.tscn` mới
+luyện được đường đổi màn thật.
+
+**Hai đường ấy vẽ ra giống nhau từng điểm ảnh**, đo bằng `tools/do_vao_game.tscn`
++ `tools/lech_anh.py` (bắt buộc `--fixed-fps 30` ở cả hai lượt, không thì pha
+hoạt ảnh lệch và phép so vô nghĩa):
+
+```bash
+godot --path . --fixed-fps 30 --script tools/vao_main.gd -- --chup=D:/tmp/a.png
+godot --path . --fixed-fps 30 tools/do_vao_game.tscn -- --chup=D:/tmp/b.png
+godot --path . --fixed-fps 30 tools/do_vao_game.tscn -- --chup=D:/tmp/c.png --theme=san
+python tools/lech_anh.py D:/tmp/a.png D:/tmp/b.png --cat=150:640 --giong
+python tools/lech_anh.py D:/tmp/b.png D:/tmp/c.png --cat=150:640 --doi
+```
+
+Kết quả đo được: **0 điểm ảnh khác / 470.400** ngoài dải trên, và lượt kiểm
+chứng ngược (ép theme khác lên sân khấu) ra **9.171 điểm khác** — tức phép so có
+lực thật. Riêng **dải trên `y < 150` không đòi được 0 điểm với bất kỳ đường
+nào**: cùng một đường chạy hai lần đã khác nhau 15–20 nghìn điểm, vì đó là chỗ
+**hạt sáng bay trên nền trời** (`UITongYong`) và pha của chúng đổi mỗi lần chạy.
+Đó là **nhiễu**, không phải khác biệt của cửa vào — nên `--cat=150:640` là cách
+loại nó ra, không phải cách làm đẹp số.
 
 Bấm một cái là gọi đúng một dòng của bản gốc — `<quản lý>:Show(<tên>)` — còn
 lại là mã của nó: nạp bố cục, `onInit`, hoạt cảnh mở, `onShow`,
@@ -523,6 +583,16 @@ không báo lỗi mà cũng không mở gì, nên đây là bẫy phải tránh)
 ```bash
 godot --headless --path . --script tools/do_mot_man.gd -- <tên màn> <module>
 godot --headless --path . --script tools/do_mot_man.gd -- BarracksMain user.UI.CUIBarracksMain
+```
+
+**Nhãn thiếu tấm nền** (tên toà nhà màn Main mất dải vàng) thì dùng
+`tools/do_tam_nhan.gd`: `CCLabelTTF` mang **cùng lúc** `text` và `img`, và `img`
+là tấm nền vẽ dưới chữ. Nó đếm theo `img_applied` chứ **không** theo `img` — vì
+đường gắn ảnh từng **trả `false` cho `Label`** và bỏ tấm **im lặng**: node vẫn có
+meta `img`, nhìn cây không thấy gì, chỉ phép đếm mới bắt được:
+
+```bash
+godot --headless --path . --script tools/do_tam_nhan.gd -- res://layout_ref/UI_Main_960_640.json
 ```
 
 Cần đọc **trạng thái lúc chạy** mà mã nguồn không nói ra — một biến toàn cục là
@@ -1371,9 +1441,19 @@ dọn sạch địch). Đúng cách bản gốc, KHÔNG chỉnh số liệu.
 **Tuyệt chiêu kịch bản, vào-trận-từ-mép, camera lia** — cũng làm thật:
 - `SetRoleChangeFight(sprite, phe, form, "Wake"/"Talent")` → `tuyet_chieu`: tìm
   đơn vị khớp armature, phát động tác, và nếu là tuyệt chiêu BÊN TA thì đánh
-  AoE lên mọi địch (Triệu Vân "thất tiến thất xuất"). **Sát thương mỗi đòn dùng
-  chỉ số + công thức THẬT** (`Fighter.strike` qua `Harm`); chỉ *số đòn* (3) và
-  việc đánh khắp là ĐẶT (hiệu ứng thật trong C++ `CDFSpriteFight*Wake`).
+  AoE lên mọi địch (Triệu Vân "thất tiến thất xuất"). **Tham số 3 (`form`) là
+  thẩm quyền**, không phải tên động tác: đo cả 17 chỗ gọi trong
+  `sc/plot/drama_*.lua` thì form khớp tuyệt đối với họ động tác — form 1 →
+  `Fight`/`Fight3`/`Fight20` (đổi tư thế), form 2 → `Wake`/`Super`/`Super4`
+  (biến thân / tuyệt chiêu), form 4 → `Talent` (kích thiên phú). Trên đúng 17
+  chỗ ấy hai luật cho ra cùng kết quả, nên lượt này **không đổi kết quả trận
+  nào**; đổi là để tên động tác thôi làm thẩm quyền. Khoá bằng 5 phép kiểm
+  trong `do_chien_dich --kichban` (11 → **16 đạt / 0 hỏng**), trong đó một phép
+  đối chiếu nhật ký kịch bản với vết `tuyet_chieu` thu được — cần vậy vì
+  `goi_tran` bọc lời gọi trong `pcall` nên lệch số tham số **im lặng**. **Sát
+  thương mỗi đòn dùng chỉ số + công thức THẬT** (`Fighter.strike` qua `Harm`);
+  *số đòn* lấy từ cấu hình gốc (`WakeRef`), việc đánh khắp là ĐẶT (hiệu ứng
+  thật trong C++ `CDFSpriteFight*Wake`).
 - Quân tiếp viện vào trận từ MÉP (đồng minh từ trái, địch từ phải) rồi tự tiến
   vào — đúng ý `CreateNpcAndMoveTo` "đi vào".
 - `CameraMoveBy(hướng, giây)` → `lia_camera`: dừng bám quân rồi lia camera nửa
@@ -1627,6 +1707,19 @@ Bản gốc **có** dữ liệu ai mang kỹ năng nào: `KDBGameHeroTalentSkill
 dòng `(HeroID, HeroQuality) → tên kỹ năng`, 97 tên khác nhau. Lấy dòng phẩm
 chất thấp nhất mỗi tướng = kỹ năng gốc.
 
+**280 dòng ấy không phải 70 dòng lặp bốn lần: lên phẩm chất là ĐỔI kỹ năng
+thật.** Phổ tên theo bậc (đếm trên cả 280 dòng): bậc 2 → **13** tên, bậc 3 →
+**3** (`NuQi` chiếm 68/70), bậc 4 → **28**, bậc 5 → **66 tên cho 70 tướng**
+(gần như mỗi tướng một kỹ năng riêng). Lớp `Talents` trước đây chỉ lấy bậc thấp
+nhất nên **ném đi 210/280 dòng**; nay nạp đủ và có `get_at(tướng, bậc)`, còn
+`get()` giữ nguyên nghĩa cũ (bậc thấp nhất) nên mọi chỗ gọi cũ không đổi kết
+quả. `sim/field.py --quality <bậc>` và `sim/export_stats.py --quality <bậc>`
+xuất theo bậc; bậc không có dữ liệu thì **lùi về bậc gốc và in ra tên tướng**
+(không im lặng). 17 phép kiểm trong `sim/test_sim.py` khoá việc này.
+Hệ quả thẳng: bảng hiệu ứng 9 tên dưới đây phủ **9/97** tên, còn **88 tên chưa
+có hiệu ứng** — `battle.skills_uncovered()` đếm và **in ra** con số ấy thay vì
+để nó chìm, vì bậc 5 gần như không tên nào trùng bảng cũ.
+
 Nhưng nó **chỉ lưu tên**. Hiệu ứng nằm ở server, không có trong tay — y hệt
 chuyện công thức sát thương. Nên bảng dưới là **thiết kế của tôi**, dựa trên
 nghĩa của cái tên:
@@ -1763,10 +1856,46 @@ một bước thời gian cố định, nên bản diễn là bản **phát lạ
 Xem mục "Màn trận phát lại đúng trận máy chủ đã xử" ở dưới. Nếu hai bên còn
 lệch thì đó là lỗi thật, và màn hình báo ra chứ không giấu.
 
+### Đối chiến đội hình của người chơi khác
+
+Đội địch nay có thể là **đội hình thật của một tài khoản khác**, không phải đội
+máy chủ bốc từ bảng tướng:
+
+| RPC | việc |
+|---|---|
+| `bx.pvp {name = "<username 10 ký tự>"}` | đánh vào đội hình của tài khoản đó |
+| `bx.reports {}` | ai vừa đánh mình (gọi là đã nhận) |
+
+Máy chủ đọc bản lưu của người bị đánh rồi chạy **đúng đội hình, cấp, chỗ đứng,
+thế trận và trang bị của người đó**; `chapter = 0` cho cả hai bên nên quân lính
+hai bên đều là lính nền, chứ không phải quân của chương. Tên đối thủ phải là
+username thật, và đội của người đó phải đủ bốn tướng — máy chủ **từ chối** chứ
+không bốc một đội khác rồi gọi đó là đội của người ta.
+
+Ghi sổ **cả hai bên**: người tấn công được cộng số trận, người bị đánh được một
+dòng trong `reports` — lần sau mở màn trận sẽ thấy một dòng `bi <tên> danh bai`.
+PvP **không** cấp vàng, **không** rơi đồ, **không** mở chương.
+
+Ba đường vào tên đối thủ, vì người chơi nhiều cửa sổ trên nhiều màn hình:
+
+| đường | việc |
+|---|---|
+| `godot --path . --pvp=<username>` | đánh ngay khi mở màn trận |
+| phím `P` | lấy tên đang có trong clipboard rồi đánh ngay |
+| phím `T` | mở một ô nhập tên, `Enter` để đánh |
+
+Hai mất mát đã biết, nói ra chứ không giấu: **người bị đánh không được báo
+ngay** (chỉ biết khi tự mở màn trận), và **lệnh gọi trả về bảng buff trang bị
+của đối thủ** — màn trận phải phát lại đúng trận máy chủ đã xử nên nó cần đúng
+thứ mô phỏng dùng; không có đường nào vừa phát lại được vừa giấu. Tự đánh tài
+khoản yếu của chính mình để lên sổ thì **được** — chặn nó cần ghép trận, chưa
+làm.
+
 ### Chỗ chưa làm
 
-Khoá máy chủ vẫn là `defaultkey`. Trận đấu chưa có người thật đối đầu — đội
-địch do máy chủ bốc từ bảng tướng, không phải đội của người chơi khác.
+Khoá máy chủ vẫn là `defaultkey`. Đánh vào đội hình người khác nay **có thật**,
+nhưng phải tự biết username của người đó: **chưa có ghép trận, chưa có bảng xếp
+hạng, chưa có đấu trường.**
 
 ## Trận dàn trận: quân lính, hàng, và trọng tài xử đúng cái đang chiếu
 

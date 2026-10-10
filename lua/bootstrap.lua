@@ -557,10 +557,53 @@ function M.install_cocos()
 	-- Armature theo ten (engine C++): nha cua canh Main, hieu ung, tuong trong
 	-- giao dien. Lam bang SngRig tren du lieu armature cua ban goc — xem
 	-- LuaRuntime._tao_rig.
-	function getSpriteFromSpriteCatch(ten)
-		return c.wrap(_godot_tao_rig(tostring(ten)))
+	--
+	-- THAM SO THU HAI: ban goc truyen hai o hai man DOANH TRAI —
+	-- CUIBarracksMain.lua:1034 `getSpriteFromSpriteCatch(tArmy.SpriteName,
+	-- tArmy.ArmyLevel)` va CUIBarracksArmyInfo.lua:270 (mot tham so, lay tu
+	-- UIdata.SpriteName). Shim cu chi nhan MOT nen cap ay bi BO IM LANG.
+	-- Y NGHIA THAT cua tham so nay trong engine CHUA DO DUOC — o day chi giu
+	-- lai lam meta `cap_do`, khong suy ra hanh vi nao cho no. Do la viec cua
+	-- `setLevelGear` (ban goc goi rieng, ngay sau do).
+	function getSpriteFromSpriteCatch(ten, cap)
+		return c.wrap(_godot_tao_rig(tostring(ten), tonumber(cap) or 0))
 	end
 	getUIAnimFromSpriteCatch = getSpriteFromSpriteCatch
+
+	-- setGear(pRole, ten) — HAM TOAN CUC cua ban goc, 10 cho goi THAT trong
+	-- `sc/` (quet ca 1013 file .lua: 19 dong chua chu "setGear", trong do 8
+	-- dong la `setLevelGear` — tach rieng ben duoi — va 1 dong bi chu thich,
+	-- `CUIActivityScoreStroe.lua:26`):
+	--
+	--   ClientPaperDoll.lua:301  CPublic.lua:646
+	--   CUIActivityScoreStroe.lua:25,27   CUICavern.lua:923
+	--   CUIHero.lua:1703   CUITavern.lua:571,683
+	--   CUIWing.lua:1403   CUIWingShow.lua:248
+	--
+	-- Duong chinh la `ClientPaperDoll:ChangePaperDollHelper`:
+	--
+	--     for key,value in pairs(tSkinMap) do setGear(pRole, value) end
+	--
+	-- VI SAO KHONG GOI THANG PHUONG THUC: `__index` cua lop gia lap tra ve mot
+	-- ham cho MOI ten, nen `pRole:dat_do(ten)` chay khong loi va KHONG LAM GI
+	-- (bay da ghi o CLAUDE.md, muc "Bon nhom API cua lop gia lap"). Phai go qua
+	-- `c.raw` roi de `LuaRuntime._godot_dat_do` kiem loai that.
+	function setGear(pRole, ten)
+		if pRole == nil or ten == nil then return false end
+		return _godot_dat_do(c.raw(pRole), tostring(ten))
+	end
+
+	-- setLevelGear(pArmature, cap) — ban goc goi THAT 3 cho, khong phai 0:
+	-- CUIBarracksMain.lua:1036 va CUIBarracksArmyInfo.lua:272 (hai man doanh
+	-- trai) va CUIPopUpBox.lua:723. Ten do theo cap la `<ten armature>_lv<cap>`,
+	-- va ten ay la muc BUNDLE trong bang gear (xem rig/gear_ref.gd).
+	--
+	-- Tra `false` khi don vi khong co bundle nao (vi du `Archer`, `Stakes`,
+	-- `witch doctor`) — do la DUNG, khong phai thieu du lieu: chi 10 trong so 80
+	-- `SpriteName` cua battle_data.json co bundle.
+	function setLevelGear(pArmature, cap)
+		return _godot_dat_do_cap(c.raw(pArmature), tonumber(cap) or 0)
+	end
 
 	-- toAnimationName(ten sprite) -> ten armature. CHI MOT cho goi trong ma goc:
 	-- CPublic:toArmatureName (sc/user/Public/CPublic.lua:2033-2040), va CPublic
@@ -795,30 +838,134 @@ M.KE_KHAI = {
 --
 -- Cuoi cung PHAI cai lai lop gia lap: system/engine.lua la be mat rang buoc
 -- C++ (70 bien S_CC*), nap no vao la de bong len het cac thu ta lam that.
+---
+--- Vi tri `--` mo dau chu thich trong mot dong Lua, hoac nil neu dong khong co.
+---
+--- `--` nam TRONG chuoi thi khong tinh, nen phai bo qua ca chuoi nhay don lan
+--- nhay kep ke ca ky tu thoat `\` — neu khong thi mot ten tai nguyen kieu
+--- `"a--b.png"` se bi cat cut giua duong.
+---
+--- Bon tep ke khai khong co chu thich KHOI `--[[` nao (do ca ban vn lan ban cn
+--- 1.31: 0 cho), nen cat theo DONG la du chinh xac o day — khong phai xap xi.
+local function vi_tri_chu_thich(dong)
+	local i, n, trong = 1, #dong, nil
+	while i <= n do
+		local c = dong:sub(i, i)
+		if trong ~= nil then
+			if c == '\\' then
+				i = i + 2
+			elseif c == trong then
+				trong = nil
+				i = i + 1
+			else
+				i = i + 1
+			end
+		elseif c == '"' or c == "'" then
+			trong = c
+			i = i + 1
+		elseif c == '-' and dong:sub(i + 1, i + 1) == '-' then
+			return i
+		else
+			i = i + 1
+		end
+	end
+	return nil
+end
 function M.boot_goc()
+	-- Danh sach nap duoc trich tu BON tep ke khai cua ban goc. Quet theo DONG
+	-- (do lai: khong cau `require` nao bi xuong dong, o ca ban vn lan ban cn
+	-- 1.31), va nhan HAI dang:
+	--   require("m")          -> nap m
+	--   Ten = require("m")    -> nap m ROI gan _G.Ten = m
+	-- Dang thu hai: ban vn co **0** cau, ban cn 1.31 co **5** —
+	-- share/share_public_require.lua:5,7,9 (SDKDef, PluginDef, EventDef) va
+	-- system/s_require.lua:28,29 (EventMgr, KLib). Ca nam module do deu
+	-- `return` bang cua chung va KHONG tu gan toan cuc, nen thieu cau gan thi
+	-- bien vang mat. Do duoc hau qua that tren cay 1.31:
+	-- `XUI/Login/XUILogin.lua:96: attempt to index global 'EventMgr' (a nil
+	-- value)` roi `XUI/Login/XUILoginMain.lua:351: ... 'SDKDef' (a nil value)`
+	-- — ca hai deu lam chet `sngLoadingNext`, tuc khong vao duoc Main.
+	-- Nhay don lan nhay kep: ca nam cau 1.31 deu dung nhay don.
 	local ds = {}
 	for _, ten in ipairs(M.KE_KHAI) do
 		local duong = ten:gsub('%.', '/')
 		local src = _godot_read(duong)
 		local nhom = {}
 		if src ~= nil then
-			for m in src:gmatch('require%s*%(%s*"([%w_%.]+)"%s*%)') do
-				nhom[#nhom + 1] = m
+			for dong in src:gmatch('[^\r\n]+') do
+				-- Bo phan CHU THICH truoc khi quet. `--require("x")` la cau
+				-- KHONG BAO GIO chay, nhung phep quet theo CHU van bat no —
+				-- do: ban vn co 8 cau nhu vay trong bon tep ke khai, ban cn
+				-- 1.31 co 2. Chung lam `bao.so` phinh ra va sinh ra mot
+				-- "module hong" khong he ton tai: `user.UI.CUIChapterChoice`
+				-- (bi chu thich o user/require.lua, va KHONG ban nao co file).
+				-- Do chinh la "1 module hong" cua ban vn tu truoc toi nay —
+				-- tuc ban vn that ra la 875/875 chu khong phai 875/876.
+				-- Nam cau GAN cua 1.31 nam tren dong KHONG bi chu thich nen
+				-- van duoc nhan.
+				local cat = vi_tri_chu_thich(dong)
+				local than = cat ~= nil and dong:sub(1, cat - 1) or dong
+				local g, m = than:match(
+					"^%s*([A-Za-z_][%w_]*)%s*=%s*require%s*%(%s*['\"]([%w_%.]+)['\"]%s*%)")
+				if m ~= nil then
+					nhom[#nhom + 1] = { m, g }
+				else
+					-- `local X = require(...)` khong khop o tren (sau 'local'
+					-- la ten, khong phai '='), nen roi vao day va chi NAP,
+					-- khong gan toan cuc — dung y nghia chu `local`.
+					for m2 in than:gmatch("require%s*%(%s*['\"]([%w_%.]+)['\"]%s*%)") do
+						nhom[#nhom + 1] = { m2, nil }
+					end
+				end
 			end
 		end
 		ds[#ds + 1] = nhom
 	end
 	local bao = { so = 0, nap = 0, hong = {} }
+	-- Cau require dung NGAY TRUOC bon ban ke khai trong sc/game.lua.
+	--
+	-- Ban vn khong co cau nao o do (do: 0). Ban cn 1.31 co DUNG MOT — dong
+	-- 182, `require("system.sim_mirgate")` — va do chinh la cho dinh nghia
+	-- `Class` (Framework/UtilsShare/class.lua:192). Bon tep ke khai cua 1.31
+	-- khong con require no (ban vn thi co: share/share_public_require.lua:5
+	-- `require("share.class")`), nen thieu dong 182 thi `Class` chi la BONG —
+	-- mot bang truthy — va 59 module chet voi `attempt to call global 'Class'
+	-- (a table value)`, keo them 8 module nua chet vi index global nil.
+	-- Do tren cay 1.31: 72 module hong con 7.
+	--
+	-- Doc thang sc/game.lua ra va chay lai CHINH dong cua ban goc, chu khong
+	-- hardcode ten module: ban vn doc ra rong nen khong doi mot li.
+	local game_src = _godot_read('game')
+	if game_src ~= nil then
+		local cat = game_src:find('require%s*%(%s*"share%.share_public_require"%s*%)')
+		if cat ~= nil then
+			for m in game_src:sub(1, cat):gmatch('require%s*%(%s*"([%w_%.]+)"%s*%)') do
+				M.cham = 0
+				bao.so = bao.so + 1
+				local ok, err = pcall(require, m)
+				if ok then
+					bao.nap = bao.nap + 1
+				else
+					bao.hong[m] = tostring(err)
+				end
+			end
+		end
+	end
 	for _, nhom in ipairs(ds) do
 		bao.so = bao.so + #nhom
-		for _, m in ipairs(nhom) do
+		for _, e in ipairs(nhom) do
+			local m, g = e[1], e[2]
 			-- Dat lai bo dem TRUOC TUNG module: bo dem la chung, nen module
 			-- dau tien lam trong vong lap vo tan se lam moi module sau do
 			-- cung bao loi do, va ta doc nham thanh "ba module hong".
 			M.cham = 0
-			local ok, err = pcall(function() require(m) end)
+			local ok, err = pcall(require, m)
 			if ok then
 				bao.nap = bao.nap + 1
+				-- `Ten = require(...)`: gia tri module tra ve chinh la gia tri
+				-- ban goc gan cho Ten (module khong tra ve gi thi require tra
+				-- `true` — ghi nguyen, vi ban goc cung lam vay).
+				if g ~= nil then _G[g] = err end
 			else
 				bao.hong[m] = tostring(err)
 			end
@@ -1059,6 +1206,34 @@ function M.khoi_dong_game()
 			if g_SetGame:GetString('OpenAllGameFun') == 'true' then
 				g_CGameFuncOpeningManager.IsTest = true
 			end
+		end },
+		-- Lop offline: MO HET chuc nang.
+		--
+		-- Cong chuc nang la du lieu MAY CHU: `IsFuncOpening` doc
+		-- `GameUserGlobalData['L_'..ten]`, ma bang ay chi ship dung MOT co
+		-- (`L_CUILottery` — do: 13 khoa trong `GameUserGlobalDataReset`, mot
+		-- co `L_`). Chua mo thi `doFuncOpening_1` cho hien nhan khoa
+		-- (`lockLabel:setIsVisible(not bIsOpening)`), va
+		-- `CUIMainBuildingManager:_isBuildingOpen` doc chinh nhan ay qua
+		-- `_getBuildingStatus` -> tra 1 (close) -> `onTouchEnd_btnBuilding`
+		-- ROI VAO KHONG: do tren nut chien dich
+		-- `btnMainUIAttackActivity [战役]`, do duoc `status=1, isOpen=false`,
+		-- bam tra `true` ma khong mo gi.
+		--
+		-- Khong phai loi: nguoi choi offline la Lv1 (`G_UserLogic:GetLevel()`
+		-- -> `true, 1`, do), con chien dich doi Lv22 — chu ay nam trong khoa
+		-- ngon ngu `#MainUI_Unlock_AttackActivity`, tuc CHI la chu hien thi,
+		-- khong co bang muc-tieu-cap nao doc duoc o client. Nen khong the lay
+		-- so that ra ma mo dung cai dang doi.
+		--
+		-- Lop offline thay may chu, va phat bieu cua no la "mo het" — dung
+		-- cong tac cua chinh ban goc (game.lua:465, chu thich
+		-- '打开所有游戏的功能' = mo het chuc nang game), chu khong bia mot bang
+		-- `L_*` nao. Dat THANG co `IsTest` chu khong dat `OpenAllGameFun`
+		-- trong set.xgg: co trong set.xgg con keo `CUILogin2.lua:3943` hien
+		-- bang dang nhap thu (lLoginTestUI), thu khong ai doi o day.
+		{ 'lop offline: mo het chuc nang', function()
+			g_CGameFuncOpeningManager.IsTest = true
 		end },
 		{ 'co khoi dong (d.472-481)', function()
 			g_bShowServerKickedMsg = false

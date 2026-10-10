@@ -2,7 +2,8 @@
 #
 #   godot --headless --path . --script tools/verify_cuon.gd
 #
-# Do cai gi: g_MainUIScrollLayer la CCScrollLayer 1366x768 chua mot
+# Do cai gi: g_MainUIScrollLayer la CCScrollLayer 1366x768, ben trong no la LOP
+# CHUA NOI DUNG ma engine sinh luc chay (tag 0), va trong lop chua moi la
 # CCParallaxNode 2300x768 dat o x = -100 (doc thang tu
 # layout_ref/UI_Main_960_640.json). Keo lop do phai doi cho lop con dung bang
 # quang duong ngon tay, phai bi kep lai o bien, phai nha ve bien khi
@@ -225,8 +226,40 @@ func _do(lop: Node) -> void:
 	t("lop co 1 con", lop.get_child_count() == 1, str(lop.get_child_count()))
 	if lop.get_child_count() != 1:
 		return
-	var content := lop.get_child(0) as Control
-	t("con la CCParallaxNode 2300x768",
+	# Con duy nhat cua lop cuon phai la LOP CHUA NOI DUNG ma engine sinh luc chay
+	# (xem ui/xgg_layout.gd:_boc_lop_chua va khoi LOP_CUON o lua/cocos.lua), chu
+	# khong phai mot muc cua bo cuc. Do tren 283 man: 94/94 lop cuon co duong
+	# engine bao dung mot con, luon la con so 1, ke ca lop khong co muc nao.
+	var chua := lop.get_child(0) as Control
+	t("con duy nhat la lop chua",
+			chua != null and chua.has_meta("lop_chua"),
+			str(chua.get_meta("lop_chua", "-")) if chua != null else "?")
+	if chua == null:
+		return
+	t("lop chua bang co lop 1366x768 o (0,0)",
+			chua.size == Vector2(1366, 768) and chua.position == Vector2.ZERO,
+			"%s @ %s" % [chua.size, chua.position])
+	# Duong LUA phai nhin thay dung cay ay — day la phep do co luc nhat cua muc
+	# nay: ma goc hoi `getChildByTag(0)` roi moi hoi tiep ben trong
+	# (CUIActivity.lua:201), nen neu no tra ve nil hoac tra ve mot node khac thi
+	# ca loi goi do chet.
+	var qua_lua := str(lua.run("""
+		local lop = g_MainUIScrollLayer
+		local c = lop:getChildByTag(0)
+		if c == nil then return 'nil' end
+		local m = c:getChildren()[1]
+		if m == nil then return 'lop chua RONG' end
+		local w, h = m:getContentSize()
+		return string.format('%d con, muc %dx%d', c:getChildrenCount(), w, h)
+	""", "hoi tag 0 qua Lua"))
+	t("getChildByTag(0) qua Lua ra lop chua, ben trong la muc that",
+			qua_lua == "1 con, muc 2300x768", qua_lua)
+
+	t("lop chua co 1 muc", chua.get_child_count() == 1, str(chua.get_child_count()))
+	if chua.get_child_count() != 1:
+		return
+	var content := chua.get_child(0) as Control
+	t("muc la CCParallaxNode 2300x768",
 			content != null
 			and String(content.get_meta("type_name", "")) == "CCParallaxNode"
 			and content.size == Vector2(2300, 768),
@@ -361,8 +394,25 @@ func _do(lop: Node) -> void:
 	#     CUIMainEvilCastle = 45, roi :760 mo no khi nguoi choi len 45. Ta chi
 	#     keo nguong do bang CHINH ham ma ban goc dung (SetGameFuncUnLockData),
 	#     khong tu ha cong nao.
+	#
+	#     Nhung lop offline NAY mo het chuc nang ngay luc khoi dong — no dat co
+	#     `g_CGameFuncOpeningManager.IsTest`, dung cong tac cua chinh ban goc
+	#     ('打开所有游戏的功能', game.lua:465), vi bang co `GameUserGlobalData['L_*']`
+	#     la du lieu MAY CHU ma ban ship chi co DUNG MOT dong. Co `IsTest` thi
+	#     `IsFuncOpening` tra true VO DIEU KIEN (CGameFuncOpeningManager.lua:161),
+	#     nen muon do duoc NUA KHOA cua phep kiem nay thi phai tu TAT cong tac
+	#     do di — va do la viec cua bo kiem, khong phai cua tro choi.
+	#
+	#     Tat roi thi nua sau giu nguyen: `SetGameFuncUnLockData` mo dung cua
+	#     do, va vong `IsTest` khong lam no khac di.
 	if nut != null:
 		var loi_truoc := lua.errors.size()
+		lua.run("""
+			g_CGameFuncOpeningManager.IsTest = false
+			g_CUIMain:RefreshUserLevelAndExp()
+			return true
+		""", "tat cong tac mo het de do duoc nua KHOA")
+		_tick(2)
 		lua.run("g_MainUIScrollLayer:resetContentLayerPos() return true", "reset")
 		_tick(2)
 		_keo(600, 200, -2000.0)

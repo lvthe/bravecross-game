@@ -5,9 +5,11 @@
 #   [ / ]               doi nhan vat
 #   space               tam dung
 #
-# Chay tu dong lenh de chup mot khung roi thoat (dung de kiem tra chieu xoay):
+# Chay tu dong lenh de chup mot khung roi thoat (dung de kiem tra chieu xoay).
+# Phai neu duong dan man: tu luot man cua vao doi thanh `ui/vao_game.tscn`,
+# `run/main_scene` khong con la man nay.
 #
-#   godot --path . -- --shot=user://shot.png --char=Archer --anim=Standby
+#   godot --path . demo/demo.tscn -- --shot=user://shot.png --char=Archer --anim=Standby
 extends Node2D
 
 const ROOT := "res://assets_ref/"

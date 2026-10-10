@@ -35,7 +35,7 @@ except ImportError:
 
 # `nakama` gia. Giu dung nhung ham ma battle.lua dung toi.
 STUB = r'''
-local rpcs, hooks, store = {}, {}, {}
+local rpcs, hooks, store, users = {}, {}, {}, {}
 local nk = {}
 
 function nk.register_rpc(fn, id) rpcs[id] = fn end
@@ -45,21 +45,73 @@ function nk.register_req_after(fn, id) hooks[id] = fn end
 function nk.json_encode(v) return v end
 function nk.json_decode(v) if type(v) == "table" then return v end return {} end
 
+-- So tai khoan gia: username -> user_id. Khop DUNG NGUYEN TEN, khong phai
+-- tien to — dung y Nakama that, va do la thu phan biet "dan ten nguoi khac"
+-- voi "dan tien to cua ten minh".
+function nk.users_get_username(names)
+	local out = {}
+	for _, n in ipairs(names) do
+		if users[n] ~= nil then
+			out[#out + 1] = { user_id = users[n], username = n, display_name = n }
+		end
+	end
+	return out
+end
+
+-- Chuoi chuan hoa cua mot gia tri: sap xep khoa de hai bang cung noi dung ra
+-- cung chuoi, du thu tu chen khac nhau.
+local function canon(v)
+	if type(v) ~= "table" then
+		return type(v) .. ":" .. tostring(v)
+	end
+	local keys = {}
+	for k in pairs(v) do
+		keys[#keys + 1] = k
+	end
+	table.sort(keys, function(x, y) return tostring(x) < tostring(y) end)
+	local parts = {}
+	for _, k in ipairs(keys) do
+		parts[#parts + 1] = tostring(k) .. "=" .. canon(v[k])
+	end
+	return "{" .. table.concat(parts, ",") .. "}"
+end
+
+-- Nakama that dung MD5 CUA CHINH GIA TRI lam `version`. O day dung chuoi
+-- chuan hoa — cung mot tinh chat quan trong: version la HAM CUA NOI DUNG.
+-- Vi vay KHONG can bang version rieng: cu tinh lai tu gia tri dang co. Bo test
+-- nao nhet thang ban luu vao `store` cung van co version dung, khong phai sua.
+local function version_of(v) return canon(v) end
+
 function nk.storage_read(reqs)
 	local out = {}
 	for _, r in ipairs(reqs) do
 		local k = r.user_id .. "/" .. r.collection .. "/" .. r.key
 		if store[k] ~= nil then
 			out[#out + 1] = { collection = r.collection, key = r.key,
-					user_id = r.user_id, value = store[k] }
+					user_id = r.user_id, value = store[k],
+					version = version_of(store[k]) }
 		end
 	end
 	return out
 end
 
+-- `w.version` nil  -> ghi de vo dieu kien (y nhu truoc gio)
+-- `w.version` "*"  -> chi chen khi CHUA co (khong dung trong battle.lua)
+-- `w.version` khac -> phai khop version dang co, lech thi TU CHOI va nem loi
 function nk.storage_write(writes)
 	for _, w in ipairs(writes) do
-		store[w.user_id .. "/" .. w.collection .. "/" .. w.key] = w.value
+		local k = w.user_id .. "/" .. w.collection .. "/" .. w.key
+		local cur = store[k]
+		if w.version ~= nil then
+			if w.version == "*" then
+				if cur ~= nil then
+					error("Storage write rejected.", 0)
+				end
+			elseif cur == nil or version_of(cur) ~= w.version then
+				error("Storage write rejected.", 0)
+			end
+		end
+		store[k] = w.value
 	end
 	return {}
 end
@@ -69,7 +121,8 @@ local clock = {}
 function nk.time() return (clock.now or os.time()) * 1000 end
 
 package.preload["nakama"] = function() return nk end
-return { rpcs = rpcs, hooks = hooks, store = store, clock = clock }
+return { rpcs = rpcs, hooks = hooks, store = store, clock = clock,
+		users = users }
 '''
 
 PRELOAD_EQUIP = """
@@ -426,6 +479,79 @@ def main():
               'Lua %s/%s-%s/%.2fs  vs  Python %s/%s-%s/%.2fs'
               % (e['result'], e['aliveA'], e['aliveB'], e['seconds'],
                  res, a, b, secs))
+
+    # Va nam tran NUA voi doi dich la NGUOI THAT. Muc nay do dung nhanh bat doi
+    # xung ma bx.pvp dung: cap, cho dung, the tran va trang bi deu lay tu ben
+    # kia chu khong con la "quan cua chuong". `chapter = 0` y nhu bx.pvp.
+    foe_got = ft['foeBattles']
+    fd = ft['foeDesc']
+    foe_levels = {str(k): int(v) for k, v in dict(fd['levels']).items()}
+    foe_place = [int(fd['placement'][i]) for i in range(1, 5)]
+    foe_buffs = {}
+    for name in fd['buffs']:
+        foe_buffs[str(name)] = dict(fd['buffs'][name])
+    check(len(foe_levels) == 4 and min(foe_levels.values()) > 1,
+          'the doi thu co cap khac 1', foe_levels)
+    check(foe_place != [1, 1, 2, 3], 'the doi thu co cho dung rieng', foe_place)
+    check(str(fd['formation']) != '' and int(fd['formationLevel']) > 0,
+          'the doi thu co the tran rieng',
+          '%s cap %s' % (fd['formation'], fd['formationLevel']))
+
+    foe_arg = dict(power=1.0, levels=foe_levels, placement=foe_place,
+                   formation=str(fd['formation']),
+                   formationLevel=int(fd['formationLevel']),
+                   buffs=foe_buffs)
+    for i in range(1, len(foe_got) + 1):
+        e = foe_got[i]
+        seed = int(e['seed'])
+        res, secs, a, b = F.lua_battle(hero_by_name, army_rows, base, rules,
+                                       mine, theirs, seed, 0, doc=doc,
+                                       foe=foe_arg, seed_value=0)
+        check(int(e['result']) == res and int(e['aliveA']) == a
+              and int(e['aliveB']) == b
+              and abs(float(e['seconds']) - secs) < 0.05,
+              'doi thu la nguoi that, seed %d: ket qua %d, con song %d-%d, %.1f giay'
+              % (seed, res, a, b, secs),
+              'Lua %s/%s-%s/%.2fs  vs  Python %s/%s-%s/%.2fs'
+              % (e['result'], e['aliveA'], e['aliveB'], e['seconds'],
+                 res, a, b, secs))
+    # Va phep kiem quan trong hon: doi thu THAT SU co anh huong. Neu bo het
+    # tham so cua doi thu di ma ket qua van y nguyen thi `foe` chua duoc doc
+    # tới, va ca muc nay chang chung minh duoc gi.
+    #
+    # So sanh ca DONG HO, khong chi ket qua voi so nguoi song: ben doi thu cap
+    # 26 song sot qua ca hai ben, nen cai doi duoc la toc do ben nay bi giet.
+    # Chi so ket qua thi phep kiem nay do ra 0/5 — khong phai vi `foe` khong
+    # duoc doc, ma vi ket qua tran nay da bi quan linh hai ben quyet dinh.
+    def khac_vi(**doi):
+        n = 0
+        for i in range(1, len(foe_got) + 1):
+            e = foe_got[i]
+            arg = None if doi.get('none') else dict(foe_arg)
+            if arg is not None:
+                arg.update(dict((k, v) for k, v in doi.items() if k != 'none'))
+            res, secs, a, b = F.lua_battle(hero_by_name, army_rows, base, rules,
+                                           mine, theirs, int(e['seed']), 0,
+                                           doc=doc, foe=arg, seed_value=0)
+            if (int(e['result']), int(e['aliveA']), int(e['aliveB'])) != (res, a, b) \
+                    or abs(float(e['seconds']) - secs) > 0.05:
+                n += 1
+        return n
+
+    # Sau phep thu, moi phep giu NGUYEN hinh dang doi thu roi doi DUNG MOT thu.
+    # Phai la sau vi bon cai num cua doi thu — cho dung, cap, the tran (ten va
+    # cap), trang bi — deu phai chung minh duoc la CO duoc doc. So do o moi
+    # dong la so tran tren nam doi duoc, do lan dau khi chon hinh dang nay:
+    # 5/5 5/5 5/5 1/5 1/5 1/5. Mot dong ra 0 nghia la num do dang bi bo qua.
+    for ten, doi in (('bo han doi thu', {'none': True}),
+                     ('cho dung', {'placement': [1, 1, 2, 3]}),
+                     ('cap', {'levels': dict((k, 1) for k in foe_levels)}),
+                     ('ten the tran', {'formation': 'jichu'}),
+                     ('cap the tran', {'formationLevel': 30}),
+                     ('trang bi', {'buffs': {}})):
+        n = khac_vi(**doi)
+        check(n > 0, 'doi thu khac o phan %s thi tran khac di' % ten,
+              '%d/%d tran doi' % (n, len(foe_got)))
 
     print('\n=== 9. TRANG BI: Lua khop Python tung ca ===')
     # Cho nay khong co ngau nhien nen doi hoi chat hon muc 8: hai ban cung
@@ -1542,6 +1668,239 @@ def main():
           ach[9]['index'])
     check('999' not in dict(save()['achieve'].items()), 'bo loai khong ton tai')
     env['clock']['now'] = None
+
+    print('\n=== 11. PvP: danh vao doi hinh cua nguoi choi khac ===')
+
+    def deep(v):
+        """Lua table -> dict/list de so duoc voi nhau.
+
+        CHI de DOC. Dung dua ket qua cua ham nay quay lai Lua: lupa doi mot
+        list Python thanh bang Lua danh so TU 0, nen `#` va `ipairs` khong con
+        thay gi trong do nua — ban luu se mat doi hinh ma khong bao loi.
+        """
+        if not hasattr(v, 'items'):
+            return v
+        d = dict(v.items())
+        if d and all(isinstance(k, int) for k in d):
+            return [deep(d[k]) for k in sorted(d)]
+        return dict((str(k), deep(x)) for k, x in d.items())
+
+    # So tai khoan gia. Ten 10 ky tu cho giong ten that do Nakama tu cap.
+    env['users']['pPheiDKCRb'] = 'u-pvp-a'
+    env['users']['sEzLWcxZJV'] = 'u-pvp-b'
+    env['users']['chuaCoDoi'] = 'u-pvp-c'
+    ctxA = L.table(user_id='u-pvp-a', username='pPheiDKCRb')
+    ctxB = L.table(user_id='u-pvp-b', username='sEzLWcxZJV')
+
+    # A: doi manh, co cap, co the tran, co cho dung rieng. Dat thang vao kho
+    # chu khong cay bang tran cho nhanh — duong di that cua nguoi choi thi cac
+    # muc tren da phu roi.
+    env['store']['u-pvp-a/player/save'] = L.table(
+        gold=1000, concentrate=0, cleared=0, battles=0, wins=0, losses=0,
+        draws=0, recasts=0, updatedAt=0, lastResult='',
+        roster=L.table('LvBuGod', 'MaChao', 'LvBu', 'GanNing'),
+        levels=L.table(LvBuGod=20, MaChao=15, LvBu=10, GanNing=8),
+        placement=L.table(3, 2, 1, 1),
+        formations=L.table(jichu=3), formation='jichu', formationLevel=3,
+        items=L.table(), equipment=L.table(
+            MaChao=L.table(L.table(part=1, level=1, intensify=3, quality=2,
+                                   refine=1, equipType=1,
+                                   main=L.table(type=20, value=22.5)))),
+        achieve=L.table(), daily=L.table(), reports=L.table())
+    rpcs['bx.set_roster'](ctxB, L.table(roster=L.table(
+        'CaoCao', 'DengAi', 'JiaXu', 'HuaXiong')))
+
+    def save_a():
+        return rpcs['bx.chapters'](ctxA, None)['save']
+
+    # A phai that su co do, khong thi phep "khong doi mot chu nao" ben duoi la
+    # phep kiem rong.
+    a0 = deep(save_a())
+    check(bool(a0['equipment'].get('MaChao')),
+          'tai khoan A co trang bi that de ma so', a0['equipment'])
+    check(a0['placement'] == [3, 2, 1, 1], 'A co cho dung rieng', a0['placement'])
+    check(a0['formation'] == 'jichu' and int(a0['formationLevel']) == 3,
+          'A co the tran rieng', (a0['formation'], a0['formationLevel']))
+
+    # Ten phai dung NGUYEN, khong phai tien to.
+    for bad, why in ((None, 'thieu ten'), ('', 'ten rong'),
+                     ('pPheiDKCR', 'tien to cua ten that'),
+                     ('khongCoAi', 'ten khong co')):
+        ok = True
+        try:
+            rpcs['bx.pvp'](ctxB, L.table(name=bad) if bad is not None else None)
+            ok = False
+        except lupa.LuaError:
+            pass
+        check(ok, 'tu choi %s' % why)
+
+    # Danh chinh minh.
+    ok = True
+    try:
+        rpcs['bx.pvp'](ctxA, L.table(name='pPheiDKCRb'))
+        ok = False
+    except lupa.LuaError as e:
+        ok = 'chinh minh' in str(e)
+    check(ok, 'tu choi danh chinh minh, va noi dung ly do')
+
+    # Doi hinh chua san sang thi TU CHOI, khong boc bua mot doi khac.
+    ok = True
+    try:
+        rpcs['bx.pvp'](ctxB, L.table(name='chuaCoDoi'))
+        ok = False
+    except lupa.LuaError as e:
+        ok = 'chua san sang' in str(e)
+    check(ok, 'tu choi doi thu chua co doi hinh, va noi dung ly do')
+
+    r = rpcs['bx.pvp'](ctxB, L.table(name='pPheiDKCRb'))
+    res = int(r['result'])
+    check(res in (0, 1, 2), 'tran PvP chay, ket qua 0/1/2', res)
+    check(int(r['seed']) > 0, 'may chu tu dat seed', r['seed'])
+
+    # Doi thu gui ve phai la doi THAT cua A, khong phai doi boc tu bang tuong.
+    foe = r['foe']
+    check([str(foe['roster'][i]) for i in range(1, 5)] == a0['roster'],
+          'gui ve dung doi hinh cua A',
+          [str(foe['roster'][i]) for i in range(1, 5)])
+    check(int(foe['levels']['LvBuGod']) == 20, 'gui ve dung cap cua A',
+          dict(foe['levels']))
+    check([int(foe['placement'][i]) for i in range(1, 5)] == [3, 2, 1, 1],
+          'gui ve dung cho dung cua A')
+    check(str(foe['formation']) == 'jichu'
+          and int(foe['formationLevel']) == 3,
+          'gui ve dung the tran cua A')
+    fb = deep(foe['buffs'])
+    check(len(fb) == 1 and bool(fb.get('MaChao')),
+          'gui ve buff trang bi cua doi thu, theo dung tuong co do (de client '
+          'PHA LAI duoc tran)', fb)
+
+    # Nguoi danh: so ghi, nhung KHONG vang, KHONG do, KHONG dung `cleared`.
+    b0 = r['save']
+    check(int(b0['battles']) == 1, 'so tran cua nguoi danh +1', b0['battles'])
+    check(int(b0['gold']) == 0, 'PvP khong cap vang', b0['gold'])
+    check(int(b0['cleared']) == 0, 'PvP khong dung toi cleared', b0['cleared'])
+    check(not r['drop'] and not r['materials'], 'PvP khong roi do, khong roi nguyen lieu')
+    check(bool(r['foeLedger']), 'so ben bi danh ghi duoc')
+
+    # Nguoi bi danh: doi hinh / cap / the tran / cho dung / trang bi PHAI
+    # nguyen ven, chi so tran va bao lai doi.
+    a1 = deep(save_a())
+    for field in ('roster', 'levels', 'equipment', 'placement', 'formation',
+                  'formationLevel', 'items', 'gold', 'cleared'):
+        check(a1[field] == a0[field],
+              'ban luu nguoi bi danh: %s khong doi mot chu nao' % field,
+              '%s -> %s' % (a0[field], a1[field]))
+    check(int(a1['battles']) == int(a0['battles']) + 1,
+          'ban luu nguoi bi danh: so tran +1', a1['battles'])
+    # `result` giu nguyen diem nhin cua BEN 0 (nguoi di danh). Nen nguoi so huu
+    # ban luu nay thang khi result == 1 — doi chieu nguoc lai, dung anh xa lai.
+    expect_his = {0: 'losses', 1: 'wins', 2: 'draws'}[res]
+    check(int(a1[expect_his]) == int(a0[expect_his]) + 1,
+          'ban luu nguoi bi danh: %s +1 (theo dung diem nhin cua ho)'
+          % expect_his, '%s / %s' % (a0[expect_his], a1[expect_his]))
+    check(str(a1['lastResult']) == {0: 'thua', 1: 'thang', 2: 'hoa'}[res],
+          'ban luu nguoi bi danh: lastResult dung chieu', a1['lastResult'])
+    check(len(a1['reports']) == 1, 'co dung MOT ban ghi bao lai',
+          len(a1['reports']))
+    rep = a1['reports'][0]
+    check(rep['name'] == 'sEzLWcxZJV',
+          'ban ghi ghi dung ten nguoi danh', rep['name'])
+    check(int(rep['result']) == res,
+          'ban ghi giu NGUYEN ket qua theo diem nhin ben 0', rep['result'])
+    check(not rep['seen'], 'ban ghi moi thi chua doc')
+
+    # Doc la da nhan: goi lan hai khong hien lai.
+    rp = rpcs['bx.reports'](ctxA, None)
+    check(len(rp['reports']) == 1, 'bx.reports tra ve ban ghi chua doc',
+          len(rp['reports']))
+    check(int(rp['reports'][1]['result']) == res, 'tra ve dung ket qua')
+    rp2 = rpcs['bx.reports'](ctxA, None)
+    check(len(rp2['reports']) == 0, 'goi lan hai thi khong hien lai',
+          len(rp2['reports']))
+
+    # Danh lan hai: chot phien ban phai di het mot vong doc-roi-ghi, va bao lai
+    # phai chong len chu khong de nhau.
+    r2 = rpcs['bx.pvp'](ctxB, L.table(name='pPheiDKCRb'))
+    check(bool(r2['foeLedger']), 'danh lan hai: so ben kia van ghi duoc')
+    a2 = deep(save_a())
+    check(int(a2['battles']) == int(a0['battles']) + 2,
+          'danh lan hai: so tran +2 chu khong phai +1', a2['battles'])
+    check(len(a2['reports']) == 2, 'co hai ban ghi', len(a2['reports']))
+    check(not a2['reports'][0]['seen'] and a2['reports'][1]['seen'],
+          'ban ghi moi nhat DUNG DAU')
+
+    # Chot phien ban: mot lan ghi voi version cu phai bi TU CHOI, khong de nhau.
+    # Nakama that lam dung the nay (version la MD5 cua gia tri, xem
+    # core_storage.go o tag v3.37.0); ban gia phai mo phong duoc, khong thi
+    # duong chot phien ban khong co phep kiem nao.
+    #
+    # Lam TRON trong Lua: gia tri o day la bang phang nen khong dinh cai bay
+    # list Python -> bang danh so tu 0.
+    cas = L.execute('''
+        local nk = require("nakama")
+        local id = { user_id = "u-cas", collection = "player", key = "save" }
+        nk.storage_write({{ user_id = "u-cas", collection = "player",
+                            key = "save", value = { gold = 1 } }})
+        local v1 = nk.storage_read({ id })[1].version
+        -- Ghi KHONG kem version: ghi de duoc, y nhu moi loi goi cu.
+        nk.storage_write({{ user_id = "u-cas", collection = "player",
+                            key = "save", value = { gold = 2 } }})
+        local sau_upsert = nk.storage_read({ id })[1].value.gold
+        -- Ghi kem version CU (da cu sau lan ghi tren): phai bi tu choi.
+        local ok2, err2 = pcall(nk.storage_write, {{ user_id = "u-cas",
+                collection = "player", key = "save", value = { gold = 3 },
+                version = v1 }})
+        local sau_reject = nk.storage_read({ id })[1].value.gold
+        return { upsert = sau_upsert, rejected = not ok2,
+                 giu_nguyen = sau_reject, co_loi = (err2 ~= nil) }
+    ''')
+    check(int(cas['upsert']) == 2,
+          'ghi KHONG kem version thi ghi de duoc (loi goi cu y nguyen)',
+          cas['upsert'])
+    check(bool(cas['rejected']), 'ghi KEM version cu thi bi tu choi')
+    check(bool(cas['co_loi']), 'bi tu choi bang mot LOI, khong phai im lang')
+    check(int(cas['giu_nguyen']) == 2, 'va ban luu khong bi de', cas['giu_nguyen'])
+
+    print('\n=== 12. bao lai: cat bot va lam sach du lieu ben ngoai ===')
+
+    def dat_reports(rows):
+        """Nhet thang `reports` vao ban luu DANG nam trong kho.
+
+        Phai doc lai tu kho moi lan: write_save ghi ban luu DA LAM SACH, tuc
+        mot bang khac — nen mot tham chieu lay tu truoc do thanh ban cu ngay
+        sau lan ghi dau tien.
+        """
+        env['store']['u-pvp-a/player/save']['reports'] = L.table(*rows)
+
+    # Nhet 25 ban ghi: chi giu 20, moi nhat dung dau.
+    rows = []
+    for i in range(1, 26):
+        rows.append(L.table(name='ai%02d' % i, result=1, at=1000 + i, seen=True))
+    dat_reports(rows)
+    rpcs['bx.pvp'](ctxB, L.table(name='pPheiDKCRb'))
+    a3 = deep(save_a())
+    check(len(a3['reports']) == 20, 'cat con dung 20 ban ghi',
+          len(a3['reports']))
+    check(a3['reports'][0]['name'] == 'sEzLWcxZJV',
+          'ban ghi moi nhat dung dau', a3['reports'][0]['name'])
+
+    # Ban luu la du lieu BEN NGOAI: rac phai bi loc sach, khong duoc tin.
+    dat_reports((L.table(name='x' * 500, result=99, at='abc', seen='vang'),
+                 L.table(name='that', result=2, at=12345, seen=True),
+                 'khong phai bang'))
+    a4 = deep(save_a())
+    check(len(a4['reports']) == 2, 'bo ban ghi khong phai bang',
+          len(a4['reports']))
+    check(len(a4['reports'][0]['name']) == 32, 'cat ten ve 32 ky tu',
+          len(a4['reports'][0]['name']))
+    check(int(a4['reports'][0]['result']) == 2, 'result 99 kep ve 2',
+          a4['reports'][0]['result'])
+    check(int(a4['reports'][0]['at']) == 0, 'at khong phai so thi ve 0',
+          a4['reports'][0]['at'])
+    check(a4['reports'][0]['seen'] is False, 'seen phai la boolean that',
+          a4['reports'][0]['seen'])
+    check(a4['roster'] == ['LvBuGod', 'MaChao', 'LvBu', 'GanNing'],
+          'ban luu con nguyen doi hinh sau khi loc rac', a4['roster'])
 
     print('\n===== dat %d, hong %d =====' % (n_pass, n_fail))
     return 0 if n_fail == 0 else 1

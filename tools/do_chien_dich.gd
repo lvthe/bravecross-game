@@ -384,6 +384,19 @@ func _init() -> void:
 			# thuc ra sao: kich ban keo boss ra thi ben ta don sach -> thang.
 			print("  quan luc kich ban xong: %s" % str(lua.run("return require('cocos').tran_nut:ds_quan()", "ds")))
 			var co_dong_minh := str(kb.get("nk", "")).contains("JoinBattle")
+			# THAM SO `form` CO TOI NOI THAT KHONG. Day la phep kiem cho dung lop
+			# loi IM LANG: `goi_tran` cua `lua/kich_ban.lua` boc loi goi trong
+			# `pcall`, nen lech SO THAM SO khong sinh mot dong loi nao — bo do cu
+			# (chi doi "kich ban khong loi") khong the bat duoc.
+			#
+			# Bon phep do di qua DUNG duong that (`g_DramaSystem:SetRoleChangeFight`
+			# -> `goi_tran` -> `tuyet_chieu`) roi doc lai thu `tuyet_chieu` NHAN
+			# duoc. Ten hinh khong khop don vi nao (`__do_tham_so__`) nen khong gay
+			# sat thuong: phep do khong lam doi ket qua tran.
+			var ft: Dictionary = lua.run(_FORM_TS, "do form")
+			var vet_drama := str(ft.get("drama", "")) if ft != null else ""
+			var vet_them := str(ft.get("them", "")).trim_prefix(" > ") if ft != null else ""
+			print("  vet tuyet_chieu: %s" % vet_them)
 			for i in 9000:
 				lua.tick(KHUNG)
 				if i % 30 == 29 and lua.run("return require('cocos').tran_cuoi ~= nil", "cho") == true:
@@ -433,7 +446,46 @@ func _init() -> void:
 				["buoc 'cho dat quan' ghi ro duong thoat (su kien hoac qua gio)",
 						nk.contains("qua gio dat_linh @") or nk.contains("dat linh xong @"),
 						nk],
+				# Bon phep kiem duoi day khoa viec THAM SO `form` di het duong
+				# Lua -> GDScript. Chung khong the do bang "khong thay loi": duong
+				# ay boc trong `pcall` nen lech so tham so bi nuot im lang.
+				["form toi noi: 'Super4' + form 2 ra KY NANG",
+						vet_them.contains("__do_tham_so__|Super4|2|ky_nang"), vet_them],
+				["form la thu quyet dinh, khong phai ten: 'Super4' + form 0 ra TU THE",
+						vet_them.contains("__do_tham_so__|Super4|0|tu_the"), vet_them],
+				["'Fight20' + form 1 ra TU THE (khong gay sat thuong)",
+						vet_them.contains("__do_tham_so__|Fight20|1|tu_the"), vet_them],
+				["'Talent' + form 4 ra KY NANG",
+						vet_them.contains("__do_tham_so__|Talent|4|ky_nang"), vet_them],
+				["moi lenh ChangeFight cua kich ban THAT di kem dung form",
+						_lech_form(nk, vet_drama).is_empty(), str(_lech_form(nk, vet_drama))],
 			]
+			# HIEU UNG THUC TINH tren duong KICH BAN. `drama_*.lua` goi
+			# `SetRoleChangeFight` -> `goi_tran` -> `tuyet_chieu`, va day moi la
+			# duong co TUONG THAT (Trieu Van, Quan Vu...).
+			#
+			# DO 2026-09-21 — vi sao `ve = 0` o day la DUNG, khong phai loi:
+			# `tuyet_chieu` gac phan HIEU UNG sau cong `_xong`, ma tran nay ket
+			# thuc o GIAY 22 (`tran: thang=true (song 0 giay 22)`) con hai lenh
+			# `ChangeFight LvBu Wake f2` / `ChangeFight ZhaoYun Wake f2` cua kich
+			# ban toi o 30,7 tro di (xem `nhat ky kich ban`). Nen KHONG co lenh
+			# `Wake` nao cua kich ban toi san tran luc tran CON CHAY, va con so 0
+			# nay la he qua cua chinh cong do — khong phai mot hieu ung bi nuot.
+			# Cong do da duoc do rieng: `vet_tuyet_chieu` ghi TRUOC cong nen no
+			# van thay du hai loi goi, va phep kiem ngay duoi khoa dung dieu ay.
+			var httkb: Dictionary = JSON.parse_string(str(
+					lua.run("return require('cocos').tran_nut:dem_thuc_tinh()", "dem tt kb")))
+			print("  hieu ung thuc tinh (kich ban): %s" % str(httkb))
+			# Phep kiem co LUC o day: "lenh thuc tinh cua kich ban TOI duoc san
+			# tran". No phan biet duoc "khong toi" voi "toi ma bi cong nuot" —
+			# dung cai ma `do_chien_dich --kichban` tung bi mot lan (xem chu
+			# thich dau `vet_tuyet_chieu`).
+			dskb.append(["hieu ung thuc tinh: lenh 'Wake' cua kich ban TOI duoc san tran",
+					vet_drama.contains("LvBu|Wake|2") and vet_drama.contains("ZhaoYun|Wake|2"),
+					vet_drama])
+			dskb.append(["hieu ung thuc tinh: khong ten nao bi tu choi tren duong kich ban",
+					httkb != null and (httkb.get("im_vi_sao", {}) as Dictionary).is_empty(),
+					str(httkb)])
 			var dat := 0
 			for e in dskb:
 				if bool(e[1]):
@@ -700,11 +752,11 @@ func _process(dt: float) -> bool:
 ## Hai duong doc doc lap phai ra CUNG mot moc: Lua `cjson` doc lai chuoi JSON
 ## (`bf:_moc_toan`) va man tran (`do_cho_dat`). Moc phai khac 0 — o 0 la mep trai
 ## san, ngoai doi hinh (`CUIGame:FitBattleArmyPos` dat toan o 3,83 / 7,1 / 7 o).
-## Cho dat cua TOAN LINH DUA RA thi la ĐẶT (o 0, xem `san_tran_ve.dua_linh`), nen
-## phep kiem chi doi moi nguoi nam SAU goc san theo tung buoc `fArmySpace` — dung
-## hinh dang ay — chu khong doi no trung moc cua toan. Doi `dua_linh` sang moc
-## cua toan thi dong kiem nay phai sua cung luc, va phai chay lai `--kichban`
-## truoc (lan 2026-09-17 no tut xuong 6 dat / 3 hong).
+## Cho dat cua TOAN LINH DUA RA nay la MOC CUA TOAN (truoc 2026-09-20 la o 0 —
+## xem `san_tran_ve.dua_linh`), nen phep kiem doi moi nguoi nam SAU CHINH MOC ay
+## theo tung buoc `fArmySpace`/`SKEW_X` — dung hinh dang ay. Doi neo thi dong kiem
+## nay phai sua cung luc, va phai chay lai `--kichban` truoc (lan 2026-09-17 no
+## tut xuong 6 dat / 3 hong).
 func _kiem_moc(cuoi: Dictionary) -> Array:
 	var moc := float(str(cuoi.get("dua moc", "")))
 	var cho := str(cuoi.get("dua cho", ""))
@@ -725,12 +777,17 @@ func _kiem_moc(cuoi: Dictionary) -> Array:
 				xs.append(float(a[1]))
 	var buoc := STV.ARMY_SPACE * 100.0
 	var skew := STV.SKEW_X
+	# NEO do luoi lui: tu 2026-09-20 `dua_linh` dat theo MOC CUA TOAN chu khong
+	# theo o 0, nen neo = goc san + moc (o) * co o px. `goc` mot minh khong con
+	# du: do tu no thi moi `lui` ra so AM va phep kiem do oan (da xay ra dung
+	# the khi doi neo lan dau).
+	var neo := goc + moc * STV.O_PX
 	var dat := moc != 0.0 and is_equal_approx(m, moc) and not xs.is_empty()
 	for x in xs:
-		# Doi ta `lui = -1`: moi nguoi xep LUI ve phia sau goc theo luoi cheo cua
+		# Doi ta `lui = -1`: moi nguoi xep LUI ve phia sau neo theo luoi cheo cua
 		# `_them` — cot lui `fArmySpace` (1,1 o = 110 px), hang lui them `SKEW_X`
 		# (46 px). Doi lai mot trong hai hang so ay thi dong kiem nay do.
-		var lui := goc - float(x)
+		var lui := neo - float(x)
 		var khop := false
 		for cot in 8:
 			for hang in 3:
@@ -790,10 +847,66 @@ func _kiem(lua: LuaRuntime, may_chu: String, offline: String, canh: String,
 		var tj: Dictionary = JSON.parse_string(str(
 				lua.run("return require('cocos').tran_nut:dem_tieng()", "tieng")))
 		print("  tieng trung don: %s" % str(tj))
+		# NGUA MAC DINH: luat `<sDefaultMount>` cua `map/*.xml` (ban VN co DUNG
+		# mot muc: LvBuGod -> PonyChiTuGod). In ca chuoi gan do cua lan
+		# `dua_dong_minh` cuoi cung, vi "khong thay ngua" va "duong ay chua chay"
+		# trong y het nhau tu ben ngoai.
+		print("  do gan: %s | ngua mac dinh: %s" % [
+				str(lua.run("return require('cocos').tran_nut:do_vua_gan()", "do")),
+				str(lua.run("return require('cocos').tran_nut:do_ngua_mac_dinh()", "ngua"))])
 		ds.append(["tieng trung don chay qua duong cua ban goc",
 				tj != null and int(tj.get("don", 0)) > 0
 				and int(tj.get("phat", 0)) > 0 and int(tj.get("im", 0)) > 0,
 				str(tj)])
+		# SO SAT THUONG NOI — cung loi `dem_tieng()`, va cung ly do: mot nhan
+		# khong ve duoc thi **khong nem mot dong loi nao** (`load()` tra `null`,
+		# `Label` khong co phong van ton tai, van `queue_free()` binh thuong), nen
+		# "chay khong loi" khong noi len gi — phai DEM. Do o day chu khong chi o
+		# bo kiem rieng (`tools/verify_nhan.gd`): **day moi la tran THAT cua
+		# nguoi choi**, va bo kiem kia goi thang duong trung don.
+		var nh: Dictionary = JSON.parse_string(str(
+				lua.run("return require('cocos').tran_nut:dem_nhan()", "nhan")))
+		print("  so sat thuong noi: %s" % str(nh))
+		var loai_ra: Dictionary = nh.get("theo_loai", {}) if nh != null else {}
+		ds.append(["so sat thuong noi: VE DUOC nhan trong tran that",
+				nh != null and int(nh.get("ve", 0)) > 0, str(nh)])
+		# `im_vi_sao` rong nghia la KHONG nhan nao bi tu choi: du sau phong deu
+		# nap duoc, va khong lan nao roi vao "loai la".
+		ds.append(["so sat thuong noi: khong nhan nao bi tu choi (du sau phong)",
+				nh != null and (nh.get("im_vi_sao", {}) as Dictionary).is_empty(), str(nh)])
+		# `Bonus` / `Shield` co phong nhung KHONG luat nao sinh ra chung — khang
+		# dinh ngay tren tran that, de ngay nao co luat thi dong nay bat duoc.
+		ds.append(["so sat thuong noi: khong co Bonus/Shield (chua co luat sinh)",
+				not loai_ra.has("Bonus") and not loai_ra.has("Shield"), str(loai_ra)])
+		# HIEU UNG THUC TINH — 14 truong `s*` nhom SINH HIEN cua `WakeRef`. O
+		# tren `_bam_thuc_tinh` da BAM THAT vao nut thuc tinh cua tran nay, nen
+		# day la con so cua duong tran that, khong phai cua bo kiem rieng.
+		# Cung loi `dem_nhan`: mot armature khong dung duoc thi khong nem mot
+		# dong loi nao, nen "chay khong loi" khong noi len gi.
+		var htt: Dictionary = JSON.parse_string(str(
+				lua.run("return require('cocos').tran_nut:dem_thuc_tinh()", "dem tt")))
+		print("  hieu ung thuc tinh: %s" % str(htt))
+		# Doi "VE duoc" chu khong doi "ve > 0": tren ai nay nhan vat chinh mang
+		# `Player000M03W`, ma ban VN 1.26 KHONG co khoi `fight_<X>Wake` nao cho
+		# ten do (da doi chieu ca bon `*config*.xml`) — nen `ve = 0` o day la
+		# DUNG DU LIEU, khong phai loi. Cai phai khoa la duong ay CO CHAY.
+		var tt_ve := int(htt.get("ve", 0)) if htt != null else 0
+		var tt_im := int(htt.get("im", 0)) if htt != null else 0
+		ds.append(["hieu ung thuc tinh: duong thuc tinh CO chay (ve + im > 0)",
+				htt != null and tt_ve + tt_im > 0, str(htt)])
+		# Va moi loi tu choi phai la loi DU LIEU (`khong-co-bang:<ten>` — bang
+		# `wake_ref.json` thieu dong cho tuong ay), KHONG duoc la loi CUA TA
+		# (`khong-tra-thu-muc:` / `khong-dung-duoc:` — ten co that ma ta khong
+		# dung duoc rig). Do la khac biet giua "ban goc khong co art" va "port
+		# lam hong art".
+		var tt_ld: Dictionary = htt.get("im_vi_sao", {}) if htt != null else {}
+		var tt_xau: Array = []
+		for k in tt_ld:
+			if not String(k).begins_with("khong-co-bang:"):
+				tt_xau.append("%s=%s" % [k, tt_ld[k]])
+		ds.append(["hieu ung thuc tinh: moi loi tu choi deu la loi DU LIEU",
+				htt != null and tt_xau.is_empty(), "cua ta: %s | tat ca: %s"
+						% [str(tt_xau), str(tt_ld)]])
 		# "quan 19->23 thong soai 3->0": 5 phan (chu "thong soai" co dau cach).
 		var bn := _bam_nut.split(" ")
 		var bam_ok := bn.size() == 5 and bn[0] == "quan" and bn[2] == "thong"
@@ -947,6 +1060,74 @@ const _KICH_BAN := """
 	out['bam_cam'] = (k and k.so_bam_cam) and k:so_bam_cam() or 0
 	return out
 """
+
+
+## Phep do tham so `form`: bon loi goi di qua DUNG duong that
+## (`g_DramaSystem:SetRoleChangeFight` -> `goi_tran` -> `tuyet_chieu`), roi doc lai
+## vet ma `tuyet_chieu` ghi (`san_tran_ve.vet_tuyet_chieu`). Tra ve `drama` = vet
+## TRUOC khi do (tuc la cua chinh kich ban that) va `them` = phan vet do bon loi
+## goi nay sinh ra.
+##
+## Bon cap duoc chon de phan biet THAM SO voi TEN DONG TAC:
+##   'Super4' + form 2  -> KY NANG   (ten khong bat dau bang "Wake"/"Talent" nen
+##                                    luat theo TEN se noi TU THE — sai)
+##   'Super4' + form 0  -> TU THE    (CUNG ten, khac form: chung minh form moi la
+##                                    thu quyet dinh, khong phai tien to ten)
+##   'Fight20' + form 1 -> TU THE
+##   'Talent' + form 4  -> KY NANG
+##
+## Bon cap nay la phep kiem cho QUY UOC, khong phai cho mot hong hoc da do duoc:
+## tren dung 17 cho goi hien co trong sc/plot/drama_*.lua, luat theo ten va luat
+## theo form cho ra cung ket qua (ba cho "Super"/"Super4" deu la `doi = 1` ma
+## nhanh AoE von da bo qua loi goi cua ben dich).
+const _FORM_TS := """
+	local out = Dictionary()
+	local t = require('cocos').tran_nut
+	local k = rawget(_G, 'g_DramaSystem')
+	out['drama'] = t:vet_tuyet_chieu()
+	k:SetRoleChangeFight('__do_tham_so__', 0, 2, 'Super4')
+	k:SetRoleChangeFight('__do_tham_so__', 0, 0, 'Super4')
+	k:SetRoleChangeFight('__do_tham_so__', 0, 1, 'Fight20')
+	k:SetRoleChangeFight('__do_tham_so__', 0, 4, 'Talent')
+	out['them'] = t:vet_tuyet_chieu():sub(#out['drama'] + 1)
+	return out
+"""
+
+
+## Doi chieu nhat ky kich ban voi vet `tuyet_chieu`: moi dong `ChangeFight <hinh>
+## <dong tac> f<form>` trong nhat ky phai co mot muc vet khop DUNG ba thu do.
+## Tra ve danh sach dong lech (rong = khop het).
+##
+## Day moi la phep kiem noi rang `form` di het duong chu khong phai chi di duoc
+## khi goi tay: nhat ky do chinh `kich_ban.lua` ghi, vet do chinh `tuyet_chieu`
+## ghi, hai ben doc lap.
+static func _lech_form(nk: String, vet: String) -> Array:
+	var co := {}
+	for muc in vet.split(" > ", false):
+		co[muc] = true
+	var lech: Array = []
+	for dong in nk.split(" > ", false):
+		if not dong.begins_with("ChangeFight "):
+			continue
+		# 'ChangeFight <hinh> <dong tac> f<form>' — cat tu CUOI vi ten dong tac
+		# khong chua dau cach con ten hinh thi co the chua.
+		var phan := dong.split(" ")
+		if phan.size() < 4:
+			lech.append(dong)
+			continue
+		var form := phan[phan.size() - 1]
+		if not form.begins_with("f"):
+			lech.append(dong)
+			continue
+		var khoa := "%s|%s|%s|" % [phan[1], phan[2], form.substr(1)]
+		var thay := false
+		for muc in co:
+			if str(muc).begins_with(khoa):
+				thay = true
+				break
+		if not thay:
+			lech.append(dong)
+	return lech
 
 
 ## Ket qua tran sau kich ban: thang/thua + so quan con hai ben.

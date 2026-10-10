@@ -1,7 +1,8 @@
-# Man tran. Vao tu man chon chuong (ui/menu.tscn); `Game.chapter` cho biet
+# Man tran. Vao bang duong dan tuong minh (`godot --path . battle/battle.tscn`)
+# hoac tu nut cua man chon chuong trong `ui/menu.tscn`; `Game.chapter` cho biet
 # dang danh chuong nao, 0 la danh tap.
 #
-#   Esc   ve man chon chuong
+#   Esc   ve `Game.MENU` — man Main THAT cua ban goc, khong phai `ui/menu.tscn`
 #   F     danh lai chuong nay (may chu xu, co tinh diem)
 #   R     xem lai tai cho, KHONG tinh diem
 #   space tam dung        1 / 2 / 3  toc do 1x / 2x / 4x
@@ -87,6 +88,19 @@ var replay_power := 1.0
 ## Buff trang bi dung khi PHAT LAI (luc do khong co phien de hoi). Ten tuong ->
 ## bang buff. Rong thi phat lai tran khong trang bi, y nhu truoc.
 var replay_equip: Dictionary = {}
+## Tran dang xem co phai danh vao doi hinh NGUOI THAT khong (bx.pvp). Bat thi
+## quan linh hai ben la linh nen (chapter = 0) va doi phai dung `pvp_foe`.
+var pvp := false
+## Doi cua nguoi bi danh, do may chu gui ve khi `pvp`. Cung hinh dang nhu
+## `foe` trong reply cua bx.pvp: power / levels / placement / formation /
+## formationLevel / buffs. Rong thi giu nguyen luat cu (doi dich cap 1, cho
+## dung mac dinh, do manh qua `power` cua chuong).
+var pvp_foe: Dictionary = {}
+## O nhap ten doi thu (phim T). Dung mot LineEdit tran chu KHONG dung UiONhap:
+## lop do sinh ra cho giao dien Lua, chi dep khi co bo cuc .xgg dang sau.
+var _o_ten: LineEdit = null
+## Dong bao lai "ai vua danh minh", chi hien mot lan luc mo man.
+var _reports_line := ""
 ## Thoi gian con du chua di het mot buoc.
 var _accum := 0.0
 
@@ -136,6 +150,16 @@ func _ready() -> void:
 		await _play_through(int(opts["play"]))
 		return
 
+	# Tran PvP: `--pvp=TEN` danh ngay, dung cho bo kiem. Phai dat TRUOC nhanh
+	# chuong, vi no khong phai mot chuong — `chapter = 0` moi dung.
+	if opts.has("pvp"):
+		await _pvp(String(opts["pvp"]))
+		return
+
+	# Bao lai: ai vua danh minh. Doc LA da nhan, nen chi hien mot lan.
+	if session != null and session.online:
+		await _show_reports()
+
 	# chapter = 0 la danh tap: van dien, nhung khong xin may chu, khong tinh diem.
 	$Backdrop.texture = Game.backdrop(Game.chapter)
 	if session != null and session.online and Game.chapter > 0:
@@ -157,6 +181,10 @@ func _ready() -> void:
 func _ranked(chapter: int) -> void:
 	server_result = -1
 	replay_seed = 0
+	# Tran chuong khong phai PvP: xoa het dau vet cua tran PvP truoc do, khong
+	# thi doi phai van dung cap / the tran cua nguoi khac.
+	pvp = false
+	pvp_foe = {}
 	label.text = "dang xin chuong %d tu may chu..." % chapter
 	var f := await session.fight(chapter)
 	if not f.ok:
@@ -171,6 +199,73 @@ func _ranked(chapter: int) -> void:
 	replay_seed = int(f.get("seed", 0))
 	replay_power = float(f.get("power", 1.0))
 	_spawn()
+
+
+## Mot tran PvP: danh vao doi hinh THAT cua mot tai khoan chi dinh.
+##
+## Giong `_ranked` o cho may chu xu tran roi client PHAI LAI dung tran do, nen
+## ca hai deu can cung seed / cung buoc thoi gian. Khac o cho doi phai khong
+## con la "quan cua chuong" ma la nguoi that, voi cap / cho dung / the tran /
+## trang bi rieng — mang trong `pvp_foe`.
+##
+## `chapter = 0` cho CA HAI ben: quan linh la linh nen, khong theo chuong nao.
+## Khong dat `Game.chapter = 0` — do la trang thai cua autoload, song lau hon
+## man nay, va se lam man chon chuong mat dau.
+func _pvp(name: String) -> void:
+	if session == null or not session.online:
+		label.text = "chua noi duoc may chu, khong danh PvP duoc"
+		return
+	pvp = true
+	pvp_foe = {}
+	server_result = -1
+	replay_seed = 0
+	label.text = "dang xin tran voi %s..." % name
+	var f := await session.pvp(name)
+	if not f.ok:
+		label.text = "khong xin duoc tran: %s" % str(f.get("error", ""))
+		return
+	Game.last_fight = f
+	var foe: Dictionary = f.get("foe", {})
+	var opp: Array = foe.get("roster", [])
+	if opp.size() == TEAM_SIZE and _all_known(opp):
+		roster[1] = opp.duplicate()
+		pvp_foe = foe
+	else:
+		# Doi thu khong dung thi khong dien mot doi khac roi goi do la doi cua
+		# nguoi ta. May chu da tu choi truong hop nay; day la chot thu hai.
+		label.text = "doi hinh cua %s khong dung duoc" % name
+		return
+	server_result = int(f.get("result", 2))
+	replay_seed = int(f.get("seed", 0))
+	replay_power = float(foe.get("power", 1.0))
+	if not bool(f.get("foeLedger", true)):
+		# So ben bi danh khong ghi duoc (dua ghi nhau hai lan): tran thua do da
+		# mat. Noi ra chu khong im.
+		push_warning("so cua %s khong ghi duoc: tran nay khong vao so cua ho" % name)
+	_spawn()
+
+
+## Hien mot dong bao lai: ai vua danh minh. `result` giu nguyen diem nhin cua
+## NGUOI DI DANH, nen doi chieu nguoc lai khi doc: 0 = minh bi danh bai,
+## 1 = minh thang, 2 = hoa.
+func _show_reports() -> void:
+	var rows: Array = await session.reports()
+	if rows.is_empty():
+		return
+	var parts: Array = []
+	for r in rows:
+		if typeof(r) != TYPE_DICTIONARY:
+			continue
+		var who := String(r.get("name", "?"))
+		match int(r.get("result", 2)):
+			0:
+				parts.append("bi %s danh bai" % who)
+			1:
+				parts.append("thang %s" % who)
+			_:
+				parts.append("hoa %s" % who)
+	if not parts.is_empty():
+		_reports_line = "vua bi danh: " + ", ".join(parts)
 
 
 ## Ban luu va du lieu may chu deu la du lieu ben ngoai: co the tro toi tuong
@@ -250,16 +345,50 @@ func _place(t: int, row: int, slot: int, of: int) -> Array:
 	return [x, y]
 
 
+## Co armature that cho ten quan nay khong.
+##
+## `SpriteName` trong bang quan chung la ten LOAI QUAN, khong phai ten armature:
+## bang ghi `Archer(new)`, `Hoplite(董军入侵)`, `Stakes`, `witch doctor`, con thu
+## muc art ten la `Archer`, `Hoplite`, `Spearmen`, `WitchDoctor`. Doi chieu voi
+## kho atlas cua CHINH ban goc thi **62/80** ten trong bang khong co armature nao.
+##
+## Da can nhac dung luat tien to co san cua kho (`san_tran_ve._thu_muc_rig`, cung
+## luat voi `LuaRuntime._tao_rig`: khong trung thu muc thi cat dan duoi va xin ten
+## day du lam BIEN THE). Luat ay **cuu nham 32/62** ten: `Archer(new)` ra
+## `Archer`, `Catapult(董军入侵)` ra `Catapult` (29 ten ra duoc voi dung chu hoa/
+## thuong cua thu muc, 3 ten nua chi ra duoc vi `FileAccess.file_exists` tren
+## Windows khong phan biet chu hoa/thuong — `witch doctor` ra thu muc `witch`
+## trong khi thu muc that ten `Witch`). Nhung do lai chinh la bay: quet ca kho
+## `assets_ref` thi **0/80** ten trong bang la bien the that su cua armature nao.
+## `(new)` va `(董军入侵)` la LOAI QUAN cua ban moi, art khong co trong APK nay;
+## gan chung vao armature goc la hien sai quan (Archer(new) mang hinh Archer cu).
+## Nen o day chi nhan dung thu muc trung ten, khong dung luat tien to.
+##
+## `SngRig.build` tra null VA `push_error` khi thieu file `.json`, ma truoc luot
+## nay moi don vi deu di thang duong do: mot tran ra **hang tram dong**
+## `SngRig: khong thay res://assets_ref/...`. Bon bo kiem khong bat duoc vi
+## `--sim` chay bang `_spawn(false)` (tat han phan hinh).
+##
+## Don vi thieu art VAN DANH: mo phong khong dinh gi toi hinh, va bo no khoi tran
+## moi la doi thanh phan quan cua chuong (README: do la doi do kho, phai do lai).
+## Nen cho `visual = false` — vo hinh, chu khong bien mat.
+static func co_art(art_name: String) -> bool:
+	if art_name == "":
+		return false
+	return FileAccess.file_exists(ART.path_join(art_name).path_join(art_name + ".json"))
+
+
 func _add_unit(f, t: int, pos: Array, art_name: String, with_art: bool) -> void:
 	if f == null:
 		return
+	var co := with_art and co_art(art_name)
 	var u := BattleUnit.new()
-	u.visual = with_art
+	u.visual = co
 	u.sx = pos[0]
 	u.sy = pos[1]
 	u.position = Vector2(u.sx, u.sy)
 	add_child(u)
-	u.setup(f, t, combat.rules, rng, (ART + art_name) if with_art else "", RIG_SCALE)
+	u.setup(f, t, combat.rules, rng, (ART + art_name) if co else "", RIG_SCALE)
 	teams[t].append(u)
 
 
@@ -277,8 +406,13 @@ func _spawn(with_art := true) -> void:
 		# may chu: quan linh cua mot chuong phai co dinh — nguoi choi hoc duoc
 		# tran dau roi doi doi hinh cho hop, va cai hien tren man phai dung la
 		# doi quan ma trong tai vua xu.
-		var picks := _pick_armies(Game.chapter * 31 + side * 7 + Game.chapter)
-		var army_lv: int = ARMY_BASE_LEVEL + maxi(0, Game.chapter)
+		#
+		# Tran PvP dung chuong 0 y nhu may chu (no cung truyen chapter = 0), nen
+		# quan linh hai ben la linh nen. Khong duoc gan Game.chapter = 0: do la
+		# trang thai cua autoload Game, song lau hon man nay.
+		var ch: int = 0 if pvp else Game.chapter
+		var picks := _pick_armies(ch * 31 + side * 7 + ch)
+		var army_lv: int = ARMY_BASE_LEVEL + maxi(0, ch)
 		for name in picks:
 			var proto = combat.make_army(name, army_lv)
 			if proto == null:
@@ -315,6 +449,26 @@ func _spawn(with_art := true) -> void:
 					# bang buff no vua dung — ap dung cai do.
 					buffs = Equipment.merge_buffs(buffs,
 							replay_equip.get(hero_name, {}))
+			elif not pvp_foe.is_empty():
+				# Doi thu la NGUOI THAT (bx.pvp): dung dung cap, cho dung, the
+				# tran va trang bi cua ho — y nhu may chu lam trong nhanh
+				# `elseif foe_formation ~= nil` cua army_battle(). Nhanh nay
+				# phai khop TUNG DON VI, khong thi tran phat lai lech tran may
+				# chu xu.
+				var fl: Dictionary = pvp_foe.get("levels", {})
+				lv = maxi(1, int(fl.get(hero_name, 1)))
+				var fp: Array = pvp_foe.get("placement", [])
+				if i < fp.size():
+					spot = clampi(int(fp[i]), 1, 3)
+				power = float(pvp_foe.get("power", 1.0))
+				if pvp_foe.has("formation"):
+					var fname := String(pvp_foe.get("formation", ""))
+					var fb: Dictionary = {}
+					if fname != "":
+						fb = combat.formation_buffs(fname,
+								int(pvp_foe.get("formationLevel", 0)), spot)
+					var fbuff: Dictionary = pvp_foe.get("buffs", {})
+					buffs = Equipment.merge_buffs(fb, fbuff.get(hero_name, {}))
 			else:
 				power = replay_power
 			var y: float = MID_Y + (float(i) - (roster[t].size() - 1) * 0.5) * ROW_GAP
@@ -444,6 +598,8 @@ func _refresh(out := -1) -> void:
 	if label == null:
 		return
 	var head := ("Chuong %d" % Game.chapter) if Game.chapter > 0 else "Danh tap"
+	if pvp:
+		head = "PvP  vs  %s" % String(pvp_foe.get("name", "?"))
 	var txt := "%s   |   %s  %d/%d   vs   %d/%d  %s\n%.1fs" % [head,
 			", ".join(roster[0]), _alive(0), teams[0].size(),
 			_alive(1), teams[1].size(), ", ".join(roster[1]), elapsed]
@@ -455,6 +611,7 @@ func _refresh(out := -1) -> void:
 		txt += "   —  HOA"
 	else:
 		txt += "\nEsc ve menu   F danh lai chuong   R xem lai   space tam dung   1/2/3 toc do"
+		txt += "\nP dan dan ten doi thu (PvP)   T nhap ten doi thu"
 	if server_result >= 0 and out >= 0:
 		var verdict: String = ["BAN THANG", "BAN THUA", "HOA"][server_result]
 		txt += "   |   may chu xu: %s" % verdict
@@ -466,10 +623,17 @@ func _refresh(out := -1) -> void:
 			txt += "  (!! ban dien lech voi may chu — chay --replaycheck)"
 	if session != null:
 		txt += "\n" + session.status_line()
+	if _reports_line != "":
+		txt += "\n" + _reports_line
 	label.text = txt
 
 
 func _unhandled_input(e: InputEvent) -> void:
+	# CHOT BAT BUOC: o nhap ten dang mo va dang co tieu diem thi tra phim lai cho
+	# no. Khong co chot nay thi go ten vua vao o vua doi doi hinh — R/F/N la chu
+	# cai, Space/1/2/3 la phim tran, tat ca deu nam trong match ben duoi.
+	if _o_ten != null and _o_ten.visible and _o_ten.has_focus():
+		return
 	if not (e is InputEventKey and e.pressed and not e.echo):
 		return
 	match e.keycode:
@@ -492,6 +656,10 @@ func _unhandled_input(e: InputEvent) -> void:
 			server_result = -1
 			replay_seed = 0
 			_spawn()
+		KEY_P:                       # dan dan ten doi thu (PvP)
+			_pvp_tu_clipboard()
+		KEY_T:                       # nhap ten doi thu (PvP)
+			_mo_o_ten()
 		KEY_SPACE:
 			get_tree().paused = not get_tree().paused
 		KEY_1:
@@ -500,6 +668,46 @@ func _unhandled_input(e: InputEvent) -> void:
 			Engine.time_scale = 2.0
 		KEY_3:
 			Engine.time_scale = 4.0
+
+
+## Dan ten doi thu tu clipboard. Hai cua so canh nhau thi day dung dong tac
+## nguoi choi lam: bam P la danh ngay, khong phai go lai 10 ky tu.
+func _pvp_tu_clipboard() -> void:
+	var ten := DisplayServer.clipboard_get().strip_edges()
+	if ten == "":
+		label.text = "clipboard rong — bam T de nhap ten"
+		return
+	await _pvp(ten)
+
+
+## O nhap ten tran: mot LineEdit dung trong ma, nam tren cung.
+func _mo_o_ten() -> void:
+	if _o_ten == null:
+		_o_ten = LineEdit.new()
+		_o_ten.placeholder_text = "username 10 ky tu"
+		_o_ten.flat = true
+		_o_ten.add_theme_color_override("font_color", Color(1, 0.95, 0.7))
+		_o_ten.position = Vector2(24, 12)
+		_o_ten.size = Vector2(320, 30)
+		_o_ten.text_submitted.connect(_nhan_ten)
+		add_child(_o_ten)
+	_o_ten.text = ""
+	_o_ten.visible = true
+	_o_ten.grab_focus()
+
+
+func _nhan_ten(ten: String) -> void:
+	_dong_o_ten()
+	var s := ten.strip_edges()
+	if s == "":
+		return
+	await _pvp(s)
+
+
+func _dong_o_ten() -> void:
+	if _o_ten != null:
+		_o_ten.visible = false
+		_o_ten.release_focus()
 
 
 ## Kiem tra dieu quan trong nhat cua man nay: cai chieu tren man co DUNG la
@@ -542,24 +750,41 @@ func _replay_check(url: String) -> void:
 	print("doi trai : %s" % ", ".join(mine))
 	print("doi phai : %s\n" % ", ".join(theirs))
 
-	# Hai luot. Luot dau la tran tran nhu truoc; luot hai dung nhung tran do
+	# Ba luot. Luot dau la tran tran nhu truoc; luot hai dung nhung tran do
 	# nhung doi ta co trang bi — do CHINH cai vua noi vao: buff trang bi rang
-	# vao tran o client co giong het ben may chu khong.
+	# vao tran o client co giong het ben may chu khong. Luot ba la doi dich la
+	# NGUOI THAT: cap, cho dung, the tran va trang bi cua doi phuong deu khac
+	# mac dinh, nen no khoa luon nhanh `elseif` trong `_spawn` — nhanh ma khong
+	# luot nao khac cham toi.
+	#
+	# `foe` (chu khong phai co nao khac) moi la thu bat nhanh do: `_spawn` doc
+	# `pvp_foe` chu khong doc `replay_power` khi no khac rong.
 	var rounds := [
 		{"ten": "khong trang bi", "battles": ft.data.get("battles", []), "eq": {}},
 		{"ten": "co trang bi", "battles": ft.data.get("equipBattles", []),
 			"eq": ft.data.get("equipBuffs", {})},
+		{"ten": "doi thu la nguoi that", "battles": ft.data.get("foeBattles", []),
+			"eq": {}, "foe": ft.data.get("foeDesc", {})},
 	]
 	for r in rounds:
 		var label: String = r["ten"]
 		replay_equip = r["eq"]
+		# Co `foe` thi tran chay theo duong PvP: `chapter = 0` cho CA HAI ben
+		# (y may chu: bx.pvp truyen chapter = 0), quan linh hai ben la linh nen.
+		pvp = r.has("foe")
+		pvp_foe = r.get("foe", {})
 		print("-- %s --" % label)
 		for e in r["battles"]:
 			var seed_value := int(e.get("seed", 0))
 			# bx.fieldtest goi army_battle(mine, theirs, Rng.new(seed), 1.0, {},
-			# chapter = seed, seed_value = seed) — khong ban luu nen khong the tran,
+			# chapter, seed_value, ...) — khong ban luu nen khong the tran,
 			# khong cap, cho dung mac dinh. Dung lai y het o day.
-			Game.chapter = seed_value
+			#
+			# Hai luot dau: chapter = seed_value = seed. Luot PvP: chapter = 0
+			# va seed_value = 0 (doi dich la nguoi that, khong phai chuong nao),
+			# nen `seed_value` KHONG con lai la chuong — va do cung la ly do
+			# `army_battle` ben Lua phai nhan hai so rieng.
+			Game.chapter = 0 if pvp else seed_value
 			session = null
 			roster = [mine.duplicate(), theirs.duplicate()]
 			replay_seed = seed_value
@@ -679,6 +904,37 @@ func _build_hud() -> void:
 	layer.add_child(ui)
 	add_child(layer)
 	hud = ui
+
+	# Tat `g_BlackEffectLayer` — tam den phu kin ca san cua bo cuc goc.
+	#
+	# Node ay la `CCLayerColorRoundRect` 2000x1000 o (-200,-200), mau [0,0,0],
+	# opacity 255, va trong file ghi `visible: True`. Dung nguyen bo cuc thi ra
+	# MAN DEN TUYET DOI: do tren khung hinh that, HUD hien -> khung hinh dung MOT
+	# mau (0,0,0) tren ca 614.400 diem anh; tat HUD -> 2540 mau, co ca mau nen
+	# (0,106; 0,118; 0,145) lan quan xanh/do. Truoc luot nay man tran khong choi
+	# duoc chi vi node nay.
+	#
+	# Ban goc TAT no bang co `bShowBattleBlackEffectLayer`, va ai thuong dat co ay
+	# `false` (`sc/user/Battle/ChapterNormalLevel.lua:8` — mot lan gan duy nhat
+	# trong ca kho sc/). Khong file Lua nao doc co ay: no la truong ben C++ doc,
+	# va ten node `g_BlackEffectLayer` nam trong pool chuoi cua `libgame.so`
+	# (ban vn `0x7c0dc7`, canh `getEliteNameLabel` va `PauseLeaderShipTimer`) —
+	# tuc engine tim node theo TEN roi tu bat/tat. Nen hien nguyen trang thai cua
+	# file moi la nguoc voi ban goc.
+	#
+	# Duong CHIEN DICH da tat no tu truoc, o phia Lua: `lua/san_tran.lua:481`
+	# (`lop_den`) tat luc `_Lua_LoadMap`, va `SetLayerDark(b)` cua `g_BattleField`
+	# bat/tat theo kich ban. Man nay la man tran DUNG RIENG (danh tap / xep hang),
+	# khong di qua `san_tran.lua`, nen no khong duoc huong phep tat do — cung mot
+	# node, cung mot luat, hai duong khac nhau. Chu thich o `san_tran.lua` ghi
+	# phep tat ay la SUY RA; day la phep do cho dung luat ay.
+	#
+	# Giu node lai chu khong xoa: no thuoc bo cuc goc, va cac che do tran khac
+	# (dau truong, ai vo tan) moi la cho bat no len — man nay chi danh ai thuong.
+	var den := XggLayout.find_node(hud, "g_BlackEffectLayer")
+	if den != null:
+		den.visible = false
+
 	_show_mode_layer("lUINormal")
 
 

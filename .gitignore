@@ -45,3 +45,15 @@ addons/
 
 # File .bat chay tay (duong dan Godot rieng tung may) — khong commit
 /*.bat
+
+# BEGIN StudioForge
+production/session-logs/
+production/session-state/active.md
+.claude/settings.local.json
+CLAUDE.local.md
+.env
+.env.local
+.env.*.local
+*.tripo.json
+__pycache__/
+# END StudioForge

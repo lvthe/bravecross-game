@@ -21,6 +21,21 @@ const SC := "res://sc/"
 ## Thu muc chua lop gia lap do minh viet.
 const SHIM := "res://lua/"
 
+## Tep ma `boot_goc()` doc TRUOC TIEN (`lua/bootstrap.lua:895`), va cung la tep
+## ke ra bon ban khai bao mo-dun (`sc/game.lua:174-183`).
+##
+## Chon no lam dau hieu "da be ma goc vao chua" vi no la thu THAT SU can de
+## khoi dong, chu khong phai mot cho trong cach xep cay. Do tren hai ban:
+## `sc/share/class.lua` chi VN co, con 1.31 de o `sc/Framework/UtilsShare/` —
+## lay tep do lam dau hieu thi 1.31 bao "thieu ma goc" du cay van day du.
+const MA_GOC := "res://sc/game.lua"
+
+## Ma goc da duoc be vao chua (`tools/import_lua.py`). Sau mot lan nhap dut
+## quang thi `sc/` co the thieu: sau cho gac trong repo hoi cau nay truoc khi
+## dung may ao, de bao mot cau doc duoc thay vi de chuong trinh chet ve sau.
+static func thieu_ma_goc() -> bool:
+	return not FileAccess.file_exists(MA_GOC)
+
 var state: Object = null
 var _loaded: Dictionary = {}
 var errors: Array[String] = []
@@ -46,8 +61,9 @@ var rig_thieu: Dictionary = {}
 const TI_LE_BAT := 1.02
 
 ## Armature dung ra nhung RONG (0 xuong). Khong bao gio dung: mot armature ma
-## ban goc dung thi phai co xuong. Day la cho bat dung loai loi im lang — vd loc
-## `Layer*` lam rong ca armature hieu ung (xem `_tao_rig`). Dem theo ten.
+## ban goc dung thi phai co xuong. Day la cho bat dung loai loi im lang: rig 0
+## xuong VAN `play()` duoc (tra `true`) va VAN co ten dong tac, nen "chay khong
+## loi" khong thay gi — chi phep dem xuong moi bat duoc. Dem theo ten.
 var rig_rong: Dictionary = {}
 
 ## Am thanh (xem game/am_thanh.gd va lua/am_thanh.lua). Tao ngay o day chu
@@ -55,17 +71,30 @@ var rig_rong: Dictionary = {}
 ## duong noi co chay khong, va doi thi khong con gi de doc.
 var am := AmThanh.new()
 
-## `giu_layer` = true thi KHONG loc cac xuong ten `Layer*` (xem CLUTTER_PREFIXES
-## cua `SngRig`). Mac dinh la loc, dung cho nhan vat; nhung co nhom armature ma
-## TOAN BO xuong deu ten `Layer*` — do la armature HIEU UNG, va loc thi rig ra
-## RONG. Do tren 2935 bien the: **1319** bien the nhu vay (Artillery_Effect_Boom,
-## BatFlight_WakeEffect, ca 11 bien the hieu ung sao...). Rieng hieu ung sao:
-## 11/11 bien the, 100% xuong tang ngoai cung ten `Layer*` (2Up 7, 7Up 11...).
-## Nen cho nao goi vao nho kiem `rig.bones` chu dung tin `rig != null`.
-func _tao_rig(ten: String, giu_layer := false) -> Control:
+## Duong Lua KHONG loc xuong `Layer*` — xem chu thich o `SngRig.build` goi ben
+## duoi. Tra ve hop rong (va ghi ten vao `rig_thieu`) khi khong co du lieu.
+func _tao_rig(ten: String, cap = 0) -> Control:
 	var hop := _new_node("node")
 	hop.set_meta("kind", "rig")
 	hop.set_meta("rig_ten", ten)
+	# Tham so thu HAI cua ban goc: `getSpriteFromSpriteCatch(SpriteName, ArmyLevel)`
+	# (`CUIBarracksMain.lua:1034`, `CUIBarracksArmyInfo.lua:270` — hai man doanh
+	# trai). Truoc luot nay shim chi nhan MOT tham so nen cap bi BO IM LANG.
+	#
+	# Y NGHIA THAT cua tham so nay trong engine CHUA DO DUOC: ma Lua goi ngay
+	# sau do `setLevelGear(pArmature, cap)` (3 cho THAT: `CUIBarracksMain.lua:1036`,
+	# `CUIBarracksArmyInfo.lua:272`, `CUIPopUpBox.lua:723`; ca ba deu gac bang
+	# `if setLevelGear then` — ma lop gia lap tra ham cho MOI ten nen phep gac
+	# luon dung), nen phan viec theo cap co the do CA HAI duong lam. O day giu
+	# lai con so (khong bo di) va de `setLevelGear` lam viec that; KHONG suy ra
+	# them hanh vi nao cho tham so nay.
+	#
+	# KHONG ep kieu tham so nay thanh `int`: so tu Lua co the ra float (JSON cua
+	# ban goc ghi cap kieu so thuc), va mot tham so ep kieu se NEM LOI thay vi
+	# chay. Ep o trong, va chi khi that su la so.
+	var cap_so := int(cap) if (typeof(cap) == TYPE_INT or typeof(cap) == TYPE_FLOAT) else 0
+	if cap_so > 0:
+		hop.set_meta("cap_do", cap_so)
 	# Ti le SAN CO 1,02 cua doi tuong bat duoc — do tren may ao, khong suy doan
 	# (`work/emu_ti_le.py`, 2026-09-18, ban vn; ho so day du o chu thich dau file do):
 	# lay `ZhangLiangBao` lam NGUON, do vao bon dich la armature KHAC nhau
@@ -100,12 +129,34 @@ func _tao_rig(ten: String, giu_layer := false) -> Control:
 				break
 	var tep := "%s/%s.json" % [thu_muc, thu_muc.get_file()]
 	if FileAccess.file_exists(tep):
-		var rig := SngRig.build(thu_muc, bien_the, not giu_layer)
+		# `no_clutter = false`: duong Lua KHONG loc xuong `Layer*`.
+		#
+		# Bo loc do sinh ra cho rig NHAN VAT trong man tran (lo Photoshop con sot,
+		# xem `CLUTTER_PREFIXES`), va do la cho DUY NHAT no tung duoc do: ba cho
+		# goi `SngRig.build(..., true)` deu nam trong `battle/`. Duong Lua thi
+		# chua bao gio do, va do ra thi no pha: `UIJianZhuWuDaoHui` (toa nha Vo Hoi)
+		# chi co hai xuong — `PlugIn_1` (anh 4x4 rong, dung bi luat marker bo) va
+		# `LayerName000`, ma `LayerName000` MOI la toa nha (o hien cua no la cac
+		# rig long nhau `_Base_Main*`). Loc theo ten thi mat ca hai, rig ra 0
+		# xuong. Do tren 2935 bien the: **1319** bien the co toan bo xuong tang
+		# ngoai cung ten `Layer*` (gan het la armature HIEU UNG) — tuc gan nua kho
+		# armature cua giao dien dung ra khong co gi. Rieng man Main: 0 -> 17 node
+		# co anh, 5 dang hien, cho rieng toa nha Vo Hoi.
+		#
+		# Man tran khong doi — nhung KHONG phai vì phép đo điểm ảnh, mà vì ba chỗ
+		# gọi đó truyền `true` tường minh và lượt này không đụng tới chúng. Phép đo
+		# điểm ảnh ở màn trận KHÔNG có lực: hai lượt cùng cấu hình đã lệch 66.068
+		# điểm (10,7533%), và nhìn ảnh thì nhiễu ấy là ĐƠN VỊ ĐỨNG Ở CHỖ KHÁC NHAU —
+		# RNG của trận, in ra ở dòng nhật ký trên màn (vd `RDYmADaDCy`), chứ không
+		# phải nhiễu vẽ. Lượt "trước/sau" 63.827 điểm (10,3885%) vì thế chỉ là hai
+		# trận khác nhau, không đo được thay đổi ở mức rig. Muốn đo màn trận thì
+		# phải ghim được hạt RNG trước đã.
+		var rig := SngRig.build(thu_muc, bien_the, false)
 		if rig != null:
 			if rig.bones.is_empty():
 				rig_rong[ten] = int(rig_rong.get(ten, 0)) + 1
 				if rig_rong[ten] == 1:
-					push_warning("LuaRuntime: armature '%s' dung ra RONG (0 xuong) — ten go sai, hoac bo loc `Layer*` an het (xem `_tao_rig`)" % ten)
+					push_warning("LuaRuntime: armature '%s' dung ra RONG (0 xuong) — ten go sai, hoac du lieu thieu" % ten)
 			hop.add_child(rig)
 			return hop
 	rig_thieu[ten] = int(rig_thieu.get(ten, 0)) + 1
@@ -134,9 +185,7 @@ func _hieu_ung_sao(node: Node, cap: int) -> int:
 			cu.queue_free()
 	var moi: Array = []
 	for ten in StarRef.dongtac(cap):
-		# `giu_layer = true`: xuong cua moi bien the hieu ung sao deu ten
-		# `Layer*`, loc chung thi ca hieu ung ra rong (do: 11/11 bien the).
-		var hop := _tao_rig(String(ten), true)
+		var hop := _tao_rig(String(ten))
 		node.add_child(hop)
 		# Phat SAU khi vao cay: duong phuong thuc cua AnimationPlayer khong chay
 		# ngoai cay (bong armature da mac bay nay mot lan).
@@ -147,6 +196,83 @@ func _hieu_ung_sao(node: Node, cap: int) -> int:
 		moi.append(hop)
 	node.set_meta("hieu_ung_sao", moi)
 	return moi.size()
+
+
+## `setGear(pRole, ten)` cua ban goc — ham TOAN CUC, 10 cho goi THAT trong `sc/`.
+##
+## Vi sao phai di qua day chu khong goi thang tu Lua: `pRole` ben Lua la doi
+## tuong da BOC (`c.wrap`), ma `__index` cua lop gia lap tra ve mot ham cho MOI
+## ten — nen `pRole:dat_do(ten)` se IM LANG khong lam gi (dung cai bay da ghi
+## trong CLAUDE.md, muc "Bon nhom API cua lop gia lap"). O day `setGear` cua
+## bootstrap goi `c.raw(pRole)` roi dua vao ham nay, va ham nay kiem LOAI that.
+##
+## `pRole` co the la chinh rig, hoac hop `Control` ma `_tao_rig` tra ve (hop do
+## la thu ma Lua cam tren tay). Nhan ca hai.
+##
+## Dem theo LY DO khi khong dat duoc — vi du that hay gap: `pRole` la mot node
+## khong phai armature (man nao goi nham), hoac ten do khong co muc nao trong
+## bang va cung khong tach duoc ten.
+var dat_do_goi := 0
+var dat_do_truot: Dictionary = {}
+
+
+func _rig_trong(obj) -> SngRig:
+	if obj is SngRig:
+		return obj
+	if obj is Node:
+		for c in obj.get_children():
+			if c is SngRig:
+				return c
+	return null
+
+
+func _dem_truot(ly: String) -> void:
+	dat_do_truot[ly] = int(dat_do_truot.get(ly, 0)) + 1
+
+
+func _godot_dat_do(obj, ten: String) -> bool:
+	var rig := _rig_trong(obj)
+	if rig == null:
+		_dem_truot("khong phai armature")
+		return false
+	dat_do_goi += 1
+	return rig.dat_do(ten)
+
+
+## `setLevelGear(pArmature, cap)` cua ban goc — 3 cho goi THAT trong `sc/`,
+## hai trong so do la man DOANH TRAI (`CUIBarracksMain.lua:1036`,
+## `CUIBarracksArmyInfo.lua:272`), mot la `CUIPopUpBox.lua:723`.
+##
+## Ten do theo cap: `<ten armature>_lv<cap>`, va ten ay la mot muc BUNDLE trong
+## bang (`DefenderN_lv3` -> 4 ten la). Do: 10 trong so ~37 `SpriteName` cua
+## `battle_data.json` co bundle — `ArcherN`, `Artillery`, `Catapult`, `Cavalry`,
+## `DefenderN`, `ElephantSoldier`, `Hoplite`, `Priest`, `SpearmenN`, `Witch` —
+## va do dung la nhom linh co art. Cac ten khac (`Archer`, `ArmorCavalry`,
+## `Stalkes`, `boss`…) khong co bundle nao, nen tra `false` la DUNG, khong phai
+## thieu du lieu.
+##
+## Ten armature lay tu meta `rig_ten` cua hop (hoac tu `variant` cua chinh rig):
+## `setLevelGear` nhan doi tuong chu khong nhan ten.
+func _godot_dat_do_cap(obj, cap) -> bool:
+	var rig := _rig_trong(obj)
+	if rig == null:
+		_dem_truot("khong phai armature")
+		return false
+	# Cung ly do nhu `_tao_rig`: cap tu Lua co the ra float.
+	var cap_so := int(cap) if (typeof(cap) == TYPE_INT or typeof(cap) == TYPE_FLOAT) else 0
+	# Ten armature lay tu meta `rig_ten` — ten DA TRUYEN VAO, khong phai ten bien
+	# the da giai. Hai thu nay khac nhau that: `_tao_rig` nhan ca ten khong phai
+	# bien the (vd `PlayerM` chi co `PlayerM03W`...), va ban goc goi
+	# `setLevelGear` voi chinh doi tuong no vua xin ra, nen ten phai la ten no
+	# da xin.
+	var ten := rig.variant
+	if obj is Node and obj.has_meta("rig_ten"):
+		ten = String(obj.get_meta("rig_ten"))
+	if ten == "" or cap_so <= 0:
+		_dem_truot("thieu ten hoac cap")
+		return false
+	dat_do_goi += 1
+	return rig.dat_do("%s_lv%d" % [ten, cap_so])
 
 
 ## Cau noi mong sang game/am_thanh.gd. Moi ham o day chi de dua qua Lua duoc
@@ -199,6 +325,8 @@ func open() -> bool:
 	state.open_libraries()
 	state.globals["_godot_tao_rig"] = _tao_rig
 	state.globals["_godot_hieu_ung_sao"] = _hieu_ung_sao
+	state.globals["_godot_dat_do"] = _godot_dat_do
+	state.globals["_godot_dat_do_cap"] = _godot_dat_do_cap
 	state.globals["_godot_read"] = _read
 	state.globals["_godot_log"] = func(s): print("[lua] ", s)
 	state.globals["_godot_copy"] = _copy

@@ -21,7 +21,7 @@ extends Node
 
 ## Doi so nay khi cau truc ban luu thay doi, de con biet duong nang cap.
 ## Phai khop SAVE_VERSION ben server/modules/battle.lua.
-const SAVE_VERSION := 11
+const SAVE_VERSION := 12
 
 var client: NakamaClient = null
 var data: Dictionary = {}
@@ -66,6 +66,10 @@ static func blank() -> Dictionary:
 		"achieve": {},
 		"daily": {"day": 0, "counts": {}, "tasks": {}, "liveness": 0, "chest": 0},
 		"stats": {"maxEquipQuality": 0},
+		# Bao lai sau khi bi nguoi khac danh (bx.pvp). Moi nhat DUNG DAU.
+		# `result` giu nguyen ket qua theo diem nhin cua NGUOI DI DANH:
+		# 0 = nguoi so huu ban luu nay bi danh bai, 1 = ho thang, 2 = hoa.
+		"reports": [],
 		"lastResult": "",
 		"updatedAt": 0,
 	}
@@ -175,6 +179,23 @@ func _upgrade(raw: Variant) -> Dictionary:
 		var v = d.get(k)
 		if typeof(v) == TYPE_DICTIONARY:
 			out[k] = v
+	# Bao lai PvP. Cung ly do nhu "cleared" o dau ham: khong liet ke o day thi
+	# mot dong bao lai se KHONG BAO GIO hien ra, va khong co gi do de bao cho
+	# biet. Va no phai dung RIENG mot nhanh: `reports` la MANG, ma bang rong qua
+	# JSON co the thanh [] — nhet mot mang vao vong lap ba truong bang o tren la
+	# lam hong ca ba.
+	var reports: Array = []
+	if typeof(d.get("reports")) == TYPE_ARRAY:
+		for r in d["reports"]:
+			if typeof(r) != TYPE_DICTIONARY:
+				continue
+			reports.append({
+				"name": String(r.get("name", "")),
+				"result": clampi(int(r.get("result", 2)), 0, 2),
+				"at": int(r.get("at", 0)),
+				"seen": r.get("seen", false) == true,
+			})
+	out["reports"] = reports
 	return out
 
 
@@ -237,6 +258,49 @@ func fight(chapter := 0) -> Dictionary:
 			"opponent": d.get("opponent", []),
 			"seconds": d.get("seconds", 0.0),
 			"survivors": d.get("survivors", {})}
+
+
+## Danh vao doi hinh cua MOT nguoi choi khac, chi dinh bang username 10 ky tu.
+##
+## Khac `fight` o cho doi dich lay tu BAN LUU THAT cua nguoi kia, nen man tran
+## phai PHAI LAI duoc y nguyen: no dung `seed` may chu tra ve va `foe` mo ta
+## doi hinh, cap, cho dung, the tran va buff trang bi cua doi thu.
+##
+## Tra ve them `foeLedger`: false nghia la so ben bi danh KHONG ghi duoc (dua
+## ghi nhau hai lan), tuc tran thua do da mat — noi ra chu khong im.
+func pvp(name: String) -> Dictionary:
+	if not online:
+		return {"ok": false, "error": "dang choi ngoai tuyen, khong danh duoc"}
+	var r := await client.call_rpc("bx.pvp", {"name": name})
+	if not r.ok:
+		last_error = String(r.get("error", "khong goi duoc bx.pvp"))
+		return r
+	var d: Dictionary = r.data
+	data = _upgrade(d.get("save", {}))
+	dirty = false
+	return {"ok": true, "result": int(d.get("result", 2)),
+			# Seed may chu da dung — man tran gieo lai dung so nay.
+			"seed": int(d.get("seed", 0)),
+			"foe": d.get("foe", {}),
+			"foeLedger": bool(d.get("foeLedger", false)),
+			"seconds": d.get("seconds", 0.0),
+			"survivors": d.get("survivors", {})}
+
+
+## Ai vua danh minh. Doc LA da nhan: goi xong thi may chu danh dau `seen`, nen
+## lan sau khong hien lai. Goi luc nao cung duoc, khong ton gi.
+func reports() -> Array:
+	if not online:
+		return []
+	var r := await client.call_rpc("bx.reports", {})
+	if not r.ok:
+		return []
+	data = _upgrade(r.data.get("save", {}))
+	var out: Array = []
+	for one in r.data.get("reports", []):
+		if typeof(one) == TYPE_DICTIONARY:
+			out.append(one)
+	return out
 
 
 ## Nang mot tuong len mot cap. May chu tru vang va ghi ban luu.

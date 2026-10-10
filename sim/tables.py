@@ -88,33 +88,73 @@ class Heroes(object):
 
 
 class Talents(object):
-    """Ky nang rieng tung tuong.
+    """Ky nang rieng tung tuong, theo TUNG BAC PHAM CHAT.
 
-    KDBGameHeroTalentSkill.xgg: 280 dong (HeroID, HeroQuality) -> ten ky nang.
-    Mot tuong co nhieu dong vi len pham chat thi doi ky nang; o day lay dong
-    PHAM CHAT THAP NHAT, tuc ky nang goc.
+    KDBGameHeroTalentSkill.xgg: 280 dong = 70 tuong x 4 bac (2, 3, 4, 5).
+    Cot: HeroID, HeroQuality, TalentSkill, TalentSkillLevel.
+
+    Bang goc CO DU ca bon bac va noi dung KHAC NHAU that: len pham chat la DOI
+    ky nang. Pho ten theo bac (dem tren 280 dong):
+
+        bac 2 -> 13 ten   (be chung: GongSu 22, ShengMing 13, PoJia 7 ...)
+        bac 3 ->  3 ten   (NuQi chiem 68/70)
+        bac 4 -> 28 ten
+        bac 5 -> 66 ten cho 70 tuong — gan nhu moi tuong mot ky nang RIENG
+
+    `get()` giu nguyen nghia CU (bac thap nhat = ky nang goc) nen moi cho goi cu
+    khong doi ket qua; muon bac khac thi dung `get_at()`.
 
     Ban goc CHI LUU TEN. Hieu ung cua tung ky nang nam o server, khong co trong
     tay — xem sim/battle.py de biet o day dat hieu ung gi.
     """
 
     def __init__(self, config_dir=DEFAULT_CONFIG):
-        rows = load_json(config_dir, 'KDBGameHeroTalentSkill.xgg')
+        self.rows = load_json(config_dir, 'KDBGameHeroTalentSkill.xgg')
+        self.by_quality = {}    # (HeroID, HeroQuality) -> ten ky nang
+        self.levels = {}        # (HeroID, HeroQuality) -> TalentSkillLevel
         best = {}
-        for r in rows:
+        for r in self.rows:
             hid = int(r['HeroID'])
             q = int(r.get('HeroQuality', 0))
+            self.by_quality[(hid, q)] = str(r['TalentSkill'])
+            self.levels[(hid, q)] = int(r.get('TalentSkillLevel', 0))
             if hid not in best or q < best[hid][0]:
                 best[hid] = (q, str(r['TalentSkill']))
         self.by_id = {k: v[1] for k, v in best.items()}
-        self.rows = rows
 
     def get(self, hero_id, default=''):
+        """Ky nang o bac THAP NHAT — nghia cu, khong doi."""
         return self.by_id.get(int(hero_id), default)
 
-    def spread(self):
-        return dict(sorted(collections.Counter(self.by_id.values()).items(),
-                           key=lambda kv: -kv[1]))
+    def get_at(self, hero_id, quality, default=''):
+        """Ky nang o DUNG bac pham chat; khong co bac do thi tra `default`."""
+        return self.by_quality.get((int(hero_id), int(quality)), default)
+
+    def qualities(self):
+        """Cac bac pham chat co du lieu, tang dan."""
+        return sorted({q for _, q in self.by_quality})
+
+    def tiers(self, hero_id):
+        """[(bac, ten ky nang)] cua mot tuong, tang dan theo bac."""
+        hid = int(hero_id)
+        return [(q, self.by_quality[(hid, q)])
+                for q in self.qualities() if (hid, q) in self.by_quality]
+
+    def names(self, quality=None):
+        """Tap ten ky nang KHAC NHAU — de doi chieu voi bang hieu ung SKILLS."""
+        if quality is None:
+            return set(self.by_quality.values())
+        return {v for (_, q), v in self.by_quality.items() if q == int(quality)}
+
+    def spread(self, quality=None):
+        """Pho ten ky nang. `quality=None` thi gop CA bon bac — nen con so cua no
+        doi tu 70 dong (chi bac thap nhat) len 280."""
+        if quality is None:
+            c = collections.Counter(self.by_quality.values())
+        else:
+            c = collections.Counter(
+                v for (_, q), v in self.by_quality.items() if q == int(quality))
+        return dict(sorted(c.items(), key=lambda kv: -kv[1]))
 
 
 class Armies(object):

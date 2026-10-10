@@ -186,8 +186,12 @@ func _vi_tri_goc() -> Dictionary:
 				var ten := String(b.get("name", ""))
 				var ks: Array = b.get("keys", [])
 				if ten.begins_with("PlugIn_") and ks.size() == 1:
+					# v3, KHONG phai y: `SngRig` dat goc xuong o CANH DAY o
+					# anh (v3 = canh day da hieu chinh diem neo `ay`), nen vi
+					# tri do duoc luc chay la v3. Do tren Gashapon/Star1: bon
+					# plug lech 0.39-0.91 px khi cho nay con doc `y`.
 					ra[ten] = Vector2(float(ks[0].get("x", 0.0)),
-							float(ks[0].get("y", 0.0)))
+							float(ks[0].get("v3", ks[0].get("y", 0.0))))
 			return ra
 	return {}
 

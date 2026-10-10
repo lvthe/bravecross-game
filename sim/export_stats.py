@@ -438,6 +438,9 @@ def main():
                     help='chi xuat tuong co atlas trong thu muc nay')
     ap.add_argument('--all', action='store_true',
                     help='xuat ca 92 tuong ke ca tuong chua co art')
+    ap.add_argument('--quality', type=int, default=None,
+                    help='bac pham chat de lay ky nang thien phu (2..5). '
+                         'Bo qua thi lay bac THAP NHAT nhu truoc')
     ap.add_argument('--battles', type=int, default=400,
                     help='so tran cho moi cap doi chieu')
     a = ap.parse_args()
@@ -464,7 +467,14 @@ def main():
         row = collections.OrderedDict()
         for k in FIELDS:
             # TalentSkill khong nam trong bang tuong ma o bang ky nang rieng.
-            row[k] = talents.get(r['HeroID']) if k == 'TalentSkill' else r[k]
+            if k != 'TalentSkill':
+                row[k] = r[k]
+            elif a.quality is None:
+                row[k] = talents.get(r['HeroID'])
+            else:
+                # Khong co bac do thi LUI VE bac goc va GHI LAI, khong im lang.
+                row[k] = talents.get_at(r['HeroID'], a.quality) \
+                    or talents.get(r['HeroID'])
         rows.append(row)
 
     # Quan chung: chi lay loai co art, va moi sprite lay ban CO BAN (bang goc co

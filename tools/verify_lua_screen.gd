@@ -31,7 +31,7 @@ func t(name: String, cond: bool, note: String = "") -> void:
 
 
 func _init() -> void:
-	if not FileAccess.file_exists("res://sc/share/class.lua"):
+	if LuaRuntime.thieu_ma_goc():
 		print("thieu ma nguon ban goc — chay: python tools/import_lua.py")
 		quit(1)
 		return

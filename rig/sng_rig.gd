@@ -68,9 +68,14 @@ const BLEND_CONG := "screen"
 ## MaChao/Fight co "Layer006" cach goc 436 px, to hon ca nhan vat.
 ##
 ## Ban goc chi loe chung vai khung roi tat. Duong doi anh theo khung nay da giai
-## (chi so anh `d` cua khung, anim.py) va SngRig da lam theo; bo loc van giu
-## cho man tran vi chua do lai xem con lop nao cua nhom nay hien sai. Trinh xem
-## rig de tat de con nhin thay het.
+## (chi so anh `d` cua khung, anim.py) va SngRig da lam theo; bo loc chi con dung
+## cho MAN TRAN (`battle/*` goi `SngRig.build(..., true)`) vi chua do lai xem con
+## lop nao cua nhom nay hien sai. Trinh xem rig de tat de con nhin thay het.
+##
+## Duong LUA (`LuaRuntime._tao_rig`, tuc toan bo giao dien) thi KHONG loc: o do
+## `Layer*` khong phai ve tich ma la chinh doi tuong — do ra thi **1319/2935**
+## bien the dung ra 0 xuong, ke ca toa nha Vo Hoi cua man Main. Xem chu thich o
+## cho goi `SngRig.build` trong `game/lua_runtime.gd`.
 ##
 ## CHI LOC O TANG NGOAI CUNG, khong truyen xuong rig long nhau. Danh sach bo
 ## phan cua mot nhan vat dat ten co nghia (Head, Body, ArmLeft), nen ten Layer*
@@ -79,6 +84,19 @@ const BLEND_CONG := "screen"
 ## BON deu ten Layer*. Truyen co nay xuong la mat sach dau va than — da dinh
 ## dung the, CaoCao tu 23 bo phan con 17 va chi con moi thanh kiem.
 const CLUTTER_PREFIXES := ["Layer", "LayerName", "Logic_", "图层"]
+
+## Ngoai le cua bo loc tren: ho `Logic_Body*` KHONG phai ve tich — no giu dung
+## anh THAN nhan vat (`Player000M_res-Body` 33x41, `Player000W_res-Body` 23x32),
+## va do la noi dung DUY NHAT cua xuong ay. Bo no thi nhan vat vao tran khong co
+## than: man tran la cho duy nhat con bat co loc (`battle/*` truyen `true`), nen
+## o man Xem Tuong van thay du than ma vao tran la mat.
+##
+## Do 2026-09-20 tren 397 rig / 22.874 bo phan tang ngoai cung: 94 xuong
+## `Logic_Body*` o tang ay, **72 chua ANH THAT**. Cac ten `Logic_*` khac dung la
+## lop hieu ung / logic (`Logic_Mark*`, `Logic_Chain`, `Logic_Ball_*`,
+## `Logic_Area_*`, `Logic_Swift*`, `Logic_Track`) nen VAN bi loc binh thuong —
+## khong phai bo `Logic_` khoi luat, ma la chua rieng ho nay ra.
+const CLUTTER_NGOAI_LE := ["Logic_Body"]
 
 var data: Dictionary = {}
 var variant: String = ""
@@ -99,8 +117,21 @@ var _da_canh_bao_multiply := false
 
 
 ## Dung nhan vat tu thu muc da xuat. Tra ve null neu doc khong duoc.
+##
+## `chinh_xac` = CHI nhan khi `want_variant` la MOT NHOM dong tac co that trong
+## chinh file rig nay; khong lui ve nhom nhieu dong tac nhat. Duong HIEU UNG bat
+## buoc co (xem `battle/san_tran_ve.gd:hieu_ung_tai_o`), vi do la cho duy nhat
+## phep lui ay ve ra duoc mot HINH KHAC HAN.
+##
+## Do 2026-09-21 tren 56 ten hieu ung thuc tinh cua `wake_ref.json`: 46 ten ve
+## ra dung art cua minh, **6 ten khong co art rieng** (`CaiWenJiWakeBuff`,
+## `JiangWeiExclus_WeaponWake`, `SiMaYi_WakeBuff`, `SuperThunderDragonHero_Shield`,
+## `ThunderDragon_ShakeWake`, `XuShu_WeaponWakeFinal`) bi phep lui nay ve ra
+## **THAN cua chinh tuong ay** (16/18/14/8/15 dong tac), va 4 ten khong ra thu
+## muc nao. Con tren ten CO THAT trong kho thi phep lui sach: do ca 2757 ten bien
+## the, **0** ca giai ra thu muc ma ten khong phai bien the that.
 static func build(dir_path: String, want_variant: String = "",
-		no_clutter := false) -> SngRig:
+		no_clutter := false, chinh_xac := false) -> SngRig:
 	var char_name := dir_path.get_file()
 	var json_path := dir_path.path_join(char_name + ".json")
 	if not FileAccess.file_exists(json_path):
@@ -111,7 +142,7 @@ static func build(dir_path: String, want_variant: String = "",
 		push_error("SngRig: %s khong phai JSON hop le" % json_path)
 		return null
 
-	var rig := _make(parsed, dir_path, char_name, want_variant, {}, no_clutter)
+	var rig := _make(parsed, dir_path, char_name, want_variant, {}, no_clutter, chinh_xac)
 	if rig == null:
 		push_error("SngRig: %s khong co bien the nao co dong tac" % char_name)
 	return rig
@@ -120,13 +151,25 @@ static func build(dir_path: String, want_variant: String = "",
 ## Dung mot bien the. `chain` giu cac bien the dang nam tren duong dung, de
 ## rig long nhau khong goi vong lai chinh no.
 static func _make(src: Dictionary, dir_path: String, node_name: String,
-		want_variant: String, chain: Dictionary, no_clutter := false) -> SngRig:
+		want_variant: String, chain: Dictionary, no_clutter := false,
+		chinh_xac := false) -> SngRig:
 	var rig := SngRig.new()
 	rig.hide_clutter = no_clutter
 	rig.data = src
 	rig.source_dir = dir_path
 	rig.name = node_name
-	rig.variant = want_variant if want_variant != "" else rig._bien_the_cho(node_name)
+	if want_variant == "":
+		# Ten thu muc lam bien the: `Player000.xml` khong co nhom nao ten
+		# `Player000`, nen duong lui ve nhom nhieu dong tac nhat o day la DUNG
+		# (tai lieu hoa o `_bien_the_cho`).
+		rig.variant = rig._bien_the_cho(node_name)
+	elif chinh_xac and not rig.co_nhom(want_variant):
+		# Ten CO trong du lieu nhung KHONG phai mot nhom cua file nay: ve tiep la
+		# ve mot hinh khac han. Tra null de nguoi goi dem duoc la mot cu TRUOT,
+		# thay vi mot cu "ve duoc" ma sai.
+		return null
+	else:
+		rig.variant = want_variant
 	if rig.variant == "":
 		return null
 	rig._chain = chain.duplicate()
@@ -143,6 +186,42 @@ func variants() -> PackedStringArray:
 	for g in data.get("groups", []):
 		out.append(g.get("variant", ""))
 	return out
+
+
+## `ten` co phai MOT NHOM dong tac co that trong file nay khong. Day la phep thu
+## dung cho duong HIEU UNG (xem `build`, tham so `chinh_xac`): khac `variants()`
+## o cho no tra loi cho MOT ten bat ky, ke ca ten khong co trong file.
+##
+## KHONG tinh luat TRANG PHUC (`Defender_VampirE` dung nhom `Defender`): luat ay
+## do duoc tren 76 bo phuc trang va la dung cho THAN TUONG, nhung voi mot ten
+## HIEU UNG thi chinh no la phep lui ve ra than tuong — do 6/56 ten thuc tinh.
+func co_nhom(ten: String) -> bool:
+	if ten == "":
+		return false
+	for g in data.get("groups", []):
+		if String(g.get("variant", "")) == ten:
+			return true
+	return false
+
+
+## Thu muc rig cho mot ten bien the — MOT luat, ba duong goi ten dung chung
+## (`LuaRuntime._tao_rig`, `SngRig.theo_ten`, `SanTranVe._thu_muc_rig`). Luat nay
+## tung chep tay o ba noi, va do la cach no lech nhau.
+##
+## Tra `[duong, bien_the]`: trung ten thu muc thi bien_the "" (dung chinh ten
+## thu muc lam bien the), khong thi cat dan duoi va xin ten day du lam BIEN THE
+## (`Player000M03W` -> thu muc `Player000`, bien the `Player000M03W`).
+## Tra `["", ""]` khi khong thu muc nao nhan.
+static func tim_thu_muc(ten: String) -> Array:
+	if ten == "":
+		return ["", ""]
+	if FileAccess.file_exists("res://assets_ref/%s/%s.json" % [ten, ten]):
+		return ["res://assets_ref/" + ten, ""]
+	for i in range(ten.length() - 1, 3, -1):
+		var goc := ten.substr(0, i).trim_suffix("_")
+		if FileAccess.file_exists("res://assets_ref/%s/%s.json" % [goc, goc]):
+			return ["res://assets_ref/" + goc, ten]
+	return ["", ""]
 
 
 ## Ten cac dong tac cua bien the dang dung.
@@ -387,6 +466,29 @@ func _bien_the_cho(want: String) -> String:
 	return _richest_variant()
 
 
+## Bien the co DONG TAC HIEU UNG (`PluginPlay`, hoac bo `Wake*`) — doc thang
+## json cua armature, khong dung rig nao. Tra "" khi khong nhom nao co.
+##
+## VI SAO CAN: khi ten khong phai la mot BIEN THE ma la chinh THU MUC (vd
+## `CaiWenJiCircle`), `_bien_the_cho` tra ve `_richest_variant()`, va "nhieu
+## dong tac nhat" KHONG phai "nhom hieu ung". Do 2026-09-21: `CaiWenJiCircle`
+## duoc chon ra nhom `Born/Death/Standby` — mot con vong tron KHONG chay gi,
+## trong khi nhom that cua no chay `Born/PluginPlay/PluginStop`.
+static func bien_the_hieu_ung(dir_path: String) -> String:
+	var jp := dir_path.path_join(dir_path.get_file() + ".json")
+	if not FileAccess.file_exists(jp):
+		return ""
+	var d = JSON.parse_string(FileAccess.get_file_as_string(jp))
+	if not (d is Dictionary):
+		return ""
+	for g in d.get("groups", []):
+		for a in g.get("animations", []):
+			var n := String(a.get("name", ""))
+			if n == "PluginPlay" or n.begins_with("Wake"):
+				return String(g.get("variant", ""))
+	return ""
+
+
 ## Nhom nhieu dong tac nhat. Chi con dung lam DUONG LUI khi ten file khong phai
 ## la mot bien the (xem `_bien_the_cho`) va trong `_group()`.
 func _richest_variant() -> String:
@@ -501,6 +603,11 @@ func _nested_variant(refs: Array) -> String:
 
 
 func _is_clutter(bone: String) -> bool:
+	# Ngoai le xet TRUOC: `Logic_Body` khop ca `Logic_` lan chinh no, nen phai
+	# chua truoc khi xet tien to — xem CLUTTER_NGOAI_LE.
+	for e in CLUTTER_NGOAI_LE:
+		if bone.begins_with(e):
+			return false
 	for p in CLUTTER_PREFIXES:
 		if bone.begins_with(p):
 			return true
@@ -530,15 +637,57 @@ func nap_anh(path: String) -> Texture2D:
 	return ImageTexture.create_from_image(img) if img else null
 
 
-func _make_sprite(info: Dictionary) -> Sprite2D:
+func _make_sprite(info: Dictionary, ten_anh: String = "") -> Sprite2D:
 	var spr := Sprite2D.new()
 	spr.texture = _load_texture(info.get("png", ""))
 	spr.centered = true
+	var w_anh := 0.0
+	var h_anh := 0.0
+	if spr.texture != null:
+		w_anh = float(spr.texture.get_width())
+		h_anh = float(spr.texture.get_height())
+
+	# NEO CUA CHINH ANH AY nam tren goc xuong — luat cua ban goc.
+	#
+	# Ban goc khai neo theo tung anh o `+0x08` cua ban ghi tham chieu sprite
+	# (`anim.py:sprite_anchors` -> khoa `spriteAnchors` trong JSON). Do tren 397
+	# file .xml: neo la thuoc tinh cua ANH chu khong cua xuong — 15.237/15.238
+	# ten anh khai CUNG mot neo o moi rig dung chung (ngoai le duy nhat:
+	# `ZhaoYun_Eff-Line_instant`), va 12.761/12.957 (98,5%) neo nam gon trong o
+	# anh cua no.
+	#
+	# Luat cu (canh day anh nam tren goc xuong) lam neo cua chinh anh trung goc
+	# xuong chi 2.977/27.948 cap xuong->anh (10,7%; rieng rig nhan vat
+	# 1.232/6.434 = 19,1%), lech trung vi -26,0 px. No cung la ly do tay cam
+	# lech khoi cho cam: `EquipQin_res-EquipQin_5_client` (104x137, neo
+	# 53,68/77,76) bi day thap hon cho cam 59,24 px, trong khi neo roi dung
+	# 77,76/137 = 57% chieu cao anh, tuc GIUA cay dan.
+	#
+	# Neo ke tu goc TRAI-TREN cua o anh; `centered = true` dat TAM anh o goc
+	# xuong, nen day tam di dung do lech tu tam toi neo.
+	var neo: Array = data.get("spriteAnchors", {}).get(ten_anh, [])
+	if neo.size() == 2 and w_anh > 0.0 and h_anh > 0.0:
+		var ay := float(neo[1])
+		if FLIP_Y:
+			ay = h_anh - ay
+		spr.offset = Vector2(w_anh / 2.0 - float(neo[0]), h_anh / 2.0 - ay)
+		return spr
+
+	# Duong lui khi anh khong co ban ghi neo (JSON cu, hoac ten khong nam trong
+	# ban ghi tham chieu nao).
+	#
 	# offX/offY la do lech tam anh so voi tam khung goc, theo dung nghia
 	# "offset" cua plist Cocos2d. Phan lon bang 0 nhung co the len toi 78 px;
 	# bo qua thi cac manh to nam lech han.
+	#
+	# TRU h/2: `centered = true` dat TAM anh o goc xuong, nhung ban goc dat
+	# CANH DAY anh o goc xuong (xem `_add_track` — y cua track la v3, tuc canh
+	# day). Thieu ve tru nay thi anh nao cang cao cang nhic len xa: do tren
+	# DefenderN, dau/hat (h~50) leo ~2x xa hon than (h=21) nen than bi chon
+	# trong dau — do duoc: hop Body [-56.5,-35.5] nam TRON trong hop HatBG
+	# [-66.5,-17.5], ma HatBG ve SAU. Tru di thi hai hop khop nhau 1 px.
 	spr.offset = Vector2(float(info.get("offX", 0.0)),
-			-float(info.get("offY", 0.0)) if FLIP_Y else float(info.get("offY", 0.0)))
+			(-float(info.get("offY", 0.0)) if FLIP_Y else float(info.get("offY", 0.0))) - h_anh / 2.0)
 	return spr
 
 
@@ -552,7 +701,6 @@ var displays: Dictionary = {}
 
 
 func _build_bones() -> void:
-	var z := 0
 	for part in _ordered_parts():
 		var bone: String = part.get("name", "")
 		if hide_clutter and _is_clutter(bone):
@@ -576,8 +724,18 @@ func _build_bones() -> void:
 		if node == null:
 			node = Marker2D.new()
 		node.name = bone
-		node.z_index = z
-		z += 1
+		# THU TU VE lay tu THU TU CON, khong tu `z_index`. `_ordered_parts()` da
+		# tra ve dung thu tu ve (CHILDREN_BACK_TO_FRONT), nen `add_child` theo
+		# thu tu ay la du — va la duy nhat dung.
+		#
+		# Vi sao KHONG duoc dat `z_index = i` nhu truoc: `z_index` cua Godot la
+		# so HIEU DUNG TRONG CA CANVAS (cong don tu moi to tien), khong phai so
+		# tuong doi trong rig nhu zOrder cua Cocos. Do duoc tren man Main: 1378
+		# node mang z hieu dung khac 0, TAT CA la xuong armature — va vi chung
+		# nam trong lop thanh pho nen chung ve DE LEN CA THANH CONG CU (o icon
+		# `tag=2` bi che 5329/5340 diem anh). Nang `lMainToolbarRightButton`
+		# len `z_index = 2000` thi thanh cong cu hien ra du 5/5 o — tuc thu pham
+		# dung la `z_index` nay.
 		add_child(node)
 		bones[bone] = node
 		displays[bone] = ds
@@ -620,7 +778,7 @@ func o_hien(ten: String, bone: String, chi_anh: bool) -> Node2D:
 		var info := _sprite_for([ten])
 		if info.is_empty():
 			return null
-		return _make_sprite(info)
+		return _make_sprite(info, ten)
 	var nested := _nested_variant([ten])
 	if nested == "":
 		return null
@@ -681,13 +839,239 @@ func thay_o_hien(bone: String, node: Node2D, idx: int) -> bool:
 ## `CUIArmyGroupCampsite.lua:1797,1799` goi dung `Death` / `Standby` — nen phep
 ## kiem nay chon dung thu ma `_Lua_changeWingAnimation` can.
 ##
-## Trong ban dung, khong duong nao GAN canh vao nhan vat: ban goc gan bang ham
-## toan cuc `setGear(pRole, value)` (ClientPaperDoll:ChangePaperDollHelper, voi
-## `HeroSkinType.Wing`), ma `setGear` chua lam — bon cho ghi con tro canh
-## (`this[+0x9fc]`) deu nam trong C++ va khong co trong bang bind Lua nao. Nen
-## ham nay hien chi dung de nhan ra canh SAU NAY.
+## Duong GAN canh da CO trong ban dung: ban goc gan bang ham toan cuc
+## `setGear(pRole, ten)` (`ClientPaperDoll:ChangePaperDollHelper` goi no cho tung
+## muc cua `tSkinMap`, ke ca `HeroSkinType.Wing = "Wing"`), va ban dung da lam ham
+## ay (`lua/bootstrap.lua:591` -> `LuaRuntime._godot_dat_do` -> `dat_do` ngay
+## duoi). Quet `sc/`: **10 cho goi THAT** (11 dong chua chu "setGear", mot dong bi
+## chu thich), **3 cho truyen thang ten canh** — `CUIActivityScoreStroe.lua:25`
+## (`"wing_1_2"`), `CUIWing.lua:1403`, `CUIWingShow.lua:248`
+## (`string.format("wing_%d_%d", …)`) — va 17 muc `loai: "Wing"` cua bang do deu
+## la `kieu: "node_con"` voi `sPropertyName` = `EquipWing_*`, tuc dung kieu ma
+## `_dat_node_con` gan duoc. Nen ham nay tra true ngay khi co man nao gan canh.
+##
+## Cho KHONG mo hinh duoc la con tro rieng cua ban goc: bon cho ghi
+## `this[+0x9fc]` deu nam trong C++ va khong co trong bang bind Lua nao — ban dung
+## tim canh trong cay con thay vi qua con tro.
 func la_canh() -> bool:
 	return variant.begins_with("EquipWing")
+
+
+## Dem so lan `dat_do` CO tac dung / KHONG lam duoc gi. Phai dem chu khong the
+## nhin: ban goc goi `setGear` qua lop gia lap, ham thieu thi `__index` tra ve
+## mot ham cho MOI ten nen loi goi di vao hu khong va KHONG mot dong loi.
+var so_lan_dat_do := 0
+var so_lan_truot := 0
+## Ten nhung mon "chua lam duoc" (kieu 1/3/5, hoac thieu du lieu) — de phep
+## kiem doc ra duoc LY DO, khong chi mot con so.
+var chua_lam: PackedStringArray = []
+## Node con da gan cho kieu 4 (canh / mount), theo `sPropertyName`, de lan goi
+## sau THAY cai cu chu khong chong them.
+var _do_node_con: Dictionary = {}
+
+
+## Dung rig TU MOT TEN armature khac file — `getSpriteFromSpriteCatch(<ten>)`
+## cua ban goc. Ten co the la BIEN THE nam trong file khac ten (`EquipQin_1`
+## trong `EquipQin.json`, `Player004M03F` trong `Player004.json`), nen cat dan
+## duoi de tim thu muc.
+##
+## Vi sao khong dung `LuaRuntime._tao_rig`: ham do boc rig trong mot `Control`
+## mang ti le 1,02 va dem vao hai bo dem cua runtime — dung cho node roi tren
+## man Lua, sai cho mot rig nam TRONG mot rig khac (o day rig cha da mang ti le
+## cua no). Cung mot luat cat duoi, hai cho dung khac nhau.
+static func theo_ten(ten: String) -> SngRig:
+	var r := tim_thu_muc(ten)
+	if r[0] == "":
+		return null
+	return build(r[0], r[1], false)
+
+
+## Dat mot mon do len rig nay bang TEN cua no, theo dung bang
+## `map/gear_config.xml` (xem `rig/gear_ref.gd` cho nam loai muc va so do).
+##
+## Ban goc: `setGear(pRole, ten)` — ham TOAN CUC, 10 cho goi THAT trong `sc/`,
+## goi tu `ClientPaperDoll:ChangePaperDollHelper`. Nam viec, do tu file bang:
+##
+##   kieu 2  doi ARM cua khop `sBone` bang armature `sArmtureName`  — vu khi
+##   kieu 4  doi NODE CON bang `sPropertyName`                      — canh / mount
+##   kieu 1  doi texture cua khop `sBone` bang `sTextureName`
+##   kieu 3  doi he hat        — KHONG muc nao trong bang
+##   kieu 5  doi vu khi nem    — KHONG muc nao trong bang
+##
+## Va khi ten KHONG co trong bang thi luat DU PHONG cua chinh file, HAI nhanh:
+## `<arm>_<xuong>_lv<N>` -> doi texture `<arm>_res-<xuong>_lv<N>` tren xuong
+## `<xuong>`; `<arm>_<xuong>_Hide` -> AN xuong `<xuong>`.
+##
+## Tra true khi co it nhat mot thay doi that. Dem vao `so_lan_dat_do` /
+## `so_lan_truot` — chu KHONG im lang, va ghi `chua_lam` khi gap kieu chua lam.
+func dat_do(ten: String) -> bool:
+	return _dat_do(ten, {})
+
+
+func _dat_do(ten: String, da_di: Dictionary) -> bool:
+	if ten == "" or da_di.has(ten):
+		return false
+	da_di[ten] = true
+
+	var m := GearRef.muc(ten)
+	if m.is_empty():
+		return _dat_do_du_phong(ten, da_di)
+
+	# Do chuyen tiep: `Witch_lv7` -> `sBaseItem Witch_lv6`; muc LIST chon theo
+	# cap (`equip_Exclusive_10_List` -> `sGear_lv5plus`). `setGear` khong truyen
+	# cap nen nhanh LIST khong voi toi — di tiep sang muc goc.
+	var tiep := GearRef.chuyen_tiep(ten)
+	if tiep != "":
+		return _dat_do(tiep, da_di)
+
+	# BUNDLE: ten don vi + cap (`DefenderN_lv1`) -> danh sach ten do con. Duong
+	# nay thuoc `setLevelGear` (3 cho goi THAT trong `sc/`: `CUIBarracksMain.lua:1036`,
+	# `CUIBarracksArmyInfo.lua:272`, `CUIPopUpBox.lua:723`).
+	if GearRef.la_bundle(ten):
+		var co := false
+		for con in GearRef.ls_gear(ten):
+			if _dat_do(String(con), da_di):
+				co = true
+		return _dem(ten, co, "")
+
+	# PARTS: bang RIENG `<Parts>` (14 muc). `nPartsType` dung lai bo ma cua
+	# `nShowType`, va `nPartsType 1` o day chinh la ket qua cua luat du phong —
+	# nen nhanh nay va nhanh du phong phai cho ra CUNG mot ket qua.
+	#
+	# KHONG duoc lui ve `_dat_do(p)`: ten `<Parts>` khong bao gio la ten `<Gear>`
+	# (`SpearmenN_Spear_lv1_Throw` khong co muc nao trong bang), nen loi goi ay
+	# LUON roi xuong du phong — do ra mot xuong `Spear` va mot texture
+	# `SpearmenN_res-Spear_lv1_Throw` khong co, tuc mot phep thu sai, va no con
+	# ghi ten ay vao `chua_lam` lan thu nhat (lan thu hai do dong `else` cu).
+	# Nay moi muc `<Parts>` di theo DUNG `nPartsType` cua no, va ghi dung MOT lan.
+	var ls := GearRef.ls_parts(ten)
+	if not ls.is_empty():
+		var co := false
+		for p in ls:
+			var tp := String(p)
+			var q := GearRef.part(tp)
+			if q.is_empty():
+				_dem(tp, false, "muc <Parts> khong co trong bang")
+				continue
+			var kp := int(q.get("nPartsType", 0))
+			if kp == GearRef.KIEU_TEXTURE:
+				if _dem(tp, _dat_texture(tp, String(q.get("sBone", "")),
+						String(q.get("sTextureName", ""))), ""):
+					co = true
+			else:
+				# Kieu 5 (`_Throw`): doi VU KHI NEM — ban dung chua lam, va trong
+				# bang khong co muc `<Gear>` nao kieu 5. Ghi ra chu khong im lang.
+				_dem(tp, false, "kieu %d (%s) chua lam"
+						% [kp, GearRef.KIEU_TEN.get(kp, "?")])
+		return _dem(ten, co, "")
+
+	# LIST: chon do theo CAP. `chuyen_tiep` o tren da thu roi, nhung cap = 0 nen
+	# no khong chon duoc — va do cung la duong DUY NHAT toi 6 muc dang nay. Phai
+	# ghi ra TRUOC nhanh cuoi, khong thi loi bao la "kieu 0 (?)" — ma kieu 0
+	# nghia la "ten khong co muc nao trong bang", trong khi muc thi CO.
+	if GearRef.la_list(ten):
+		return _dem(ten, false, "muc LIST: thieu cap de chon")
+
+	var kieu := GearRef.kieu(ten)
+	if kieu == GearRef.KIEU_ARMATURE:
+		return _dem(ten, _dat_armature(ten), "")
+	if kieu == GearRef.KIEU_NODE_CON:
+		return _dem(ten, _dat_node_con(ten), "")
+	if kieu == GearRef.KIEU_TEXTURE:
+		var ok := _dat_texture(ten, GearRef.xuong(ten),
+				String(m.get("sTextureName", "")))
+		return _dem(ten, ok, "")
+
+	# Kieu 3 (hat) va 5 (nem): khong muc nao trong bang, va ban dung chua lam.
+	# Ghi ra chu khong tra `false` im lang.
+	var ly := "kieu %d (%s) chua lam" % [kieu, GearRef.KIEU_TEN.get(kieu, "?")]
+	return _dem(ten, false, ly)
+
+
+func _dem(ten: String, co: bool, ly: String) -> bool:
+	if co:
+		so_lan_dat_do += 1
+	else:
+		so_lan_truot += 1
+		chua_lam.append(ten if ly == "" else "%s (%s)" % [ten, ly])
+	return co
+
+
+## Kieu 2: THAY o hien cua xuong `sBone` bang mot rig dung tu `sArmtureName`.
+##
+## O bi thay la o 0 — do la o dang hien anh MAC DINH cua armature (do duoc:
+## xuong `Weapon` cua `Player000` mang san `Player000_Eff-EquipQin_5`, cap 5,
+## trong khi du lieu noi cap 0). Doi o 0 nen lan goi sau THAY cai truoc.
+func _dat_armature(ten: String) -> bool:
+	var bone := GearRef.xuong(ten)
+	if bone == "" or not displays.has(bone):
+		return false
+	var dich := GearRef.armature(ten)
+	if dich == "":
+		return false
+	# Kieu `SngRig` chu khong `Node2D`: `theo_ten` tra ve `SngRig`, va de kieu
+	# rong thi `node.animations()` la loi goi DONG (khong suy duoc kieu tra ve)
+	# nen `:=` khong dich duoc — do la mot loi BIEN DICH, khong phai loi chay.
+	var node: SngRig = null
+	if not GearRef.trong(ten):
+		node = theo_ten(dich)
+		if node != null:
+			var ten_dong := node.animations()
+			if not ten_dong.is_empty():
+				node.player.play(ten_dong[0])
+	return thay_o_hien(bone, node, 0)
+
+
+## Kieu 1 (va 179/201 ten la cua duong du phong): THAY o 0 cua xuong bang anh
+## `texture` — anh trong CHINH atlas cua rig nay (`SpearmenN_res-Spear_lv1`), nen
+## tra qua `o_hien(..., true)`, khong phai dung rig khac.
+func _dat_texture(ten: String, bone: String, texture: String) -> bool:
+	if bone == "" or texture == "" or not displays.has(bone):
+		return false
+	var node := o_hien(texture, bone, true)
+	# Anh khong co trong atlas: thieu du lieu, KHONG phai lenh an. Duong an di
+	# rieng (`_Hide` -> `thay_o_hien(bone, null, 0)`), nen o day tra `false` la
+	# dung — va nho vay phep kiem bat duoc ten texture sai.
+	if node == null:
+		return false
+	return thay_o_hien(bone, node, 0)
+
+
+## Kieu 4: node con cua CHINH rig (canh, mount). Khong co `sBone` trong bang —
+## ban goc gan vao node goc chu khong theo xuong, nen o day gan vao chinh rig.
+func _dat_node_con(ten: String) -> bool:
+	var thuoc := GearRef.node_con(ten)
+	if thuoc == "":
+		return false
+	var cu = _do_node_con.get(thuoc)
+	if cu != null and is_instance_valid(cu):
+		remove_child(cu)
+		cu.queue_free()
+		_do_node_con.erase(thuoc)
+	var node := theo_ten(thuoc)
+	if node == null:
+		return false
+	var ten_dong := node.animations()
+	if not ten_dong.is_empty():
+		node.player.play(ten_dong[0])
+	add_child(node)
+	_do_node_con[thuoc] = node
+	return true
+
+
+## LUAT DU PHONG — ten khong co muc nao trong bang. Hai nhanh, ca hai deu duoc
+## CHINH FILE xac nhan: bang `<Parts>` khai tuong minh ket qua cua nhanh texture
+## (7/7 muc `nPartsType 1` trung khit cong thuc nay).
+func _dat_do_du_phong(ten: String, _da_di: Dictionary) -> bool:
+	var r := GearRef.du_phong(ten)
+	if r.is_empty():
+		return _dem(ten, false, "ten khong tach duoc, khong co trong bang")
+	if r.get("kieu", "") == "an":
+		# `_Hide`: AN xuong. `thay_o_hien(bone, null, 0)` la duong an that —
+		# o do thanh rong, va `_dat_khung` se an ca xuong.
+		return _dem(ten, thay_o_hien(String(r["xuong"]), null, 0), "")
+	return _dem(ten, _dat_texture(ten, String(r["xuong"]),
+			String(r.get("texture", ""))), "")
 
 
 ## Hien o thu `idx` cua xuong, an cac o khac; -1 an het. Chi so ngoai bang
@@ -799,7 +1183,13 @@ func _build_animations() -> void:
 			for k in ks:
 				var t := float(f) / FPS
 				f += maxi(1, int(k.get("dur", 1))) if tin else 1
-				var y: float = float(k.get("y", 0.0))
+				# v3 (khong phai y) la CANH DAY cua o anh: v2/v3 la cap da hieu
+				# chinh diem neo (`ax, ay` +0x20 cua khung — anim.py khong xuat
+				# hai truong do nhung da cong vao v2/v3). Do tren DefenderN:
+				# Body co diem neo DUY NHAT khac 0 (ay = -24) nen y=-45.40 ma
+				# v3=-21.00; dung `y` thi Body roi vao [-66,-45] tuc van nam
+				# trong dau, dung `v3` moi ra [-42,-21] va khop duoi dau 1 px.
+				var y: float = float(k.get("v3", k.get("y", 0.0)))
 				var r: float = float(k.get("rot", 0.0))
 				anim.track_insert_key(t_pos, t, Vector2(
 						float(k.get("x", 0.0)), -y if FLIP_Y else y))
@@ -839,9 +1229,15 @@ func _add_track(anim: Animation, bone: String, prop: String) -> int:
 ## thang mot chuoi "Shadow.png" (0x7beccd) chu khong theo ten sprite.
 var bong: Sprite2D = null
 
-## zOrder cua bong: do duoc -10 (`0x419de6` sap lai bong ve -10 truoc khi hien).
-## Am hon moi xuong (xuong mang z 0..N) nen bong luon nam duoi chan nhan vat.
-const Z_BONG := -10
+## zOrder cua bong trong ban goc: do duoc -10 (`0x419de6` sap lai bong ve -10 truoc
+## khi hien). zOrder cua Cocos la so TUONG DOI trong node cha, nen -10 chi co nghia
+## "ve truoc moi xuong" — khong phai mot so tuyet doi nao.
+##
+## Ban dung khong co hang so nay: thu tu ve lay tu THU TU CON (`move_child(bong, 0)`
+## trong `_tao_bong`), dung mot luat voi `_build_bones`. Ly do y het o do: `z_index`
+## cua Godot la so HIEU DUNG TRONG CA CANVAS, nen dat -10 cho bong cua mot rig nam
+## trong lop thanh pho se keo CA RIG xuong duoi moi node z=0 cua lop UI — do duoc
+## tren man Main: 1378 node mang z hieu dung khac 0, TAT CA la xuong armature.
 
 var _bong_dong_bo_y := true
 var _da_canh_bao_bong := false
@@ -866,7 +1262,9 @@ func hien_bong(co: bool) -> void:
 	# trang thai an — no VAN duoc tao, vi cua kiem ay nam sau buoc tao.
 	if not visible or bong.visible:
 		return
-	bong.z_index = Z_BONG
+	# Khong dung `z_index`: xem chu thich dau `Z_BONG` (nay la chu thich, khong con
+	# la hang so). Bong da nam o VI TRI CON dau tien tu `_tao_bong` nen no ve truoc
+	# moi xuong — dung cai ma zOrder -10 cua ban goc dien ta.
 	_dat_bong_y()
 	bong.visible = true
 
@@ -921,11 +1319,15 @@ func _tao_bong() -> bool:
 	s.name = "Bong"
 	s.texture = tex
 	s.centered = true
-	s.z_index = Z_BONG
 	s.scale = Vector2.ONE * BongRef.ti_le(ten)
 	s.modulate.a = BongRef.do_mo(ten)
 	s.visible = false
 	add_child(s)
+	# VE TRUOC MOI XUONG, bang vi tri con chu khong bang `z_index` — xem chu thich
+	# dau `Z_BONG`. Day la cho thay the cho `z_index = -10` cua ban dung truoc.
+	# `_build_bones` da chay xong truoc khi tao bong (bong tao o lan `hien_bong`
+	# dau tien, con xuong tao ngay trong `build`), nen chi so 0 la duoi tat ca.
+	move_child(s, 0)
 	bong = s
 	return true
 

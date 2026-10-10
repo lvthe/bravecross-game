@@ -130,6 +130,56 @@ local function la_lop(gd)
 	return t:sub(1, 7) == 'CCLayer' or t:sub(1, 7) == 'CCScene'
 end
 
+-- LOP CHUA NOI DUNG cua lop cuon (xem ui/xgg_layout.gd:_boc_lop_chua).
+--
+-- Ban goc sinh no LUC NAP, ben trong moi lop cuon, mang tag 0; cac muc cua lop
+-- nam trong do chu khong nam truc tiep trong lop. Do tren 283 man KHONG dung
+-- phep ghep nao (brave-cross/work/emu_join.py, bo do do_a2b.py): 94/94 lop cuon
+-- co ten rieng va co duong engine deu bao DUNG MOT con truc tiep, luon la con so
+-- 1, ke ca lop khong co muc nao trong file; node thuong thi bao dung so con cua
+-- file (318/318 voi 2 con, 210/210 voi 3, 150/150 voi 4).
+--
+-- Bang chung cho viec addChild phai di VAO lop chua: CUIActivity.lua:697
+-- `g_lActivityTagRoot:addChild(lTab, 1, i)` (tag = i) roi :201
+-- `g_lActivityTagRoot:getChildByTag(0):getChildByTag(nShowIndex)` — neu addChild
+-- dat thang vao lop thi buoc xuong 0 kia khong tim ra gi. Chinh hoa si ghi chu o
+-- :718: 'UIPath = {"g_lActivityTagRoot", 0, i},  --这里是个坑，滑动层有一层0tag
+-- 的节点来处理裁剪'.
+--
+-- Nhung phep HOI thi KHONG tu xuong lop chua — cung chinh doan ma do cho thay:
+-- ho phai viet tay buoc xuong, tuc la `getChildByTag` cua lop cuon khong lam ho.
+-- Nen o day chi addChild va getChildByTag(0) biet toi lop chua.
+local LOP_CUON = { CCScrollLayer = true, CCScrollLayerList = true }
+
+local function la_lop_cuon(gd)
+	if not gd:has_meta('type_name') then return false end
+	return LOP_CUON[tostring(gd:get_meta('type_name'))] == true
+end
+
+-- Nhan ra lop chua bang meta `lop_chua` chu KHONG bang ten hay type_name: lop
+-- chua KHONG mang ten trong .xgg, va ten node cua no do ta dat.
+local function lop_chua_cua(gd)
+	for i = 0, gd:get_child_count() - 1 do
+		local c = gd:get_child(i)
+		if c:has_meta('lop_chua') then return c end
+	end
+	return nil
+end
+
+-- Dung lop chua cho lop cuon CHUA co no. Duong .xgg khong bao gio toi day
+-- (XggLayout dung san); day la cho cac lop cuon do Lua dung ra luc chay.
+local function tao_lop_chua(gd)
+	local c = _godot_new_node('')
+	c:set_meta('lop_chua', true)
+	c:set_meta('tag', 0)
+	c:set_meta('zorder', 0)
+	c.size = gd.size
+	c.position = Vector2(0.0, 0.0)
+	gd:add_child(c)
+	gd:move_child(c, 0)
+	return c
+end
+
 local function neo_that(gd)
 	if gd:has_meta('cocos') then
 		local c = gd:get_meta('cocos')
@@ -203,6 +253,13 @@ function Node:getChildByTag(tag)
 		tag = tag > 0 and math.floor(tag) or math.ceil(tag)
 	end
 	local gd = raw(self)
+	-- tag 0 tren lop cuon chinh la LOP CHUA NOI DUNG (xem khoi LOP_CUON). No
+	-- khong bao gio co trong .xgg nen neu vi ly do nao do thieu thi dung ngay —
+	-- thieu no thi `getChildByTag(0)` tra nil va ma goc chet o 'attempt to index
+	-- a nil value' ma khong noi duoc vi sao.
+	if tag == 0 and la_lop_cuon(gd) then
+		return wrap(lop_chua_cua(gd) or tao_lop_chua(gd))
+	end
 	M.tag_lookups = M.tag_lookups + 1
 	for i = 0, gd:get_child_count() - 1 do
 		local c = gd:get_child(i)
@@ -276,10 +333,19 @@ end
 -- Vi du do duoc: node 'petslist' co res='list', cls='petslist'; node
 -- 'selectTab' co res='selectTab', cls='切换标签' (chu thich cua hoa si). Ca hai
 -- man deu hong y het nhau vi ta khop 'cls'.
--- Giu 'cls' lam duong du phong: do la cho setStringTag ghi luc chay.
+-- Luot 'strtag' dung TRUOC hai luot kia: do la cho setStringTag ghi luc chay,
+-- va ban goc cung tim bang getStringTag chu khong phai mot truong rieng.
+-- 'cls' xuong cuoi cung: do duoc la SAI (xem khoi duoi), nhung con giu lam
+-- duong cuoi cho cac bo kiem cu — no chi chay khi hai luot truoc khong ra gi.
 function Node:getChildByStringTag(s)
 	local gd = raw(self)
 	local n = gd:get_child_count()
+	for i = 0, n - 1 do
+		local c = gd:get_child(i)
+		if c:has_meta('strtag') and c:get_meta('strtag') == s then
+			return wrap(c)
+		end
+	end
 	for i = 0, n - 1 do
 		local c = gd:get_child(i)
 		if c:has_meta('res') and c:get_meta('res') == s then
@@ -295,16 +361,50 @@ function Node:getChildByStringTag(s)
 	return nil
 end
 
+-- getStringTag() KHONG tra ve 'cls' — do la TRUONG 'res' cua ban ghi node.
+--
+-- Do truc tiep trong may ao (`work/emu_tags.py --cay` in ra getStringTag()
+-- cua tung node, luu o `work/tags_cay.json`): 44.587 duong node, trong do
+-- 3.032 duong co gia tri khac rong. Doi chieu theo duong di ve ban ghi cua ta
+-- (chi so con tung tang, 1-based):
+--
+--     2.742 duong khop 'res'          <- trong do 1.276 duong co 'cls'
+--         0 duong khop 'cls'              HOAN TOAN KHAC (vi du
+--        15 duong lech duong              res='CavernEffect_Fire3' con
+--           (ban goc chen them mot muc     cls='CCNode'), va ca 1.276 deu
+--            trong CCScrollLayerList)      ra 'res'
+--
+-- Tuc khong phai "res va cls thuong giong nhau nen khong phan biet duoc":
+-- 1.276 cho chung KHAC nhau va ban goc luon theo 'res'.
+--
+-- Vay: res rong thi tra ve chuoi rong. Do la cho ma `CUIMainMenuTool`:
+-- sortUIItem (sc/user/UI/CUIMainMenuTool.lua:276-291) DUA VAO de phan biet
+-- "chua ghi vi tri" voi "da ghi": lan dau no thay chuoi rong nen
+-- setStringTag(tostring(nHeight)) de NHO vi tri goc, lan sau doc ra so de
+-- tra vi tri ve. Tra ve 'cls' thi nam icon cua thanh cong cu (cls la chu
+-- Trung '任务'/'成就'/... con res rong) cho ra chuoi khong phai so, tonumber
+-- ra nil, KDebug.ProcessNotNumber bao loi roi `goto Exit0` — ca ham thoat
+-- giua duong, nRightToolButtonSizeLengh o lai 0, va SetToolBarStatus cho
+-- thu vao lan thu ra CUNG mot dich (x, h - 0) nen tam nen khong truot.
+-- Do duoc ngay truoc khi sua: pos=(2, 560) truoc va sau khi goi
+-- SetToolBarStatus(true), nRightToolButtonSizeLengh = 0.
+--
+-- 'strtag' la cho setStringTag ghi luc chay, de khong de len 'res' — 'res'
+-- la du lieu cua ban ghi, ghi de len no thi getChildByStringTag mat duong
+-- tra theo ten nguyen ban.
 function Node:getStringTag()
 	local gd = raw(self)
-	if gd:has_meta('cls') then
-		return gd:get_meta('cls')
+	if gd:has_meta('strtag') then
+		return gd:get_meta('strtag')
+	end
+	if gd:has_meta('res') then
+		return gd:get_meta('res')
 	end
 	return ''
 end
 
 function Node:setStringTag(s)
-	raw(self):set_meta('cls', s)
+	raw(self):set_meta('strtag', s)
 end
 
 -- Cham ---------------------------------------------------------------------
@@ -672,16 +772,42 @@ function Node:addChild(child, z, tag)
 	local p = c:get_parent()
 	-- Cocos: addChild KHONG doi toa do cua node — van la (x, y) tuong doi voi
 	-- cha, goc duoi-trai. O Godot toa do phu thuoc CHIEU CAO CHA (parent_h),
-	-- nen phai doi lai. Truoc day node tao luc chay (_new_node) giu
-	-- parent_h = 640 mai: nha cua canh Main (armature, addChild vao nut nha roi
-	-- setPosition(rong/2, 0) — day nut) roi thap hon ~480 px, ra ngoai khung.
+	-- nen phai doi lai.
 	local la_o = c:is_class('Control')
 	local cx, cy
-	if la_o then cx, cy = to_cocos(c) end
+	if la_o then
+		if p == nil and not c:has_meta('dat_cho') then
+			-- Node CHUA TUNG duoc dat cho va cung chua co cha: `to_cocos` se lay
+			-- chieu cao trong meta `parent_h` — ma voi node tao luc chay
+			-- (_new_node) do la con so BIA 640, khong phai chieu cao cua cha nao.
+			-- Do la duong sinh ra loi: rig cua man Doanh Trai
+			-- (CUIBarracksMain.lua:1059 `parent:addChild(pArmature, 1, index*10)`
+			-- — addChild TRAN, khong setPosition) ra cocos y = 640 roi `to_godot`
+			-- voi chieu cao that cua cha (40) thanh y = 40 - 640 = -600, tuc
+			-- g=(304.91,-334.00) trong khi tam ten o ngay canh nam o
+			-- g=(224.91,157.33) — lech 640 px, thay dung nhu trong anh nguoi dung
+			-- gui. Vi tri COCOS that cua node ay la (0,0): addChild khong doi toa
+			-- do, va node khong ai dat thi o (0,0) = goc duoi-trai cua cha. Do
+			-- duoc sau khi sua: g=(304.91,306.00) = day cua hop cha
+			-- (304.91, 266.00) + 40. Lay tu meta `cocos` chu khong viet cung (0,0)
+			-- de node do bo cuc khac dung ra roi moi giao cho Lua cung dung.
+			local m = c:get_meta('cocos')
+			cx, cy = m.x, m.y
+		else
+			cx, cy = to_cocos(c)
+		end
+	end
 	if p ~= nil then
 		p:remove_child(c)
 	end
 	local cha = raw(self)
+	-- Muc them vao mot LOP CUON thuoc ve LOP CHUA chu khong phai chinh lop cuon
+	-- (xem khoi LOP_CUON: CUIActivity.lua:697 roi :201 doi hoi dung the). Lop
+	-- chua cung o va cung goc (0,0) voi lop nen phep doi toa do ngay duoi day ra
+	-- y nguyen, va `parent_h` ghi chieu cao cua lop.
+	if la_lop_cuon(cha) then
+		cha = lop_chua_cua(cha) or tao_lop_chua(cha)
+	end
 	cha:add_child(c)
 	if la_o and cha:is_class('Control') then
 		c:set_meta('parent_h', cha.size.y)
@@ -710,6 +836,18 @@ end
 
 function Node:removeAllChildrenWithCleanup(_)
 	local gd = raw(self)
+	-- Lop cuon: don cac MUC, GIU LAI lop chua.
+	--
+	-- ĐẶT, khong do duoc: ban goc goi thang CCNode::removeAllChildren, ma lop chua
+	-- la mot CON cua lop cuon nen no se bi go theo — roi lan addChild ke tiep phai
+	-- dung lai lop chua, nen ket qua cuoi cung cua hai cach la nhu nhau. Giu lai vi
+	-- phep do 94/94 noi lop cuon LUON co dung mot con: trang thai "khong con nao"
+	-- la trang thai engine khong bao gio co, va giu no lai thi `getChildByTag(0)`
+	-- khong bao gio tra nil giua hai luot goi.
+	if la_lop_cuon(gd) then
+		local chua = lop_chua_cua(gd)
+		if chua ~= nil then gd = chua end
+	end
 	for i = gd:get_child_count() - 1, 0, -1 do
 		local c = gd:get_child(i)
 		gd:remove_child(c)
@@ -779,6 +917,18 @@ function Node:setPosition(x, y)
 	local gd = raw(self)
 	local gx, gy = to_godot(gd, x, y)
 	gd.position = Vector2(gx, gy)
+	-- Danh dau "node nay DA duoc dat cho". `Node:addChild` doc co nay de biet
+	-- duong nao dung cho node chua co cha: node chua dat cho thi vi tri cocos
+	-- that nam o meta `cocos` (xem chu thich o do), con node da dat roi thi
+	-- phai di vong qua `to_cocos`.
+	--
+	-- CO Y KHONG ghi thang (x, y) vao meta `cocos` cho co mot nguon su that:
+	-- `UiFrames.set_frame` (ui/ui_frames.gd:312-316) dat lai cho node theo meta
+	-- ay moi lan gan anh, nen ghi vao day se keo moi sprite da setPosition roi
+	-- setDisplayFrame VE CHO CU — mot thay doi hanh vi rong, phai do A/B rieng.
+	-- Ghi lai: do la mot loi that dang ton tai (meta lech voi vi tri hien tai
+	-- ngay khi setPosition chay sau setAnchorPoint), khong phai suy dien.
+	gd:set_meta('dat_cho', true)
 end
 
 function Node:getPosition()
@@ -2152,13 +2302,21 @@ end
 -- r0 = r0[+0x1c0]`. `if (w)` NULL thi tra thang 0 (`0x417fea`) — tuc **khong
 -- co canh thi im lang**, dung nhu ham nay chay trong ban dung.
 --
--- KHONG co duong nao GAN canh trong ban dung, va day la dieu do duoc chu khong
--- phai suy: ban goc gan bang ham toan cuc `setGear(pRole, value)`
--- (`ClientPaperDoll:ChangePaperDollHelper` goi no cho tung muc cua `tSkinMap`,
--- ke ca `HeroSkinType.Wing = "Wing"`), ma **`setGear` chua lam** — va bon cho
--- ghi `this[+0x9fc]` (`0x417126`, `0x4172be`, `0x41bee2`, `0x40a8f8`) deu nam
--- trong C++ va KHONG co trong bang bind Lua nao. Nen con tro canh luon la NULL
--- trong ban dung, va ham nay tra false — dung nhanh `if (w)` cua ban goc.
+-- Duong GAN canh trong ban dung da CO, va day la dieu do chu khong phai suy: ban
+-- goc gan bang ham toan cuc `setGear(pRole, ten)`, va ban dung da lam ham ay
+-- (`lua/bootstrap.lua:591` -> `LuaRuntime._godot_dat_do` -> `SngRig.dat_do`,
+-- `rig/sng_rig.gd:820`). Quet `sc/`: **10 cho goi THAT** (11 dong chua chu
+-- "setGear", mot dong bi chu thich — `CUIActivityScoreStroe.lua:26`), trong do
+-- **3 cho truyen thang ten canh**: `CUIActivityScoreStroe.lua:25` (`"wing_1_2"`),
+-- `CUIWing.lua:1403` va `CUIWingShow.lua:248`
+-- (`string.format("wing_%d_%d", …)`). Nen ham nay tra true khi — va chi khi — co
+-- duong nao do da goi `setGear` voi mot muc canh; khong co thi tra false, dung
+-- nhanh `if (w)` cua ban goc.
+--
+-- Cho KHONG mo hinh duoc la con tro rieng cua ban goc: bon cho ghi
+-- `this[+0x9fc]` (`0x417126`, `0x4172be`, `0x41bee2`, `0x40a8f8`) deu nam trong
+-- C++ va KHONG co trong bang bind Lua nao. Ban dung vi vay tim canh TRONG CAY CON
+-- (vong lap duoi day) thay vi qua con tro — cung ket qua, khac duong.
 --
 -- Ten dong tac thi KHONG doan: canh la armature `EquipWing*` (63 bien the),
 -- dong tac cua no dung la `Standby` / `Run` / `Death` / `Fire` / `Hit` — khop

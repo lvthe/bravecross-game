@@ -51,18 +51,91 @@ static func _load_index() -> void:
 			_duoi[b].append(k)
 
 
+## Quy duong dan trong bo cuc ve dang goc tai nguyen.
+##
+## Bo cuc nam trong `conf/`, nen duong dan no ghi tinh tu DO: `../png/scene/...`
+## nghia la `png/scene/...` (goc tai nguyen). Chi muc `ui_ref/index.json` danh
+## theo goc tai nguyen. Hai goc khac nhau, nen phai quy ve mot.
+##
+## Bo `..` khi khong con doan nao de huy: do la `..` vuot qua goc, va goc tai
+## nguyen khong co cap tren — bo di moi dung. `../other/` (anh em voi `conf/`)
+## cung nho vay ma thanh `other/`, dung.
+static func _chuan_hoa(s: String) -> String:
+	var ra: Array = []
+	for ph in s.split("/", false):
+		if ph == ".":
+			continue
+		if ph == "..":
+			if not ra.is_empty():
+				ra.remove_at(ra.size() - 1)
+			continue
+		ra.append(ph)
+	return "/".join(ra)
+
+
 ## Ten trong bo cuc co the la 'v6/ui_words86.png', '@v6/ui_words86.png' hoac
 ## chi 'ui_words86'. Chi muc danh theo ten file khong duoi, nen quy ve dang do.
-## Ten trong bo cuc co the la 'v6/ui_words86.png', '@v6/ui_words86.png' hoac
-## chi 'ui_words86'. Tra ve KHOA day du trong chi muc, hoac "" neu khong co.
+## Tra ve KHOA day du trong chi muc, hoac "" neu khong co.
 ##
 ## PHAI dung ca phan thu muc khi bo cuc co ghi. Co 26 ten trung ma khac anh —
 ## `ui_background176` vua co ban `png/book/` (152x155) vua co ban
 ## `sngSplitData/v6/` (76x77). Truoc day rut ve ten tran nen lay nham ban to,
 ## va o thanh tuu phinh gap doi roi de len nhan ten ben canh.
+##
+## PHAI chuan hoa `../` TRUOC khi khop thu muc, khong thi phep khop truot va
+## roi xuong buoc "ten tran trung" — ma buoc do CHON BUA. Do duoc: bon anh mat
+## dat cua man Main (`../png/scene/mainscene/mainscene_ground_{a,b,-aa,-bb}.png`)
+## deu truot kieu ay va lay het ban `png/scene/christmas/...`, nen mat dat man
+## Main ra mau TUYET trang thay vi co xanh. Cung bon ten do co dung hai ban
+## (mainscene va christmas) nen khong co gi phan biet ngoai duong dan.
+## Hau to NGON NGU cua ten anh danh dau bang `@` trong .xgg.
+##
+## `@` KHONG phai ky tu rac phai bo di: no danh dau ten ANH THEO NGON NGU. Do
+## tren ca 296 bo cuc (`layout_ref/*.json`): **562 node** mang ten co `@` (145
+## ten khac nhau, 130 bo cuc), va **482 node / 128 ten CHI ra anh khi them hau
+## to nay** — duong cu bo `@` roi tra thang ten goc, nen 482 node ay khong co
+## anh nao. Hai vi du nhin thay duoc: `CanUpgrade` tag#55 va `CanUnlock` tag#54
+## cua man Doanh Trai (`CUIBarracksMain.lua:1073-1074`, anh `@v6/ui_words93/94.png`).
+## Them 72 node nua ra CA HAI duong, va o do duong `_vi` moi dung theo duong dan
+## bo cuc ghi (`@v6/ui_background214.png` ra `sngSplitData/v6/ui_background214_vi`
+## thay vi `sngSplitData/ui_background214` — bo cuc da ghi ro thu muc `v6/`).
+##
+## Con **8 node khong ra duong nao** du them hau to hay khong
+## (`@words/ui_words850.png`, `@ui_words853/854/855.png` — thieu tai nguyen that,
+## khong phai loi tra cuu), nen PHAI giu buoc LUI ve ten goc: 2 node
+## (`@v6/ui_background941/942.png`) chi ra duoc khi KHONG them hau to.
+##
+## Nguon SU THAT cua gia tri nay la `DEFAULT_LANGUAGE = 'vi'`
+## (`lua/bootstrap.lua:317`, doc ra qua `GetLanguageName()`), khong phai mot lua
+## chon cua ban dung — `tools/verify_lua_actions.gd` (khoi `@`) doc gia tri ay TU
+## `res://lua/bootstrap.lua` roi doi chieu voi hang so nay, de hai ben khong lech
+## nhau trong im lang.
+const HAU_TO_NGON_NGU := "_vi"
+
+
+## Chen hau to ngon ngu truoc PHAN MO RONG, khong phai vao cuoi chuoi.
+##
+## `@v6/ui_words86.png` phai ra `@v6/ui_words86_vi.png`; noi vao cuoi chuoi thi
+## ra `@v6/ui_words86.png_vi` va phep tra truot — do dung mot lan thi tuong `_vi`
+## khong cuu duoc ten nao (0/145 thay vi 128/145).
+static func _them_hau_to(name: String) -> String:
+	var goc := name.get_basename()
+	return goc + HAU_TO_NGON_NGU + name.substr(goc.length())
+
+
+## Tra anh theo ten, co tinh hau to ngon ngu cho ten bat dau bang `@`.
 static func key_of(name: String) -> String:
+	if name.begins_with("@"):
+		var k := _tra(_them_hau_to(name))
+		if k != "":
+			return k
+	return _tra(name)
+
+
+## Cac luat tra cuu, KHONG tinh hau to ngon ngu — xem `key_of`.
+static func _tra(name: String) -> String:
 	_load_index()
-	var s := name.lstrip("@")
+	var s := _chuan_hoa(name.lstrip("@"))
 	if s.ends_with(".png") or s.ends_with(".jpg"):
 		s = s.get_basename()
 	if _index.has(s):
@@ -182,6 +255,41 @@ static func set_frame(node: Control, name: String) -> bool:
 	# o (ui_blood_23.png 362x14 cho o 360x15). Lay anh lam o thi thanh ngan di
 	# dung vai diem anh do — va voi o 77x13 ma anh 13x13 thi ngan di 64 diem.
 	# Xem ui/tien_do.gd.
+	# NHAN co anh nen (CCLabelTTF mang CA `img` LAN `text`). 202 nhan trong 11 bo
+	# cuc lam the, nhieu nhat la `buildingname_16.png` (28 nhan = ten toa nha
+	# trong thanh) va `ui_background018.png` (150 nhan). Anh nen la TAM VANG
+	# 144x34 dung bang o cua ban ghi — no la cai khung vang nhin thay trong man
+	# goc, khong phai trang tri phu.
+	#
+	# Dat bang o theme `normal` cua Label chu KHONG boc them node cha: `Label`
+	# ve o `normal` ngay duoi chu cua chinh no, nen thu tu ve dung san; va node
+	# van la `Label` — `ui/equip.gd` quet `c is Label` tren cay nen boc lai la
+	# vo het cho do.
+	#
+	# KHONG dat o theo anh nhu duong chung ben duoi: o cua nhan la o CHU (ban ghi
+	# ghi w/h), anh nen chi duoc keo gian cho vua o do. Lay anh lam o thi nhan
+	# nao co anh nen khac co lai.
+	#
+	# Tam la mot DAI, va vien vang cua no chay DOC THEO TRUC DAI. Nen keo truc
+	# DAI thi vien khong hong (chi dai ra), con keo truc NGAN thi bop vien. Vay
+	# luat la: CANH NGAN cua tam phai khop canh ngan cua o; canh dai duoc keo.
+	#
+	# Do duoc ba ca, va ca ba deu dung luat nay:
+	#   `buildingname_16` 144x34 vao o 166x34  -> nhan (rong ra 22 diem)
+	#   `v6/ui_background018` 50x30 vao o 79x30 -> nhan
+	#   `v6/ui_background112` 214x366 vao o 30x30 -> LOAI (canh ngan 214 vs 30)
+	# Ca cuoi la that: ten ay co HAI ban trong kho, ban `png/background/` 214x366
+	# va ban `sngSplitData/v6/` 30x30 — xem chu thich `key_of`. Keo 214x366 vao o
+	# 30x30 thi ra mot mang o vuong vo, dung cai nhin thay tren man doanh trai.
+	if node is Label:
+		var t := tex.get_size()
+		var o := (node as Label).size
+		if not is_equal_approx(minf(t.x, t.y), minf(o.x, o.y)):
+			return false
+		var o_nen := StyleBoxTexture.new()
+		o_nen.texture = tex
+		(node as Label).add_theme_stylebox_override("normal", o_nen)
+		return true
 	if node is TienDo:
 		(node as TienDo).anh = tex
 		(node as TienDo).queue_redraw()
@@ -193,9 +301,23 @@ static func set_frame(node: Control, name: String) -> bool:
 	if node is UiONhap:
 		(node as UiONhap).dat_nen(tex)
 		return true
+	# CHIN-PHAN-NAM (CCScale9Sprite): dat anh roi THOI, khong dung toi o va cho.
+	#
+	# O cua no trong ban ghi la o DICH cua mot anh GOC bi keo 9 phan, nen kich
+	# thuoc anh va kich thuoc o KHONG BAO GIO bang nhau — do tren 296 bo cuc:
+	# 4.126 node ban ghi 248 byte co ten anh, chi 677 (16,4%) trung kich thuoc.
+	# Lay anh lam o (duong chung ben duoi) thi 3.449 node con lai bi DOI kich
+	# thuoc, va do duoc hau qua that: bat anh cho chung lam `bam that Main ->
+	# tran` tut tu 5 dat / 0 hong xuong 0 dat / 5 hong — cu bam vao nut tan cong
+	# `lMainExtraUIAttack` o (888, 576) bi `btnBackpackUI` nuot mat.
+	#
+	# Doi kich thuoc con SAI ca ve luat ban goc: `CCScale9Sprite` giu nguyen
+	# contentSize roi keo 9 phan vao do, dung nhu `NinePatchRect` cua Godot. Ca
+	# 677 node trung kich thuoc thi khong doi gi (keo vao o bang chinh no).
 	if node is NinePatchRect:
 		(node as NinePatchRect).texture = tex
-	elif node is TextureRect:
+		return true
+	if node is TextureRect:
 		(node as TextureRect).texture = tex
 	else:
 		return false

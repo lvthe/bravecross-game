@@ -45,6 +45,7 @@ func _init() -> void:
 	_kiem_tam_dung(lua, n)
 	_kiem_tien_do_action(lua, n)
 	_kiem_anh(lua, n)
+	_kiem_dat_cho(lua)
 
 	for e in lua.errors:
 		print("  loi Lua: %s" % e)
@@ -444,10 +445,50 @@ func _kiem_anh(lua: LuaRuntime, n: Control) -> void:
 			tex_v6 != null and tex_v6.get_size() == Vector2(76, 77),
 			str(tex_v6.get_size()) if tex_v6 != null else "khong co")
 
-	# KHOP THEO KICH THUOC. Nhieu tam nen khong ghi ten anh trong ban ghi node
-	# — CCScale9Sprite thi 2.586/2.599 node nhu vay. Nhung .xgg co liet ke anh
-	# roi (section D) va sprite (section C) cua CHINH man do kem kich thuoc, va
-	# danh sach rat ngan. Khop duy nhat thi coi la dung.
+	# HAU TO NGON NGU. Ten bat dau bang `@` trong .xgg danh dau anh THEO NGON
+	# NGU, khong phai ky tu rac phai bo di. Do tren ca 296 bo cuc: 562 node
+	# mang ten co `@` (145 ten, 130 bo cuc), va 482 node / 128 ten CHI ra anh
+	# khi them hau to — truoc day chung khong co anh nao. Hai ca nhin thay duoc
+	# la `CanUpgrade`/`CanUnlock` cua man Doanh Trai.
+	t("ten @ ra anh theo ngon ngu",
+			UiFrames.key_of("@v6/ui_words94.png") == "sngSplitData/v6/ui_words94_vi",
+			UiFrames.key_of("@v6/ui_words94.png"))
+	var tex_at := UiFrames.get_frame("@v6/ui_words94.png")
+	t("ten @ nap duoc anh that", tex_at != null,
+			str(tex_at.get_size()) if tex_at != null else "khong co")
+	# Buoc LUI phai con: 2 ten (`@v6/ui_background941/942.png`) chi ra duoc khi
+	# KHONG them hau to, nen uu tien `_vi` ma bo buoc lui la lam mat anh cua
+	# chung. Do la ly do phep kiem nay doi CA HAI chieu.
+	var k_lui := UiFrames.key_of("@v6/ui_background942.png")
+	t("ten @ khong co ban ngon ngu thi lui ve ten goc",
+			k_lui != "" and not k_lui.ends_with("_vi"), k_lui)
+	# Hau to phai chen TRUOC phan mo rong. Noi vao cuoi chuoi thi ra
+	# `...ui_words94.png_vi` va phep tra truot — do nham mot lan thi tuong `_vi`
+	# khong cuu duoc ten nao.
+	t("hau to chen truoc .png", UiFrames._them_hau_to("@v6/ui_words94.png")
+			== "@v6/ui_words94_vi.png", UiFrames._them_hau_to("@v6/ui_words94.png"))
+	# Nguon su that cua hau to la `DEFAULT_LANGUAGE` trong ma Lua goc, khong
+	# phai mot lua chon cua ban dung. Doc thang dong do ra roi doi chieu, de hai
+	# ben khong lech nhau trong im lang.
+	var nguon := FileAccess.get_file_as_string("res://lua/bootstrap.lua")
+	var m := RegEx.new()
+	m.compile("DEFAULT_LANGUAGE\\s*=\\s*DEFAULT_LANGUAGE\\s+or\\s+'([a-z][a-z])'")
+	var kq := m.search(nguon)
+	t("doc duoc DEFAULT_LANGUAGE tu lua/bootstrap.lua", kq != null)
+	if kq != null:
+		t("hau to ngon ngu khop DEFAULT_LANGUAGE",
+				UiFrames.HAU_TO_NGON_NGU == "_" + kq.get_string(1),
+				"%s vs lua '%s'" % [UiFrames.HAU_TO_NGON_NGU, kq.get_string(1)])
+
+	# KHOP THEO KICH THUOC — duong DU PHONG, cho node khong ghi ten anh trong
+	# ban ghi. Nhung .xgg co liet ke anh roi (section D) va sprite (section C)
+	# cua CHINH man do kem kich thuoc, va danh sach rat ngan. Khop duy nhat thi
+	# coi la dung.
+	#
+	# Con so "2.586/2.599 node CCScale9Sprite khong ghi ten anh" tung ghi o day
+	# la SAI, do doc nham o: ban ghi CCScale9Sprite (248 byte) de ten anh o
+	# +0xF0, khong phai +0xF4. Do lai tren 5.189 node CCScale9Sprite: **4.126
+	# node CO ten** trong ban ghi, chi 1.063 node khong. Xem xgg.py, IMG_FIELD.
 	var doc = JSON.parse_string(FileAccess.get_file_as_string(
 			"res://layout_ref/UI_AchievementTask_960_640.json"))
 	# Duyet TAT CA goc: bo cuc co nhieu goc, va node can tim khong nam o goc
@@ -465,9 +506,97 @@ func _kiem_anh(lua: LuaRuntime, n: Control) -> void:
 	if doc is Dictionary and doc.get("roots", []).size() > 0:
 		var bong: Dictionary = tim.call(doc["roots"], 946, 567)
 		var bang: Dictionary = tim.call(doc["roots"], 453, 86)
+		# Tam nen 946x567: ban ghi KHONG ghi ten anh, nen phai roi ve khop
+		# kich thuoc. Day la phep kiem duong du phong con song.
 		t("anh roi 946x567 khop duoc theo kich thuoc",
 				String(bong.get("imgFrom", "")) == "size",
-				String(bong.get("img", "khong thay")))
-		t("bang tieu de 453x86 khop duoc theo kich thuoc",
-				String(bang.get("imgFrom", "")) == "size",
-				String(bang.get("img", "khong thay")))
+				"%s / %s" % [bong.get("img", "khong thay"), bong.get("imgFrom", "")])
+		# Bang tieu de 453x86: ban ghi CO ghi ten anh, nen ten phai lay tu do
+		# chu khong phai do khop kich thuoc. Doi chieu doc lap: section C cua
+		# chinh bo cuc nay liet ke dung mot anh 453x86 — `v6/ui_background011.png`.
+		# Truoc khi biet o +0xF0 thi cho nay ra ten nho khop kich thuoc, tuc ra
+		# DUNG KET QUA bang mot duong khong dang tin; nay ra cung ten ay bang
+		# duong doc thang.
+		t("bang tieu de 453x86 lay ten tu ban ghi, dung ten section C liet ke",
+				String(bang.get("img", "")) == "v6/ui_background011.png"
+				and String(bang.get("imgFrom", "")) == "verified",
+				"%s / %s" % [bang.get("img", "khong thay"), bang.get("imgFrom", "")])
+
+
+## `addChild` TRAN len mot node CHUA TUNG duoc dat cho.
+##
+## Day chinh la loi lam rig cua man Doanh Trai ve lech 640 px:
+## `CUIBarracksMain.lua:1059` goi `parent:addChild(pArmature, 1, index*10)` —
+## addChild TRAN, khong setPosition. Node ay do `_new_node` dung ra nen mang meta
+## `parent_h = 640` — mot con so BIA, khong phai chieu cao cua cha nao. Do la
+## duong lot: `to_cocos` doc 640 ra y = 640, roi `to_godot` voi chieu cao THAT
+## cua cha (40) thanh 40 - 640 = -600. Do duoc truoc khi sua:
+## `g=(304.91,-334.00)` trong khi tam ten o ngay canh nam o `g=(224.91,157.33)`.
+##
+## Vi tri cocos that cua node ay la (0,0): Cocos `addChild` KHONG doi toa do cua
+## node, va node khong ai dat thi o goc duoi-trai cua cha. Do lai bang
+## `tools/do_doanh_trai.gd` sau khi sua: `g=(304.91,306.00)` = day cua hop cha
+## `(304.91,266.00)` cong 40.
+##
+## Kiem CA BA nua cua luat, vi hai nua sau moi bat duoc mot cach sua sai:
+##   - cha cao 40 -> 40 (khong phai -600),
+##   - cha cao 500 -> 500 (neu con so 640 con lot vao thi ra -140; phep kiem dau
+##     co the dung nho trung hop nen phai doi chieu cao),
+##   - node DA dat cho thi di duong VONG, giu nguyen toa do cocos chu khong bi
+##     tra ve 0 — neu "sua" bang cach luon lay meta `cocos` thi nua nay do.
+func _kiem_dat_cho(lua: LuaRuntime) -> void:
+	var cha := _cha_mau(Vector2(40, 40))
+	var con := lua._new_node("node")
+	lua.state.globals["_cha"] = cha
+	lua.state.globals["_con"] = con
+	lua.run("_w = require('cocos').wrap(_cha); _c = require('cocos').wrap(_con)",
+			"boc 2 node")
+	lua.run("_w:addChild(_c, 1, 10)", "addChild tran")
+	t("node chua dat cho roi vao DAY hop cha",
+			is_equal_approx(con.position.y, cha.size.y), str(con.position))
+	t("... giu nguyen x", is_equal_approx(con.position.x, 0.0), str(con.position))
+	t("... va nhan tag", int(con.get_meta("tag", -1)) == 10)
+
+	var cha2 := _cha_mau(Vector2(300, 500))
+	var con2 := lua._new_node("node")
+	lua.state.globals["_cha2"] = cha2
+	lua.state.globals["_con2"] = con2
+	lua.run("_w2 = require('cocos').wrap(_cha2); _c2 = require('cocos').wrap(_con2)",
+			"boc 2 node nua")
+	lua.run("_w2:addChild(_c2)", "addChild tran 2")
+	t("cha cao 500 ra 500, khong phai 640-500",
+			is_equal_approx(con2.position.y, 500.0), str(con2.position))
+
+	# Nua con lai cua luat: node DA duoc dat cho thi toa do cocos cua no KHONG
+	# phai (0,0) — no phai di duong vong qua `to_cocos`.
+	#
+	# KHONG kiem meta `cocos` o day: `Node:setPosition` CO Y khong ghi lai no
+	# (xem chu thich trong `lua/cocos.lua`), vi `UiFrames.set_frame` dat lai cho
+	# node theo meta ay moi lan gan anh. Cai phai kiem la TOA DO THAT sau khi
+	# doi cha — va doi sang HAI chieu cao khac nhau moi chung minh duoc duong
+	# vong la nghich dao that su, chu khong phai trung hop cua mot chieu cao.
+	var con3 := lua._new_node("node")
+	lua.state.globals["_con3"] = con3
+	lua.run("_c3 = require('cocos').wrap(_con3); _c3:setPosition(7, 11)", "dat cho")
+	lua.run("_w:addChild(_c3)", "addChild sau khi dat cho")
+	t("node DA dat cho (7, 11) vao cha cao 40 -> y = 40 - 11",
+			is_equal_approx(con3.position.y, 40.0 - 11.0), str(con3.position))
+	t("... va x giu 7", is_equal_approx(con3.position.x, 7.0), str(con3.position))
+	# Doi tiep sang cha cao 500: neu duong vong doc sai thi con so 640 cua cha
+	# cu se lot vao va ra 640 - 11 thay vi 500 - 11.
+	lua.run("_w2:addChild(_c3)", "chuyen sang cha thu hai")
+	t("doi sang cha cao 500 -> y = 500 - 11",
+			is_equal_approx(con3.position.y, 500.0 - 11.0), str(con3.position))
+	cha.free()
+	cha2.free()
+
+
+## Control mang du meta nhu node dung tu .xgg, de lop gia lap doi he toa do dung.
+func _cha_mau(co: Vector2) -> Control:
+	var c := Control.new()
+	c.size = co
+	c.set_meta("type_name", "CCNode")
+	c.set_meta("cocos", Vector4(0, 0, 0, 0))
+	c.set_meta("parent_h", 640.0)
+	return c
+

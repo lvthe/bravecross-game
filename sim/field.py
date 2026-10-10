@@ -344,41 +344,84 @@ def lua_pick_armies(army_rows, seed_value):
 
 def lua_battle(hero_by_name, army_rows, base, rules, mine, theirs,
                seed, chapter, power=1.0, levels=None, placement=None,
-               formation='', formation_level=0, doc=None, equips=None):
+               formation='', formation_level=0, doc=None, equips=None,
+               foe=None, seed_value=None):
     """Ban Python cua army_battle() trong battle.lua, dung tung buoc mot.
 
     Dung de doi chieu: cung seed thi hai ben phai ra cung ket qua, cung so
     giay, cung so nguoi con song.
+
+    `foe` la doi dich la NGUOI THAT (bx.pvp): mot bang mang `power`, `levels`,
+    `placement`, `formation`, `formationLevel`, `buffs` cua ho — dung ten
+    truong nhu tren day JSON, y nhu reply cua bx.pvp. Khong truyen thi giu
+    nguyen luat cu — doi dich cap 1, cho dung mac dinh, khong buff — nen moi
+    loi goi cu ra dung tung don vi nhu truoc.
+
+    MOT MAT: ban Python nay KHONG dung tới `power`. Ban Lua nhan no lam he so
+    nhan (`fighter(name, power, level)` -> `g = power * GrowthFactor *
+    level_growth`), con `Fighter` ben Python khong co tham so do. Vi vay phep
+    doi chieu Lua-Python chi dung khi `power == 1.0` — ma do dung la moi truong
+    hop dang chay: bx.fieldtest truyen 1.0, va bx.pvp cung truyen 1.0 cho CA
+    HAI ben (nguoi that da co cap that trong ban luu). Doi `foe['power']` khac
+    1.0 thi phep doi chieu nay se IM LANG sai — chu khong bao.
+
+    `seed_value` la SEED DAN QUAN, tach khoi `seed` la seed danh nhau. Ban Lua
+    co hai so nay tu dau (`army_battle(mine, theirs, rng, ..., chapter,
+    seed_value, ...)`), con ban Python thi gop lam mot — nen bx.pvp, noi
+    `chapter = 0` va `seed_value = 0` (dan quan co dinh cho moi tran PvP), la
+    duong DAU TIEN can chung khac nhau. De trong thi lay bang `seed`, dung y
+    nhu truoc.
     """
     levels = levels or {}
     # Buff do TRANG BI, theo ten tuong. Di chung mot bang voi buff the tran roi
     # ap mot lan — dung y ban Lua lam, nen thu tu ap dung khong the lam lech.
     equips = equips or {}
+    sv = seed if seed_value is None else seed_value
     army_lv = ARMY_BASE_LEVEL + max(0, chapter)
     teams = [[], []]
     roster = [mine, theirs]
     place_of = list(placement or DEFAULT_PLACEMENT)
     buffs_doc = doc or {}
+    foe = foe or {}
+    foe_place = foe.get('placement') or DEFAULT_PLACEMENT
+    foe_levels = foe.get('levels')
+    foe_formation = foe.get('formation')
+    foe_formation_level = foe.get('formationLevel') or 0
+    foe_equips = foe.get('buffs')
+    has_foe = bool(foe)
     for t in (0, 1):
-        for a in lua_pick_armies(army_rows, seed * 31 + t * 7 + chapter):
+        for a in lua_pick_armies(army_rows, sv * 31 + t * 7 + chapter):
             proto = make_army(a, rules, army_lv)
             for k in range(proto.units):
                 x, y = place(t, proto.battle_row, k, proto.units)
                 teams[t].append(Unit(make_army(a, rules, army_lv), t, x, y))
         names = roster[t]
         for i, name in enumerate(names):
-            lv = (levels.get(name, 1) if t == 0 else 1)
+            lv = (levels.get(name, 1) if t == 0
+                  else (foe_levels.get(name, 1) if foe_levels else 1))
             # Cho dung quyet ca hai thu: dung o dau tren san, va an buff nao
-            # cua the tran. Chi doi cua NGUOI CHOI co the tran.
-            # Chi doi cua nguoi choi dung cho dung trong ban luu; doi dich
-            # dung bang mac dinh, khong soi guong theo nguoi choi.
-            src = place_of if t == 0 else DEFAULT_PLACEMENT
+            # cua the tran. Doi cua NGUOI CHOI dung cho dung trong ban luu;
+            # doi dich la nguoi that thi dung cho dung cua HO, con doi dich
+            # cua chuong thi dung bang mac dinh, khong soi guong theo nguoi choi.
+            src = place_of if t == 0 else (foe_place if has_foe else DEFAULT_PLACEMENT)
             spot = src[i] if i < len(src) else 1
-            bf = (formation_buffs(buffs_doc, formation, formation_level, spot)
-                  if t == 0 and formation else {})
-            if t == 0 and equips:
+            # The tran VA trang bi, dung y nguyen hinh dang cua ban Lua: hai
+            # nhanh `if t == 0` / `elif co doi thu that`. Gop CHUNG mot bang roi
+            # ap MOT LAN, nen thu tu ap dung khong the lam lech.
+            bf = {}
+            if t == 0:
+                if formation:
+                    bf = formation_buffs(buffs_doc, formation, formation_level,
+                                         spot)
                 bf = dict(bf)
                 for k, v in (equips.get(name) or {}).items():
+                    bf[k] = bf.get(k, 0.0) + float(v)
+            elif has_foe and foe_formation is not None:
+                if foe_formation:
+                    bf = formation_buffs(buffs_doc, foe_formation,
+                                         foe_formation_level, spot)
+                bf = dict(bf)
+                for k, v in ((foe_equips or {}).get(name) or {}).items():
                     bf[k] = bf.get(k, 0.0) + float(v)
             f = Fighter(hero_by_name[name], base, rules, level=lv, buffs=bf)
             f.reach = 0.0
@@ -440,6 +483,9 @@ def main():
     ap.add_argument('--mirror', action='store_true')
     ap.add_argument('--army-level', type=int, default=6)
     ap.add_argument('--chapter', type=int, default=0)
+    ap.add_argument('--quality', type=int, default=None,
+                    help='bac pham chat de lay ky nang thien phu (2..5). '
+                         'Bo qua thi lay bac THAP NHAT nhu truoc')
     ap.add_argument('--mitigation', default='subtract', choices=('subtract', 'divide'))
     ap.add_argument('--k', type=float, default=100.0)
     ap.add_argument('--art', default=os.path.normpath(os.path.join(HERE, '..', 'assets_ref')))
@@ -457,13 +503,32 @@ def main():
 
     art = set(os.listdir(a.art)) if os.path.isdir(a.art) else set()
     hero_by_name, order = {}, []
+    thieu_bac = []
     for r in heroes.rows:
         if art and r['HeroSprite'] not in art:
             continue
         row = dict(r)
-        row['TalentSkill'] = talents.get(r['HeroID'])
+        if a.quality is None:
+            row['TalentSkill'] = talents.get(r['HeroID'])
+        else:
+            row['TalentSkill'] = talents.get_at(r['HeroID'], a.quality)
+            if not row['TalentSkill']:
+                # Khong co bac do thi LUI VE bac goc va GHI LAI, khong im lang.
+                thieu_bac.append(r['HeroSprite'])
+                row['TalentSkill'] = talents.get(r['HeroID'])
         hero_by_name[r['HeroSprite']] = row
         order.append(r['HeroSprite'])
+
+    if a.quality is not None:
+        # `order` la danh sach DONG cua bang tuong, ma bang do co nhieu dong
+        # cung mot HeroSprite (NanHuaLaoXian 21 dong), nen phai dem theo TEN
+        # chu khong theo dong — neu khong thi con so va danh sach deu sai.
+        thieu_ten = sorted(set(thieu_bac))
+        print('pham chat %d: %d/%d ten tuong co ky nang o bac nay'
+              % (a.quality, len(set(order)) - len(thieu_ten), len(set(order))))
+        if thieu_ten:
+            print('  khong co bac %d, da lui ve bac goc: %s'
+                  % (a.quality, ', '.join(thieu_ten)))
 
     # Quan chung: moi sprite lay ban CO BAN (bang goc co nhieu bac cua cung mot
     # sprite — Defender co ba muc mau: 50, 750, 6000).

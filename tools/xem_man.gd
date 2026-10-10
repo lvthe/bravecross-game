@@ -64,7 +64,7 @@ func _unhandled_key_input(e: InputEvent) -> void:
 
 
 func _ready() -> void:
-	if not FileAccess.file_exists("res://sc/share/class.lua"):
+	if LuaRuntime.thieu_ma_goc():
 		_bao("thieu ma goc — chay: python tools/import_lua.py")
 		return
 	_dung_bang()

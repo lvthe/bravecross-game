@@ -30,6 +30,11 @@
 --   resetContent         0x2c1bb4   core(self, 0.0f) roi 0x2c0a8c(self, 1)
 --   core                 0x2c1ab8   content[axis] = percent + f
 --
+-- NODE CONTENT (+0x1dc) nay LA MOT NODE THAT trong ban dung chu khong con la mot
+-- luat suy dien: `ui/xgg_layout.gd:_boc_lop_chua` dung no khi nap .xgg, va
+-- `lua/cocos.lua` dung no cho lop cuon do Lua tao luc chay; no mang meta
+-- `lop_chua` va tag 0. So do o `muc_tieu` ngay duoi.
+--
 -- `core` doc them hai cho nua: +0x1dc = node CONTENT (lop con giu moi muc),
 -- +0x245 = co cho tinh be rong cuon, +0x1af = co truc DOC. Khi +0x245 TAT thi
 -- f = 0.0f (literal o 0x2c1b64, xem 0x2c1b36), tuc `content[axis] = percent` —
@@ -127,22 +132,49 @@ return function(C)
 	local function so_con(gd) return gd:get_child_count() end
 	local function con_tai(gd, i) return gd:get_child(i) end
 
-	--[[ LOP CON GIAO DIEN (content layer) cua ban goc.
+	--[[ LOP CHUA NOI DUNG (content layer) cua ban goc.
 
 		Ban goc khong cuon tung muc rieng le: no giu mot lop con lam "content
 		layer" (+0x1dc — xem `core` o 0x2c1ad6 va 0x2c1b4a) roi doi cho lop do.
-		O day nhan ra no bang luat: LOP CON DUY NHAT.
 
-		Vi sao luat do dung: o Main, g_MainUIScrollLayer co dung mot con —
-		CCParallaxNode 2300x768 chua ca 32 lop canh va 18 nut nha. Cuon lop con
-		do chinh la cuon thanh pho. Con voi mot danh sach do Lua dung luc chay
-		(280/315 lop CCScrollLayer trong .xgg KHONG co con nao, moi muc do Lua
-		them vao sau), ban goc boc chung vao content layer cua no — ta khong boc,
-		nen truong hop do cuon thang tung con.
+		Lop do NAY LA MOT NODE THAT trong cay cua ban dung, khong con la mot luat
+		suy dien: `ui/xgg_layout.gd:_boc_lop_chua` dung no khi nap .xgg (cho ca
+		CCScrollLayer lan CCScrollLayerList), `lua/cocos.lua` dung no cho lop cuon
+		do Lua tao luc chay va dinh tuyen `addChild` vao do, va no mang meta
+		`lop_chua` + tag 0.
+
+		Bang chung: do tren 283 man KHONG dung phep ghep nao
+		(brave-cross/work/emu_join.py, bo do do_a2b.py) — 94/94 lop cuon co ten
+		rieng va co duong engine bao DUNG MOT con truc tiep, luon la con so 1, ke
+		ca lop khong co muc nao trong file. Va CUIActivity.lua:697/:201 cho thay
+		`addChild` cua lop cuon di VAO lop chua (`getChildByTag(0)` roi moi
+		`getChildByTag(i)`).
+
+		Vi sao phai nhan ra no: cuon lop chua = cuon CA KHOI. Truoc day, khi lop
+		cuon co nhieu muc, ta cuon tung muc mot — hinh nhu nhau nhung `getOffset`
+		va cac phep hoi tag khong con giong ban goc.
 
 		`muc_tieu` = node bi doi cho; `berth` = danh sach muc de danh so.
 	]]
+	local function lop_chua(gd)
+		for i = 0, so_con(gd) - 1 do
+			local c = con_tai(gd, i)
+			if c:has_meta('lop_chua') then return c end
+		end
+		return nil
+	end
+
 	local function muc_tieu(gd, ra)
+		local chua = lop_chua(gd)
+		if chua ~= nil then
+			-- Co lop chua thi muc nam TRONG no, va luat "lop con duy nhat" khong
+			-- con ap nua: luat do sinh ra chi de Nhan ra lop chua, ma nay da
+			-- nhan ra bang meta. Ap tiep thi mot lop chua co dung mot muc se bi
+			-- coi chinh muc do la lop chua (sai mot muc).
+			local m = so_con(chua)
+			for i = 1, m do ra[i] = con_tai(chua, i - 1) end
+			return m
+		end
 		local n = so_con(gd)
 		if n == 1 then
 			ra[1] = con_tai(gd, 0)
@@ -154,8 +186,7 @@ return function(C)
 
 	-- Danh sach muc de danh so (ImmediateMoveTo/autoMoveTo). Xem `muc_tieu`.
 	local function berth(gd, ra)
-		local n = so_con(gd)
-		local goc = (n == 1) and con_tai(gd, 0) or gd
+		local goc = lop_chua(gd) or ((so_con(gd) == 1) and con_tai(gd, 0) or gd)
 		local m = so_con(goc)
 		for i = 1, m do ra[i] = con_tai(goc, i - 1) end
 		return m

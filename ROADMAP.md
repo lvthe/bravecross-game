@@ -1,7 +1,12 @@
 # Lộ trình dựng lại Búa Tạ
 
 Danh sách mọi phần cần làm để ra được game, kèm chỗ đang đứng. Cập nhật
-2026-09-16.
+2026-09-20.
+
+**Mọi số đo thời gian trong tệp này phải ghi rõ máy ảo Android có đang chạy nền
+hay không.** Chạy nền nó (`qemu-system-x86_64`, GPU `swiftshader_indirect`) làm
+chuỗi khởi động phình ~3 lần: đo được `nap` 1,3 s → 1,7–4,5 s, vòng `tick()` đắt
+nhất 2,6–3,0 s → 8,8 s. Đã có một kết luận sai vì chuyện này — xem mục 13 ở §8.
 
 **Cách đọc dấu**
 
@@ -20,12 +25,13 @@ Số trong ngoặc là **đo được**, không phải ước lượng. Cách đ
 
 | | số | đo bằng |
 |---|---|---|
-| Module Lua của bản gốc nạp được | **875 / 876** | `boot_goc()` |
+| Module Lua của bản gốc nạp được | **868 / 868** | `boot_goc()` — xem §0b |
 | Màn hình mở được | **291–292 / 353** | `tools/quet_show.gd` |
 | Hàm máy chủ `Client*` đã có bản offline | **13 / 411** | đếm `sc/` vs `offline/handlers` |
 | Lệnh kịch bản `g_DramaSystem` đã có | **60 / 60** | đối chiếu `sc/plot/drama_*.lua` |
 | Định nghĩa hạt đã dịch | **33 / 33** (87 node, 7 định nghĩa được dùng) | `tools/verify_hat.gd` |
-| Bộ kiểm | **33**, xanh hết | `tools/check.py` |
+| Bộ kiểm | **49** bộ trong `SUITES` (43 `script` + 6 `scene`) (+ 5 bộ Python = **54** dòng kết quả), xanh hết | `tools/check.py` |
+| Cửa vào mặc định | màn `Main` **thật** của bản gốc, chờ **~5 giây** (1,3 s nạp + 3,5 s chuỗi) | `godot --path .`; `tools/verify_vao_game.tscn` |
 
 > Con số màn hình **dao động ±3 giữa các lần chạy** (đo 3 lần trong ngày:
 > 258, 259, 260; hôm sau: 258, 257; hôm nay, **sáu lần chạy cùng một mã**:
@@ -84,6 +90,206 @@ Con số 13/411 là thước đo thật của phần còn lại: **giao diện g
 chủ mới làm được phần đi chiến dịch.** Đếm theo "có hành vi thật", nên 10 RPC
 của ải vô tận **không** được tính: chúng đăng ký để client khỏi treo ở lớp
 "đang tải" và ghi lý do chưa làm, chứ không đổi trạng thái nào.
+
+---
+
+## 0b. Nền dữ liệu: VN 1.26 là NỀN, CN 1.31 là NGUỒN TÍNH NĂNG
+
+Chốt 2026-09-20. Đã dịch ngược ba bản: CN 1.25 (`com.xh.dachui.xsj`), VN 1.26
+(`com.cmn.buatanew` — bản đang dựng), CN 1.31 (`com.wh.dachui`, 1.31.20089).
+Câu "lấy bản nào làm nền" đã hỏi **hai lần**, nên ghi lại ở đây: **giữ VN 1.26
+làm nền**, bản 1.31 chỉ là **nguồn tính năng bê dần sang**.
+
+Số đo để chốt — so cây Lua port đang dùng (`sc/`, 989 tệp = 973 tệp gốc + 16 tệp
+`offline/` của ta) với cây 1.31 đã giải mã (1081 tệp), từng tệp một bằng
+`difflib`:
+
+| | số |
+|---|---|
+| tệp có ở cả hai | 966 |
+| **giống từng byte** | **595** |
+| khác | 371 |
+| tổng dòng đổi | **15.014** / 519.054 dòng của 966 tệp chung = **2,9%** |
+| chỉ có ở VN | 23 — **16 là `offline/` của ta**, 7 là gốc |
+| chỉ có ở 1.31 | 115 — **75 là tầng mới**, 40 là nội dung mới |
+
+97,1% giống nhau ở mức dòng: đây là **một cây**, 1.31 nhích thêm một chút, không
+phải hai nhánh đã rẽ xa.
+
+**Tầng mới của 1.31 gần như đóng kín.** Trong 371 tệp chung, chỉ **3 tệp** đụng
+tới `XLogic` / `XUI` / `XSim` / `Framework`, tổng **10 tham chiếu**:
+`user/require.lua` (6), `system/s_require.lua` (3), và **một chỗ gọi thật duy
+nhất** `user/UI/CUIDownload.lua` (1). Bản VN có **0** tham chiếu trong chính ba
+tệp ấy. 368 tệp chung còn lại khác nhau vì nội dung thường, không phải vì tầng
+mới.
+
+115 tệp mới chia ra: `XLogic` 28, `XUI` 20, `Framework` 16, `user` 16, `XRpc` 6,
+`def` 6, `share` 6, `XSim` 4, `ide` 4, `system` 4, gốc 3, `XShare` 1, `plot` 1.
+
+> **Suy ra, CHƯA truy từng chỗ:** `CUILogin2.lua` **4737 → 407** dòng,
+> `CUIRechargeStore.lua` **3169 → 958**. Có vẻ 1.31 **tách ruột các màn UI cũ ra
+> tầng mới** chứ không viết thêm. Nếu đúng thì phần "mới" ấy là **tái tổ chức**,
+> không phải tính năng — và như thế thì lấy VN làm nền còn rẻ hơn nữa.
+
+**Vì sao KHÔNG lấy 1.31 làm nền** — đo được, không phải ước lượng:
+
+* 1.31 **chưa qua được cổng vào**. Đo trên cây thử ngoài repo (`trial-131`):
+  `nap 877/880`, còn **3 module hỏng** (`Framework.Network.Init`, `XRpc.load`,
+  `system.LoadProto`), cả ba đều do **`pb` không có trong APK**. Rồi chuỗi dừng ở
+  chặng `dang nhap` vì một lỗi chết: `sngLoadingNext : XLogic/SDKLogic.lua:259:
+  attempt to index global 'SdkSetting' (a nil value)`. Lấy nó làm nền là phải
+  giải xong **cả hai** chặn ấy trước khi có bất cứ thứ gì để đối chiếu — mất luôn
+  52 bộ kiểm đang xanh làm mốc (con số 51 là lúc viết, trước khi thêm bộ "hiệu ứng thức tỉnh").
+  > **Đính chính 2026-09-20:** chữ "`pb` không có trong APK" là **chưa đo được**,
+  > không phải đã bác — cây 1.31 **đã giải mã** không có `pb.so`, nhưng thư viện
+  > native nằm ở `lib/` trong APK mà CN131 **chưa được bóc**. Điều đo được là:
+  > **cây đã giải mã không có `pb`**, và cả ba mô-đun ấy nay đã nạp được bằng bản
+  > viết lại `lua/pb.lua`. Xem mục `pb` ở cuối §0b.
+* VN sau ba vá (xem cuối mục này) nay **868/868 module, 0 hỏng**, tới Main,
+  `g_MainUIScene` lên, `check.py` **51/51** xanh (nay **52/52** — xem mục `pb`
+  ngay dưới).
+* Tầng mới là phép **CỘNG**, không phải phép **ĐỔI**: 75 tệp thêm vào, nối ở
+  **3 tệp + 1 chỗ gọi thật**. Giữ VN là bê được **từng phần**, mỗi phần còn kiểm
+  được; đổi nền là nuốt cả 15.014 dòng một lượt.
+
+**Ba vá của `boot_goc()`** — (1) chạy lại câu `require` đứng ngay trước bốn bản
+kê khai trong `sc/game.lua` (bản VN **không có** câu nào ở đó; bản 1.31 có **đúng
+một**, dòng 182 `require("system.sim_mirgate")`, và đó chính là chỗ định nghĩa
+`Class`), (2) nhận cả dạng `Ten = require(...)` (bản VN **0** câu, bản 1.31 **5**
+câu), (3) bỏ phần **chú thích** trước khi quét. Cả ba nằm trong `boot_goc()` nên
+**không phụ thuộc bản nền** — chúng đọc `sc/game.lua` nào đang có.
+
+Vá (3) làm VN **thôi nạp 7 module** mà bản gốc VN cũng không nạp: 8 dòng
+`--require` trong bốn tệp kê khai, **0** module nào được tệp khác `require`, và
+**0** tệp nào khác nhắc tới chúng (hai cái có nhắc — `share.ShopLogic` 10 lần,
+`user.UI.CUIGuildControlActivity` 11 lần — **đều nằm trong chính tệp nó**). Cái
+thứ 8, `user.UI.CUIChapterChoice`, **không có tệp** trong cây VN — nó chính là
+"1 module hỏng" bí ẩn ghi ở tệp này từ trước. Nên `875/876` xưa nay thật ra là
+**876/876**, và `868/868` bây giờ mới đúng bản gốc.
+
+**Điều duy nhất lật ngược quyết định này**: đích là bản **tiếng Trung mới nhất**.
+Đích đã chốt là bản **tiếng Việt**, nên giữ VN.
+
+Bản 1.31 đã giải mã nằm **ngoài cả hai repo**, ở
+`C:\Project\game\bravecross-source\` (`cn131/`, `trial-131/`, `data_ref-cn131/`,
+`assets_ref-cn131/`, `ui_ref-cn131/`, `layout_ref-cn131/`, `server-spec-131/`) —
+không commit vào repo, vì nội dung game có bản quyền.
+
+### `pb` — bê lớp mạng 1.31 sang (2026-09-20)
+
+Đây là chặn **duy nhất** của 1.31 đã đo được: trên cây thử, `nap 877/880`, ba
+mô-đun hỏng đúng là `Framework.Network.Init`, `XRpc.load`, `system.LoadProto`, và
+**cả ba vì thiếu `pb`**.
+
+`pb` là **lua-protobuf — một mô-đun C**. Không đường nào để nó chạy trong port:
+Lua ở đây là addon `lua-gdextension`, nên `require("pb")` **không bao giờ** giải ra
+mã C, đặt tệp ở đâu cũng vậy. Nên `lua/pb.lua` (22.872 byte) là **bản viết lại
+bằng Lua thuần**. Bề mặt API đo được: **3 hàm** — `pb.load(bytes)`,
+`pb.encode(tên, bảng)`, `pb.decode(tên, bytes)` — ở **8 chỗ gọi trong 6 tệp**.
+
+**Và đây không phải việc "làm cho đẹp".** `protoc.lua` **không chịu được** sự vắng
+mặt của `pb`: khối `do...end` mở ở `:970` đóng ở `:1109` định nghĩa
+`Parser.reload/compile/compilefile/load/loadfile` và gọi `Parser.reload()`
+**vô điều kiện** ở `:1107`. Không có `pb` thì cả khối bị bỏ qua, `Parser` trả về
+**không có `load`**, và `system/LoadProto.lua:100` chết bằng
+`attempt to call method 'load' (a nil value)` — **đúng như đoán trước khi viết**.
+Tức một `pb` giả trả `nil` còn **tệ hơn** là không có `pb`: nó làm
+`require("Framework.Network.pb.protoc")` **ném lỗi** thay vì lặng lẽ thiếu.
+
+**Ba cơ chế protobuf, cả ba đều native, không cơ chế nào có trong port:**
+
+| cơ chế | ở đâu | trạng thái |
+|---|---|---|
+| `PBC_*` | `sc/system/kpb.lua` | **trơ** — 0 dòng `PBC_*` trong repo, không ai gọi `initPbcEnv` |
+| `ProtoRPC` | `sc/system/rpc.lua:359` `RPC:importProtoFiles` | **sống**, VN cũng có, gọi thật lúc nạp (`CUILoginRPCManager.lua:20-21`) |
+| `pb` | `sc/Framework/Network/**` | chỉ 1.31 |
+
+`lua/pb.lua` **chỉ thay được cái thứ ba**. `ProtoRPC` là đối tượng **C++**
+(`ProtoRPC:new()`) nên port không có, và đường ấy **im lặng không làm gì** — đúng
+loại lỗi im lặng `CLAUDE.md` đã ghi. **Chưa làm, ghi lại.**
+
+**Phép kiểm — ba tầng, chạy mã gốc không sửa một chữ.** Nay là bộ vĩnh viễn
+`tools/verify_pb.gd` (**22 đạt / 0 hỏng**), dòng `pb (protobuf)` trong
+`check.py`:
+
+* **A — oracle blob của Google, phép kiểm chính, không cài gì.** Lấy **nguyên văn**
+  đoạn `local descriptor_pb = ...` nhúng trong `protoc.lua` (**4604 byte, 92 mảnh
+  chuỗi; 21 message / 4 enum / 97 trường**), giải ra rồi mã hoá lại, đòi **khớp
+  từng byte**. Có lực thật: thiếu một trường trong schema `descriptor.proto` viết
+  tay thì `pb.decode` bỏ qua nó và `pb.encode` không ghi lại, nên **độ dài lệch
+  ngay**. **Giới hạn nói rõ**: tên trường đặt **sai** thì không bắt được — tên
+  dùng đối xứng ở hai chiều, nên `end` thành ` en` vẫn qua phép thử này (xem mục
+  vết dịch ngược bên dưới).
+* **B — đường thật của bản gốc.** Chạy nguyên văn `protoc.lua` (nó tự gọi
+  `Parser.reload()` → `pb.load(descriptor_pb)` lúc nạp), cho nó `load` văn bản
+  proto3 của `def/PBProto.lua`, rồi `HandshakeReq` đi vòng đúng, và **wire type
+  đọc thẳng từ byte đầu** (`08 83 01`, string wt 2, bool wt 0).
+* **C — `.proto` thật trên đĩa** (7 tệp, ở `assets/conf/` và `assets/proto/`):
+  `required`, `default = "..."`, enum lồng trong message, message lồng trong
+  message, repeated message, `service`/`rpc`, option mức file. Đây là chỗ **bác
+  bỏ** câu cũ "không có tệp `.proto` nào ở cả hai cây" — câu ấy chỉ quét riêng
+  `sc/` rồi khái quát ra cả cây. Và `import` đi qua **`Parser.paths` + `io.open`**
+  (`Parser:addpath`), **không** qua `Parser.import_fallback`: đo được là
+  `make_context` (`protoc.lua:770`) đặt một `ctx.import_fallback` **riêng** — nó
+  là hook `self.unknown_import` (chỉ trả `true`/`nil` để **miễn lỗi**) — và vì
+  `ctx` có trường ấy nên nó **che mất** hàm của `Parser`.
+* `uid = -1` ra **10 byte varint** (11 kèm khoá), chứng minh phép chia **28 bit**
+  chứ không phải 32 — số âm phải cắt ở bội số của 7 bit.
+
+**Chặng 2 — đưa lớp mạng vào `sc/`.** `sc/` sinh lại từ cây VN bởi
+`tools/import_lua.py`, nên thêm **một luật hẹp** vào đó, đúng lối đã có cho
+`offline/`. Luật **chỉ-thêm**: đích đã tồn tại mà **khác nội dung** thì **dừng và
+báo**, không ghi. Phép kiểm E trên cây giả: **11 đạt / 0 hỏng** — và nó dừng
+**theo nội dung**, không theo tên (trả tệp về y nguyên thì thôi dừng).
+
+Số đo chốt phạm vi luật — cây VN **không có** `Framework/`, `def/`, `ide/` nào cả
+(**0 tệp mỗi thư mục**), nên ba thư mục ấy 0 khả năng đụng tên. Riêng `system/`
+thì ngược lại: CN 23 tệp, VN 19, **18 trong 19 tệp trùng tên KHÁC nội dung** —
+chép cả thư mục là đè nền VN mà **không phép kiểm nào bắt**. Nên chỉ lấy **đúng
+một tệp** của `system/`. Kết quả: **23 tệp, y nguyên từng byte**.
+
+**Và 23 tệp ấy chép sang là TRƠ với cây hiện tại, không chỉ "0 trùng tên"**: quét
+cả cây VN thì `require("Framework...")`, `require("def...")` và
+`require("system.LoadProto")` đều **0 lần**. Không mô-đun VN nào đổi hành vi vì
+chúng xuất hiện.
+
+**Vết dịch ngược — một phát hiện, và là lý do luật chép NGUYÊN BYTE.** Cây thử có
+`protoc.lua` **33400 byte**, cây CN **33399** — lệch **một byte**, `\5 end` so với
+`\5end`. Đó là **vết của chính luật vá trong `import_lua.py`** (`va_dau_cach` chèn
+dấu cách giữa số và từ khoá) chèn **vào giữa một chuỗi Lua**, tức vào giữa **blob
+descriptor**. Hậu quả: tên trường `end` của `DescriptorProto.ExtensionRange` âm
+thầm thành ` en`, mà `pb.load` **vẫn thành công** — loại hỏng im lặng không phép
+kiểm nào bắt. Đo trên **đúng 22 tệp** sẽ chép: cả 22 **đã là UTF-8 sẵn**, và cả 22
+chỉ có **đúng một** chỗ khớp luật vá, chính chỗ ấy. Nên luật chép nguyên byte,
+**không** vá vết — và `protoc.lua` trong `sc/` nay đúng **33399** byte.
+
+**Còn treo, ghi rõ:**
+
+* **"Nạp được" KHÔNG bằng "đăng ký được lệnh".** `LoadProtoDef` còn gọi
+  `CNetwork.GamePkgDispatcher.Instance():LuaRegister(nCmd)`, mà port không có
+  `CNetwork` — nó rơi vào lớp bóng và **không làm gì, không một dòng lỗi**.
+* `system/LoadProto.lua` chép sang nhưng **còn nằm im**: nó là chỗ vào của lớp
+  1.31, mà `s_require.lua` của cây VN **không** require nó (đo: **0** trong 19
+  dòng require), bản CN thì có (`s_require.lua:26`). Muốn nó chạy thật thì phải
+  lấy **cả** `s_require.lua` của CN — mà đó là tệp VN đã có và **khác nội dung**,
+  tức đúng chỗ luật từ chối. **Là quyết định của người, không phải của luật.**
+* `ide/**` (4 tệp) để ngoài: `ide/XRpc.lua` chỉ là `AccountRpc = AccountRpc:new()`
+  và đợi lớp `AccountRpc` của màn đăng nhập 1.31 — ngoài lớp mạng.
+* **Chặng 3 chưa làm**: mặt nền `CNetwork.*` (7 API + phương thức kết nối),
+  `sngHttpRequestEx`, `ProtoRPC`, và `bit`/`cjson` (**kiểm trước xem port đã có
+  chưa**, đừng viết mới). Đường **C++ → Lua** (`LuaRPCInterface.Receive` /
+  `ReceivePkg` / `RecvNetEvent` / `ShowTips`) **đã là Lua thuần**, không phải viết
+  lại.
+* **Chặng 4 để riêng**: nối lớp 1.31 vào transport nào. Bản dựng đang có mạng
+  riêng (`net/nakama_client.gd`, `net/player_session.gd`), còn lớp 1.31 nói
+  chuyện TCP thô với một máy chủ **đã chết**. Là quyết định kiến trúc riêng.
+* **Không có `pb.so` trong cây 1.31 đã giải mã**, nhưng thư viện native nằm ở
+  `lib/` trong APK mà CN131 **chưa được bóc**. Nên câu "APK không có `pb`" là
+  **chưa đo được**, không phải đã bác.
+* `def/PBRpcProto.lua` là văn bản proto **thứ hai** nhưng **không được nạp song
+  song** và `PBRpcProto` không được tham chiếu ở đâu khác — mã chết, không đụng.
+  `Framework/Network/pb/serpent.lua` (8682 byte) cũng vậy: `protoc.lua` **0 lần**
+  nhắc tới nó.
 
 ---
 
@@ -225,6 +431,101 @@ bước của `emu_nhan.py`, số mong đợi tính **thẳng từ API font củ
 không qua `cocos.lua`). Bộ này đã qua **phép thử phá**: bỏ hai luật rơi-về-chữ
 trong `tinh_o_chu` thì nó báo **10 hỏng** đúng ở các bước liên quan, rồi khôi
 phục mã là xanh lại — nên nó không phải bộ kiểm rỗng.
+
+**Thứ tư của nhãn: ảnh nền — ĐÃ SỬA 2026-09-18.** `CCLabelTTF` mang **cùng lúc**
+`text` **và** `img`; `img` là **tấm nền vẽ dưới chữ** (tấm vàng
+`buildingname_16.png` của tên toà nhà màn Main). `xgg_layout.gd` có gọi
+`UiFrames.set_frame` cho cả nhãn, nhưng `ui_frames.gd` chỉ nhận
+`TienDo`/`UiONhap`/`NinePatchRect`/`TextureRect` và **trả `false` cho `Label`** —
+node vẫn có meta `img` mà **không** có `img_applied`, nên tấm mất **im lặng**
+(đúng loại lỗi mà mục này đang nói tới). **202 nhãn** trong 11 bố cục dính.
+
+Sửa bằng ô theme `normal` của `Label` — nó vẽ nền ngay dưới chữ của chính nó, nên
+**không** phải bọc node cha: `ui/equip.gd` quét `c is Label` trên cây, bọc lại là
+vô hiệu nó. Cũng **không** đặt ô theo ảnh như đường chung (`set_frame` vẫn làm thế
+cho sprite): ô của nhãn là ô **chữ**. Gác bằng `tools/verify_layout.gd` khối 6b —
+đếm theo `img_applied`, vì theo `img` thì không thấy gì.
+
+**Câu "ô và tấm khớp 1:1 ở mọi trường hợp" ghi ở đây trước kia là SAI** — đo lại
+trên **cả 296 bố cục** (không phải chỉ Main) và đếm đủ **202 nhãn**, kết quả:
+**196 gác được, 6 không**. Trong 196 ấy chỉ **190** là 1:1 thật
+(`ui_background018` 50×30 ↔ 50×30 **146**, `buildingname_16` 144×34 ↔ 144×34 **26**,
+`ui_background112` 30×30 **10**, `ui_background762` 94×94 **4**, `ui_button12`
+127×51 **2**, `ui_button27` 143×61 **1**, `ui_background240` 35×35 **1**).
+**Năm cái KÉO THEO TRỤC DÀI** 21–29 điểm ảnh: `ui_background018` 50×30 vào ô
+**79×30** (2) và **71×30** (1), `buildingname_16` 144×34 vào ô **166×34** (2).
+Trục ấy là trục **viền vàng chạy dọc**, nên kéo thẳng **không bóp viền** — nhưng
+"không cần 9-slice" chỉ còn đúng ở nghĩa đó. Bản ghi chỉ nói `imgFrom: size` (khớp
+**theo kích thước**), nên nó **không trả lời được** bản gốc có kéo 21–29 điểm ấy
+hay vẽ tấm ở cỡ gốc rồi canh giữa — **chưa đo**.
+
+**Sáu cái không gác được nay là lời TỪ CHỐI có tên:** cả 6 là `@v6/ui_words357.png`
+trong `UI_ActivityMode_Finish_960_640`, tấm **176×64** vào ô **152×68** — cạnh ngắn
+lệch **4 điểm** (64 so với 68), kéo thì bóp viền. Trước khi `key_of` biết hậu tố
+ngôn ngữ (xem mục dưới) thì 6 nhãn này bị đếm nhầm vào "thiếu dữ liệu" vì bản gốc
+ship bản `ui_words357_vi.pkm`. Còn **1** nhãn `ui_background018` đo ra ô **50×29**
+mà vẫn `gac=true` — lúc gác ô là 50×30 rồi bị đổi 1 điểm sau đó, **chưa truy**.
+
+### Hai lỗi bố cục của màn Doanh Trại (`CUIBarracksMain`) — ĐÃ SỬA 2026-09-18
+
+Người dùng chụp màn này rồi báo "layout chưa đúng". Hai nguyên nhân **độc lập**,
+cả hai **im lặng**, và cả hai là lỗi **chung** chứ không riêng màn ấy.
+
+**(A) Khung xương vẽ lệch 640 điểm ảnh.** `CUIBarracksMain.lua:1059` gọi
+`parent:addChild(pArmature, 1, index*10)` — **không** `setPosition`. Khung xương là
+`Control` do `_new_node` sinh lúc chạy, mà `_new_node`
+(`game/lua_runtime.gd:522`) đặt cho **mọi** node như thế `parent_h = 640.0`, một
+con số **BIA** (node chưa có cha thật). `Node:addChild` hỏi `to_cocos(c)`, hàm này
+lấy chiều cao trong `parent_h` → cocos y = **640**; rồi `to_godot` với chiều cao
+cha **thật** 40 cho y = 40 − 640 = **−600**. Đo: `g=(304.91,−334.00)`.
+Sửa: `Control` **chưa từng được đặt chỗ** (`Node:setPosition` nay ghi meta
+`dat_cho`) và **chưa có cha** thì lấy thẳng toạ độ từ meta `cocos`. Sau sửa:
+`g=(304.91,306.00)` = mép dưới ô cha (304.91, 266.00) + 40, tức nhân vật **đứng
+trên ô chọn quân**. Đo cả cây: **92 dòng** `g=(304.91,−334.00)` → **0**; 7 dòng y
+âm còn lại là **của chính hộp thoại** (`lBarracksMainUI` ở `g=(160,−64)`, cố ý
+tràn ra ngoài màn) và **không đổi** trước/sau. Khoá bằng `tools/verify_lua_actions.gd`
+(`_kiem_dat_cho`, có cả phép đổi cha giữa hai chiều cao khác nhau).
+
+**(B) Ảnh có tiền tố `@` không bao giờ tra ra.** `@` trong tên ảnh của `.xgg`
+**không phải ký tự rác** — nó đánh dấu tên **theo NGÔN NGỮ**. Đo trên 296 bố cục /
+13.667 node có ảnh: **562 node** (145 tên, 130 bố cục) mang `@`; **482 node / 128
+tên CHỈ ra ảnh khi thêm hậu tố `_vi`**; 72 node ra **cả hai** đường (và đường `_vi`
+mới đúng theo thư mục bố cục ghi); 8 node không ra đường nào (thiếu tài nguyên
+thật); 2 node **chỉ** ra khi **không** thêm hậu tố (`@v6/ui_background941/942.png`)
+— nên bước **lùi về tên gốc là bắt buộc**. Hậu tố phải chèn **trước phần mở rộng**:
+`@v6/ui_words86.png` → `@v6/ui_words86_vi.png`; nối vào cuối chuỗi thì ra
+`@v6/ui_words86.png_vi`, tra trượt, và tưởng nhầm `_vi` không cứu được tên nào
+(**0/145** thay vì **128/145** — đã mắc đúng một lần). Nguồn sự thật của giá trị
+`_vi` là `DEFAULT_LANGUAGE = 'vi'` (`lua/bootstrap.lua:317`), **không** phải lựa
+chọn của ta: `tools/verify_lua_actions.gd` đọc giá trị ấy **từ chính file Lua** rồi
+đối chiếu `UiFrames.HAU_TO_NGON_NGU`. Trên màn Doanh Trại: **12 → 0** dòng
+`[KHONG GAN]`, và 12 dòng ấy đúng là 6×`@v6/ui_words94.png` (`CanUnlock`,
+`:1074`) + 6×`@v6/ui_words93.png` (`CanUpgrade`, `:1073`); số ảnh gác được
+**43 → 55**. Nhìn thấy được: chữ **"Mở Khóa"** hiện trên các ô quân chưa mở. Hậu
+quả rộng: **482 node / 128 tên trên 130 bố cục** nay có ảnh.
+
+Ảnh A/B dựng bằng chính bộ đo, **cùng cỡ cửa sổ 960×640** nên so từng điểm ảnh
+được — chế độ chụp mới của `tools/do_doanh_trai.gd`:
+`... --script tools/do_doanh_trai.gd -- --ra=<dump> --chup=<png> --khung=45`.
+Ảnh: `../error-test/doanh-trai-truoc.png` / `doanh-trai-sau.png`. Cây node ra
+**279 dòng y hệt nhau** ở hai lượt — chỉ **ảnh gác** và **vị trí khung xương** đổi,
+tức hình dạng cây không khác.
+
+**Một lỗi ghi lại, KHÔNG sửa:** meta `cocos` **cũ đi** ngay khi `setPosition` chạy
+sau `setAnchorPoint`, mà `UiFrames.set_frame` (`ui/ui_frames.gd:312-316`) **đặt lại
+vị trí node từ meta ấy** mỗi lần gác ảnh — nên một sprite bị dời đi rồi mới được
+gác ảnh sẽ **nhảy về** toạ độ bố cục. Ghi (x, y) vào meta trong `setPosition` sửa
+được, nhưng đổi hành vi cho **mọi** sprite như thế nên cần A/B riêng.
+
+Còn **chưa đo**: bốn tên toà nhà `#MainBuilding_Name9/10/12/14` có bề rộng
+**150/160/170** (không phải 144) nên phép khớp kích thước trượt và chúng **không
+có tấm** — chưa biết bản gốc có kéo giãn tấm vàng cho chúng không. Và **màu chữ
+vàng + viền đen + chấm đỏ** của nhãn thành phố vẫn **chưa có nguồn**: đã loại
+`.xgg` (so trực tiếp nhãn vàng với nhãn trắng chỉ khác hai float độ lệch
+bóng/viền), phông (cả 38 nhãn dùng chung khoá `#FONT_TTF`),
+`CUIMainBuildingManager.lua`, và cả 13 file gọi `enableOutline` của `sc/`. Nghi
+vấn còn lại là **engine**, nên phải **móc bản gốc lúc chạy** (`work/emu_*.py`) —
+xem chi tiết ở `CLAUDE.md`.
 
 ## 4. Máy chủ offline — phần dài nhất còn lại
 
@@ -927,18 +1228,25 @@ thay ảnh `_res-44`** (ảnh 4×4 rỗng) cũng là đường của bản gốc
 **cả** `PlugIn_1..6` **lẫn** `LayerName000` đều trỏ tới đúng ảnh ấy — nên phép
 kiểm có một tầng đi đúng đường "ẩn" đó.
 
-**`_Lua_changeWingAnimation` trả `false` là ĐÚNG, không phải chưa làm.** Không có
-đường nào **gắn** cánh trong bản dựng, và đây là điều **đo được** chứ không phải
-suy: bản gốc gắn bằng hàm toàn cục `setGear(pRole, value)`
-(`ClientPaperDoll:ChangePaperDollHelper` gọi nó cho từng mục của `tSkinMap`, kể cả
-`HeroSkinType.Wing`), mà `setGear` **chưa làm** — và **bốn** chỗ ghi `this[+0x9fc]`
-(`0x417126`, `0x4172be`, `0x41bee2`, `0x40a8f8`) đều nằm trong C++ và **không có
-trong bảng bind Lua nào**. Nên con trỏ cánh luôn NULL và hàm đi đúng nhánh `if
-(!w) return 0` của bản gốc. Bản port vì thế **quét con của node** tìm node mang
-`la_canh()` (biến thể `EquipWing*`, 63 biến thể) rồi `play(tên)` — đường ấy chỉ
-chạy khi sau này có ai gắn cánh thật. Động tác thì **không đoán**: cánh là
-armature riêng, động tác của nó đúng bộ `Standby` / `Run` / `Death` / `Fire` /
-`Hit`, khớp hai tên mà `CUIArmyGroupCampsite.lua:1797,1799` truyền vào.
+**`_Lua_changeWingAnimation` — đường GẮN cánh đã có, không còn là "chưa làm".**
+Câu cũ ở đây nói "không có đường nào gắn cánh vì `setGear` chưa làm" — **đã sai từ
+lượt làm trọn `setGear`**. Đo lại (2026-09-21): bản gốc gắn bằng hàm toàn cục
+`setGear(pRole, ten)`, và bản dựng **đã làm** hàm ấy
+(`lua/bootstrap.lua:591` → `LuaRuntime._godot_dat_do` → `SngRig.dat_do`,
+`rig/sng_rig.gd:820`). Quét `sc/`: **10 chỗ gọi THẬT** (11 dòng chứa chữ "setGear",
+một dòng bị chú thích — `CUIActivityScoreStroe.lua:26`), trong đó **3 chỗ truyền
+thẳng tên cánh**: `CUIActivityScoreStroe.lua:25` (`"wing_1_2"`),
+`CUIWing.lua:1403` và `CUIWingShow.lua:248` (`string.format("wing_%d_%d", …)`);
+17 mục `loai: "Wing"` của bảng đồ đều là `kieu: "node_con"` với `sPropertyName` =
+`EquipWing_*` — đúng kiểu mà `_dat_node_con` gắn được. Nên hàm này trả `true`
+**ngay khi có màn nào gắn cánh**, và trả `false` khi không có — đúng nhánh
+`if (!w) return 0` của bản gốc. Còn **một** thứ không mô hình được: con trỏ riêng
+của bản gốc — **bốn** chỗ ghi `this[+0x9fc]` (`0x417126`, `0x4172be`, `0x41bee2`,
+`0x40a8f8`) đều nằm trong C++ và **không có trong bảng bind Lua nào** — nên bản
+port **quét con của node** tìm node mang `la_canh()` (biến thể `EquipWing*`, 63
+biến thể) rồi `play(tên)`: cùng kết quả, khác đường. Động tác thì **không đoán**:
+cánh là armature riêng, động tác của nó đúng bộ `Standby` / `Run` / `Death` /
+`Fire` / `Hit`, khớp hai tên mà `CUIArmyGroupCampsite.lua:1797,1799` truyền vào.
 
 **Vùng chạm: bốn số là HAI GÓC ĐỐI NHAU, trong hệ của node CHA.** Đọc từ chính
 chỗ tính (`CUIArmyGroupCampsite.lua:562-580`): hai lần `convertToWorldSpace` rồi
@@ -1599,6 +1907,138 @@ phép kiểm tắt hai tầng kia trước khi đo đường gõ — và đòi �
 điểm chạm đúng là ô đang đo.
 
 
+### `z_index` của xương armature rò ra TOÀN canvas — ĐÃ SỬA 2026-09-19
+
+**Triệu chứng người dùng báo:** "các nút trên Main, khi bấm các nút trên Main cần
+hiển thị rõ các nút background". Thanh công cụ phải mở ra (đo được: bấm nút mở →
+`nRightToolButtonSizeLengh` 369,104 · `pos=(2,560)` → `pos=(2,190,9)`) nhưng **ba
+trong năm ô icon bị toà nhà 魔窟 che mất** — nhìn ảnh chỉ còn một mẩu.
+
+**Nguyên nhân, và nó là một lỗi của CẢ CÂY chứ không của thanh công cụ:**
+`rig/sng_rig.gd:_build_bones()` đặt `node.z_index = z; z += 1` cho **từng xương**
+(0..23). `z_index` của Cocos (`zOrder`) là số **tương đối trong node cha**; `z_index`
+của Godot là số **hiệu dụng trong cả canvas** — cộng dồn từ mọi tổ tiên khi
+`z_as_relative` bật (mặc định), và việc xếp thứ tự là **toàn canvas**. Nên một
+xương mang `z = 5` nằm trong lớp thành phố vẽ **đè lên mọi node `z = 0` ở bất kỳ
+nhánh nào**, kể cả thanh công cụ nằm trong nhánh UI hoàn toàn khác.
+
+Số đo (`tools/do_thanh_cong_cu.gd`, `paused = true` nên hai ảnh giống hệt nhau —
+nhiễu `a` so `c` = **0** điểm ảnh):
+
+| phép đo | trước | sau |
+|---|---|---|
+| node có z hiệu dụng ≠ 0 trên màn Main | **1378** (TẤT CẢ là xương armature) | **0** |
+| thanh công cụ đóng góp (ẩn thanh rồi so) | 11.891 điểm ảnh (một hình **nêm 45°**) | **27.785** điểm ảnh |
+| dòng cuối thanh công cụ còn thấy | 259 (giữa khung) | **330** (mép dưới của chính nó) |
+| ẩn toà nhà `btnMainDen` → đổi trong ô `tag=2` | 5329/5340 (**100%**) | 2530/5340 |
+| thứ tự vẽ tại (900, 280) | — | `btnMainDen` #4 < `lMainToolbarRight` #13 |
+
+Chuỗi tiêu biểu của 1378 node ấy: `g_MainUIScene(z=0) < g_MainUIScrollLayer(z=0) <
+CCParallaxNode(z=0) < gb8_0（武道会）(z=0) < btnMainContest(z=0) < @Control@…` rồi
+tới xương mang z 1..6 — tức z **không** đến từ node nào có tên, nó sinh trong rig.
+
+**Kiểm chứng ngược (đây là chỗ chốt thủ phạm):** nâng **thẳng** `z_index` của thanh
+công cụ lên 2000 trong GDScript rồi ẩn nó đi thì đổi **26.645** điểm ảnh — 5329/5340
+ở **cả năm** ô icon — so với 11.891 điểm của lượt `z = 0`. Phép này phải đặt
+`z_index` trực tiếp: `setZOrder` của Lua **chỉ xếp lại anh em**, không đặt `z_index`,
+nên dùng nó làm phép kiểm là vô nghĩa (đã mắc một lần, ra kết quả không đọc được).
+
+**Sửa:** bỏ hẳn `z_index` khỏi `_build_bones()`, chỉ `add_child(node)` theo đúng thứ
+tự `_ordered_parts()` trả về — mà thứ tự ấy **đã là** thứ tự vẽ, vì
+`CHILDREN_BACK_TO_FRONT := true` nghĩa là thứ tự con trong `.xml` chính là
+back-to-front. Luật này **không** mất gì: `lua_runtime._ung_vien` xếp ứng viên chạm
+theo `z_index` rồi mới tới chỉ số con, và khi mọi z = 0 thì nó rơi đúng về chỉ số
+con = thứ tự vẽ.
+
+Đuôi theo cùng lượt: `bong` (bóng) thôi `z_index = −10`, nay là **con đầu tiên**;
+`Z_BONG` xoá. Chú thích SAI ở `battle/unit.gd:369` ("các bộ phận trong rig đặt z theo
+kiểu tương đối với rig") đã sửa — nó chính là niềm tin sinh ra lỗi này.
+
+**Ảnh trước/sau:** `../error-test/thanh-cong-cu-truoc-sau.png` (bên trái: toà nhà
+nuốt mất "Túi" và "Mục Tiêu"; bên phải: đủ ba icon và nhãn). `python tools/check.py`
+sau khi sửa: **46/46 xanh** (lúc ấy 46 bộ; nay **47** — thêm bộ `nut chien dich (Main)`,
+xem mục ngay dưới), trong đó `bong armature` **62 đạt / 0 hỏng** với phép
+khẳng định mới.
+
+**Còn lại của triệu chứng "ma đồng":** ẩn `btnMainDen` vẫn đổi 2530/5340 điểm trong
+ô `tag=2`, nhưng đây **không phải** che khuất nữa — tấm panel của thanh công cụ có
+alpha nên nền phía SAU nó hắt màu lên (đo: `(48,68,67)` khi ẩn toà nhà so với
+`(30,50,52)` khi hiện — lệch nhỏ trong cùng dải tối). `lChattingUI`, `lGuideUI` và
+mọi `@Control@*` sinh lúc chạy đều đổi **0** điểm trong các ô icon; `UIRootLayer`
+đổi 5329/5340 vì nó **là cha của thanh công cụ**, đúng như phép kiểm chứng ngược.
+
+### Nút CHIẾN DỊCH trên Main: ba lượt đo sai vì một KHUNG HÌNH ĐÓNG BĂNG
+
+Người dùng bấm nút `[战役]` (`btnMainUIAttackActivity`) trên màn Main và **không
+màn chịu**. Đo ra thì cái nút **vẫn tốt**; thứ hỏng là **phép đo của ta**.
+
+**Ba tầng bẫy, cả ba đều im lặng, và tầng thứ ba che tầng thứ nhất:**
+
+**(A) Cả màn hình của bản gốc mở bằng HOẠT CẢNH TREO, không phải một lệnh
+thẳng.** `CUIMain.lua:251-254` xếp
+
+```lua
+g_MainUIScene:runAction(S_CCSequence:create(
+    S_CCDelayTime:create(0),
+    S_CCCallFunc:create(g_CUIMain, "postOnMainShowBeginEvent")))
+```
+
+và **chỉ** `postOnMainShowBeginEvent` mới POST `OnDialogShowBegin` — sự kiện mà
+`CGameFuncOpeningManager:OnDialogShow` nghe để đi mở khoá nút chức năng (ẩn nhãn
+khoá tag `5000` + hết xám). `tools/vao_main.gd` dừng chuỗi 4 chặng **ngay khi
+`g_MainUIScene` lên sân khấu**, tức **trước khung hình kế tiếp**. Nên mọi trạng
+thái đọc ngay sau `chay()` là của một **khung hình đóng băng**:
+
+| đọc lúc | nhãn khoá `5000` | `_getBuildingStatus` | `_isBuildingOpen` | bấm |
+|---|---|---|---|---|
+| ngay sau `chay()` | `hien = true` | `1` (close) | `false` | không mở gì |
+| sau **5** khung | `hien = false` | `2` (open) | `true` | `BattleActivityMode` mở |
+
+Hoạt cảnh treo ấy **đã được xếp hàng từ lúc khởi động** — nó chỉ chưa nhận được
+một khung nào. Cùng lý do này đã ghi một lần cho `onVisible` ở
+`tools/quet_show.gd:118-127`. Phép kiểm mới vì thế đọc **hai lần** và **khẳng
+định cả hai** (`dong_bang` so với `a`): một con số chết không phân biệt được
+"cửa mở sẵn" với "cửa vừa mở vì ta nhả khung".
+
+**(B) `C.tick` từ trong một đoạn Lua KHÔNG tick.** `_G.C` **không hề tồn tại** —
+`lua/bootstrap.lua` thay mọi biến toàn cục thiếu bằng **bóng**
+(`make_ghost`), nên `C.tick`, `C.actions`, `C.Node` đều là `<bong …>` **im lặng
+không làm gì**. Module thật đi vào `lua/actions.lua` qua **THAM SỐ**
+(`return function(C) … end`); lấy lại được bằng `package.loaded['cocos']`
+(kiểm: `package.loaded['cocos'] == _G.C` → **false**). Đây là lý do *mọi* bộ đo
+trước đó đều kết luận "hệ hoạt cảnh hỏng": chúng tự tick bằng một cái bóng, nên
+không bao giờ nhả khung cho (A). Nay `tools/verify_nut_chien_dich.gd` nhả khung
+bằng `lua.tick()` **từ GDScript**.
+
+**(C) Cổng chức năng là dữ liệu MÁY CHỦ, và người chơi offline là Lv1.**
+`IsFuncOpening` đọc `GameUserGlobalData['L_'..ten]`, mà bảng ấy bản ship chỉ có
+**đúng một dòng**. Chiến dịch đòi Lv22 — nhưng số 22 ấy nằm trong **khoá ngôn
+ngữ** `#MainUI_Unlock_AttackActivity`, tức **chỉ là chữ hiển thị**; không có
+bảng mức-đòi-cấp nào ở client. Lớp offline vì thế phát biểu "mở hết" bằng **công
+tắc của chính bản gốc** — `g_CGameFuncOpeningManager.IsTest = true`
+(`lua/bootstrap.lua`, ngay sau bước `OpenAllGameFun` đã có), chứ **không** bịa
+một bảng `L_*` nào. Đường còn lại (`OpenAllGameFun` trong `set.xgg`) bị loại vì
+nó **kéo theo** bảng đăng nhập thử `lLoginTestUI` (`CUILogin2.lua:3943`).
+
+**Kết quả đo được** (`tools/verify_nut_chien_dich.gd`, **15 đạt / 0 hỏng**), đi
+**đúng đường người chơi đi**: chạm `(224,0; 328,0)` → node nhận là
+`btnMainUIAttackActivity` → `BattleActivityMode` mở,
+`g_CUINormalDlg.CurrentUIName == "BattleActivityMode"`. Hai phép **kiểm chứng
+ngược** giữ cho bộ này có lực: tắt `IsTest` → nhãn khoá hiện lại, `status` về
+`1`, `_isBuildingOpen` về `false`, và cú chạm **không mở gì**; và chạm vào nút
+khác khi cửa đã khoá cũng không mở.
+
+Trước đó đường này **chưa từng được đo**: `tools/do_chien_dich.gd` vào chiến dịch
+bằng `g_CUINormalDlg:Show(g_CUISelectLevel:GetUIName(), {})` — đúng mã gốc nhưng
+**đi tắt qua chính cái nút**.
+
+**Một hồi quy kéo theo, đã sửa cho đúng chỗ:** thêm `IsTest = true` vào bước
+khởi động làm `cuon lop thanh pho` tụt **32 đạt / 2 hỏng**, vì `IsFuncOpening`
+khi ấy trả `true` **vô điều kiện** nên bộ kiểm **không còn đo được nửa KHÓA**
+của chính nó. Cách sửa là **để bộ kiểm tự tắt công tắc** (`IsTest = false` +
+`RefreshUserLevelAndExp()` + nhả 2 khung) chứ **không** nới lỏng phép khẳng
+định — nay **34 đạt / 0 hỏng** và đo được **cả hai** nửa.
+
 ### Bóng của armature (`_ShowShadow` / `_SetSyncShadowPosY` / `_UpdateShadowPosY`)
 
 Ba tên này có **23 chỗ gọi** trong mã gốc (**20 / 3 / 0**) và trước lượt này
@@ -1688,10 +2128,17 @@ texture) — nên `modulate.a = do_mo(tên)` là đúng chỗ.
 `self+0x49c` — ô đó được ghi lúc đặt armature xuống mặt đất, và **không có hằng số
 nào** để đối chiếu ngược, nên đây là điểm suy luận, không phải điểm đo.
 
+**`zOrder −10` nay là VỊ TRÍ CON, không phải `z_index` (sửa 2026-09-19).** Bản port
+đầu tiên đặt `bong.z_index = −10`, mà `z_index` của Godot là số **hiệu dụng trong
+CẢ canvas** chứ không phải số tương đối trong node cha như `zOrder` của Cocos —
+xem mục "`z_index` của xương armature" bên dưới, cùng một lỗi. Nay bóng là **con
+đầu tiên** (`move_child(bong, 0)`) nên nó vẽ trước mọi xương mà không đụng tới z.
+`Z_BONG` đã **xoá**; `verify_bong.gd` khẳng định `z_index == 0 and get_index() == 0`.
+
 **Bản port.** `rig/sng_rig.gd` thêm `bong` + `hien_bong` / `dong_bo_bong_y` /
 `cap_nhat_bong_y`; bóng **chỉ được tạo khi có người hỏi** (đúng như bản gốc, nhờ
 vậy 20 chỗ gọi không làm đổi một màn nào đang chạy), `false` thì `queue_free` và
-quên con trỏ, `z_index = −10`, ảnh lấy qua `BongRef` (`battle/bong_ref.gd` +
+quên con trỏ, vẽ **trước mọi xương bằng vị trí con**, ảnh lấy qua `BongRef` (`battle/bong_ref.gd` +
 `data_ref/bong_ref.json`), tỉ lệ `BongRef.ti_le(tên)` (không khai thì **0,9** của
 chính cấu hình), độ đậm `BongRef.do_mo(tên)`. `lua/cocos.lua` thêm ba phương thức
 cho lớp `Node`, thiếu tham số thì **BẬT** (đúng `movs r1, #1` của bản gốc —
@@ -1705,7 +2152,8 @@ trong `.gitignore`).
 **34**, ba tầng: (A) bảng và ảnh đối chiếu với **phép đếm thô trên chuỗi** của sáu
 file cấu hình (19 / 120 / 7 / 2, đúng bảy tên sprite ghi tỉ lệ), ảnh kiểm bằng
 chính file PNG (164×22, alpha giữa 0,439, elip đặc, đối xứng trên–dưới); (B)
-`SngRig` — rig vừa dựng **không** có bóng, `true` tạo với `z = −10` và tỉ lệ 0,7
+`SngRig` — rig vừa dựng **không** có bóng, `true` tạo với **vị trí con 0** (vẽ
+trước mọi xương) và tỉ lệ 0,7
 của Hoplite, `false` **xoá hẳn**, lần `true` sau cho **`instance_id` khác**,
 armature đang ẩn thì bóng có mà không hiện, và **một** lần gọi trên rig cha của
 CaoCao kéo **cả 15** bóng (14 rig lồng nhau) về gốc — phép đo cho đệ quy
@@ -2035,13 +2483,24 @@ lọc là ra rig **0 xương**. Rig 0 xương vẫn `play()` được (trả `tr
 tên động tác, nên phép kiểm "chạy không lỗi" **không thấy gì** — chỉ phép **đếm
 xương** mới bắt được. Đo rộng ra: **1319/2935** biến thể trong `assets_ref` có
 toàn bộ xương tầng ngoài cùng tên `Layer*`, gần như tất cả là armature hiệu ứng
-(`Artillery_Effect_Boom`, `BatFlight_WakeEffect`, …). Nên nay `_tao_rig(ten,
-giu_layer)` có công tắc ấy, đường hiệu ứng sao đi bằng `giu_layer = true`, và
-`LuaRuntime.rig_rong` **đếm** mọi armature dựng ra rỗng để lỗi này không im lặng
-nữa. **Chưa sửa** chỗ rộng hơn: armature hiệu ứng gọi tên qua
-`getSpriteFromSpriteCatch` vẫn đi qua `_tao_rig` mặc định (lọc) — muốn sửa cho
-đúng thì phải đo lại luật theo **từng khung** (bản gốc chỉ loé xương `Layer*` của
-nhân vật vài khung rồi tắt), không phải đổi mặc định cho có.
+(`Artillery_Effect_Boom`, `BatFlight_WakeEffect`, …). `LuaRuntime.rig_rong` **đếm**
+mọi armature dựng ra rỗng để lỗi này không im lặng nữa.
+
+**Đã sửa 2026-09-18** bằng cách bỏ hẳn bộ lọc khỏi **đường Lua**: `_tao_rig` gọi
+`SngRig.build(..., false)`, tham số `giu_layer` không còn (đường Lua chỉ có một
+luật, nên một công tắc là thừa). Bộ lọc **vẫn còn cho màn trận** — ba chỗ gọi
+`SngRig.build(..., true)` đều nằm trong `battle/`, và đó là chỗ duy nhất nó từng
+được đo. Lý do bỏ: ở đường Lua `Layer*` không phải vết tích Photoshop mà là **chính
+đối tượng**. Đo trên màn Main: toà nhà Võ Hội (`UIJianZhuWuDaoHui`) **0 → 17** node
+có ảnh, **5 đang hiện**. Màn trận không đổi, nhưng **không phải vì phép đo điểm
+ảnh** — ba chỗ gọi đó truyền `true` tường minh và lượt này không đụng tới. Phép đo
+điểm ảnh ở màn trận **không có lực**: nhiễu giữa hai lần chạy *cùng cấu hình* là
+**đơn vị đứng ở chỗ khác nhau** (RNG của trận), nên nó lớn hơn chính hiệu trước/sau.
+
+**Còn chưa đo:** rig **nhân vật** hiện trong giao diện (`CUISign`,
+`CUIBarracksMain`, `CUIGameFinish` — đều gọi `getSpriteFromSpriteCatch`) nay cũng
+không lọc, nên lớp `Layer*` của nhân vật có thể hiện thường trực ở đó. Muốn sửa cho
+đúng thì phải đo lại luật theo **từng khung**.
 
 **Làm:** `ui/star_ref.gd` (`StarRef`, đọc `data_ref/star_ref.json` do
 `brave-cross/work/star_ref.py` sinh từ khối `<star>` rồi đối chiếu chéo với file
@@ -2106,7 +2565,10 @@ tướng không bị cướp, cấp 5 thay cấp 3, cấp 1 xoá sạch); D **ch
       **không lấy lại được** (xem ghi chú B ở trên); màn C còn lại là `CUITurnplate`
       — tính năng chết trong chính bản gốc
 - [ ] Đấu trường / PvP / giải đấu — **đo ra 11 màn, không phải 9: 6 A / 3 B / 2 C.**
-      Cả 3 màn B đều là APR (`APRData` dựng từ gói tin máy chủ) — nhiều người chơi
+      Cả 3 màn B đều là APR (`APRData` dựng từ gói tin máy chủ) — nhiều người chơi.
+      Phía máy chủ Nakama thì **đã có** đường đánh vào đội hình một tài khoản chỉ
+      định (`bx.pvp`, xem mục "Máy chủ tự xử trận" trong `README.md`) — nhưng đó
+      **không phải** các màn này: 11 màn trên vẫn chờ dữ liệu như cũ
 - [ ] Thú cưng — **đo ra 5 màn: 4 A / 1 C. Không có lỗ hổng dữ liệu nào** — bốn
       màn kia chỉ thiếu tham số của người gọi. Màn C là `PetIllustration`: sau khi
       sửa `res`/`cls` nó **không còn** hỏng vì tra chuỗi nữa mà vì thiếu hàm engine
@@ -2127,6 +2589,84 @@ tướng không bị cướp, cấp 5 thay cấp 3, cấp 1 xoá sạch); D **ch
       (`TourMerchantConfirm` là A, không phải B — xem "Đã sửa")
 - [~] Hang / ma khu (1 màn) — mở được + handler `cavern` (xem mục "Đã có"); còn
       làm mới hàng cửa hàng và quét nhanh
+
+### Dàn trận chiến dịch (`CUIBattleDeploy`) — nhãn `Lực` ra 0
+
+Nhãn tổng lực chiến của màn dàn trận (`ttfTotalFightCapacity`, gắn theo **tag 1**
+ở `CUIBattleDeploy.lua:1433`, ghi ở `:2592`) hiện **`0`** dù đã xếp tướng vào ô.
+Hai nguyên nhân **độc lập**, cả hai **im lặng**, cùng nằm trên một đường.
+
+**(A) `FightCapacity` và `AllFightCapacity` là số của MÁY CHỦ.** Bản gốc có sẵn
+dòng bị chú thích ở `sc/share/share_HeroLogic.lua:113`:
+
+    --self:RefreshHeroFightingCapacity(tHero)--不去刷新战力，由服务端刷新后下发
+
+— "không tự tính lại lực chiến, máy chủ tính rồi gửi xuống". Mọi chỗ gọi
+`RefreshHeroFightingCapacity` còn lại (`:807`, `:1316`, `:1354`, `:1549`, cộng
+`DestinyLogic` `:153/:374/:485` và `UserLogic` `:1411/:1510`) đều nằm **sau một
+hành động của người chơi**, không chỗ nào chạy lúc vào game; và
+`RefreshHeroAllFightCapacity` (`HeroCapacityLogic.lua:296`) — hàm **duy nhất** ghi
+`AllFightCapacity` — **không có một chỗ gọi nào trong cả 973 tệp**. Không có máy
+chủ thật thì **không một dòng lỗi nào**: bảng `<bảng>Reset` của cấu hình ghi sẵn
+số `0`, và `GetHeroAllFightCapacityWithHero` (`:63`) thấy `AllFightCapacity`
+**khác nil** nên **không lùi** về `FightCapacity`.
+
+Phải điền **cả hai**, và số lấy từ **chính mã gốc** chứ không chép công thức:
+
+    FightCapacity    <- G_HeroLogic:CalcHeroFightCapatity(tướng)
+    AllFightCapacity <- G_HeroLogic:CalHeroAllFightCapacityWithHero(tướng)
+                        (= số trên + trang bị + cánh + thần binh + hồn sao)
+
+Đo trên chính màn ấy: điền `FightCapacity` (**1369,7**) mà để `AllFightCapacity`
+= 0 thì nhãn **vẫn ra `0`**; điền cả hai thì ra **`1369`**. Đó là phép đo phân
+biệt được hai trường chứ không phải một.
+
+**(B) Lượt điền đặt SAI LÚC — và đây là lỗi mà bộ kiểm mới bắt được ngay lần chạy
+đầu.** `ctx:call` **chỉ ĐẨY vào hàng đợi** (`offline/net.lua:116`) rồi khung hình
+sau mới chạy (`OfflineNet:tick()`, `:235`). Nên gọi `bo_sung()` ngay dòng dưới
+`ctx:call` trong `offline/handlers/login.lua` là chạy **TRƯỚC** `G_DataManager:Init`
+(`ClientGameWorld.lua:166`) — lúc ấy bản đồ tướng còn rỗng. Đo trong `offline.log`
+của một lượt vào game sạch:
+
+    vao game (nguoi choi moi), 36 bang du lieu
+    initUserDataFromDB: GameUserHero          <- GetHeroMap hoi luc userData con rong
+    luc chien: dien 0/0 tuong                 <- dien KHONG duoc gi
+
+Lỗi ấy **im lặng và chỉ hiện một phần**: đường CHIÊU MỘ
+(`offline/handlers/lottery.lua`) gọi `bo_sung` **sau** khi dữ liệu đã nạp, nên
+trước đây **chỉ những bản lưu có quay tướng** mới hiện đúng số — còn người chơi
+mới thì nhãn `0`.
+
+**Cách sửa (đã áp):** nối vào **sự kiện của chính client** thay vì gọi thẳng từ
+handler. `ClientGameWorld:OnServerEnterGame` POST `EventManagerLogicEvent.OnEnterGame`
+ở **dòng cuối** (`ClientGameWorld.lua:98`), tức **sau** `initData` → `G_DataManager:Init`
+(`:166`) — sự kiện ấy rơi **đúng** lúc khối dữ liệu đã nằm trong tay client.
+`OfflineLucChien:noi_su_kien()` + `OfflineLucChien:OnEnterGame(nErrCode)` (gọi từ
+`offline/init.lua`), và `offline/handlers/login.lua` **thôi** gọi thẳng. Đường này
+không phải sửa `net.lua` và không phải đoán số khung. Chỉ điền khi `nErrCode == 0`.
+
+Đo lại trong `offline.log` (cùng một lượt vào game sạch): dòng
+`initUserDataFromDB: GameUserHero` **không còn** nằm giữa hai dòng ấy nữa — bản đồ
+tướng đã có sẵn — và lượt điền ra **`luc chien: dien 1/1 tuong`** thay cho `0/0`.
+
+**Đo lại sau khi sửa:** `tools/verify_luc_chien.gd` **11 đạt / 0 hỏng** (trước khi
+sửa: `8 đạt / 3 hỏng`). Bộ kiểm giữ **ba nguồn độc lập** — nhãn **đọc trên màn**
+(đi tìm node `lBattleDeployImplement`, lấy con trực tiếp có `get_meta("tag") == 1`),
+`D.nTotalFightingCapacity` của Lua, và tổng tính lại từ **hai hàm gốc** — cộng
+**kiểm chứng ngược** (xoá hai trường thì nhãn phải về `0`, chứng minh phép kiểm
+có lực) và **phép thử lặp** (gọi `bo_sung()` lần hai ra đúng số cũ, không lũy thừa
+dạng). `python run_tests.py` ở `brave-cross/work/offline`: **147 đạt / 0 hỏng**.
+
+**CÒN TREO, ghi rõ:**
+
+* Màn **doanh trại / đội hình** **chưa đo** cùng lỗ hổng này. Chúng đọc **cùng
+  hai trường** nên hưởng lợi là **suy ra**, không phải số đo.
+* `RefreshHeroWingFightCapacity` (nằm trong `CalHeroAllFightCapacityWithHero`)
+  **chưa thử** với một tướng **thật sự có cánh** — người chơi mới không có cánh
+  nên nhánh ấy chưa từng chạy.
+* Đường **chiêu mộ** (`CUIBattleDeploy.lua:2570-2574`, `GetHeroAllFightCapacityWithEquip`)
+  **không tới được** trong lớp offline: `GuildId` bằng 0 (`:4559`), nên bộ kiểm
+  chỉ phủ đường tướng của mình.
 
 ## 5. Trận đánh
 
@@ -2509,9 +3049,32 @@ tướng không bị cướp, cấp 5 thay cấp 3, cấp 1 xoá sạch); D **ch
       là 2 Triệu Vân × 3 lần gọi = 6 lần AoE không có thật. Nay chỉ động tác
       **kỹ năng** (`Wake*`, `Talent*`) mới gây sát thương. Sau khi sửa cả hai,
       ải 1 **vẫn thắng** (53 giây) mà không cần con số đặt nào.
+      **Cập nhật 2026-09-19 — thẩm quyền nay là tham số `form`, không phải tên
+      động tác.** Đo cả 17 chỗ gọi trong `sc/plot/drama_*.lua`: form 1 ⟺
+      `Fight`/`Fight3`/`Fight20` (5 chỗ), form 2 ⟺ `Wake`×7 / `Super4`×2 /
+      `Super`×1 (10 chỗ), form 4 ⟺ `Talent` (1 chỗ) — **17/17**; nghĩa đọc từ
+      chú thích bản gốc (`--吕布变身` ↔ form 2 + `Wake`, `--赵云触发龙胆` ↔ form 4
+      + `Talent`). Trên **đúng 17 chỗ ấy hai luật cho ra cùng kết quả**, nên
+      lượt này **không đổi kết quả trận nào** (3 chỗ `Super`/`Super4` đều là
+      `doi = 1`, mà nhánh AoE vốn đã bỏ qua lời gọi của bên địch); đổi là để
+      tên động tác thôi làm thẩm quyền. `form = 0` thì lùi về phép thử theo tên.
+      5 phép kiểm mới trong `do_chien_dich --kichban`, **11 → 16 đạt / 0 hỏng**;
+      chúng **đọc lại vết `tuyet_chieu` thu được** (`san_tran_ve.vet_tuyet_chieu`)
+      vì `goi_tran` bọc trong `pcall` nên lệch số tham số **im lặng**. Có lực:
+      bỏ tham số thứ 5 → `12 đạt / 4 hỏng`. Còn **chưa** đo được: một lời gọi
+      **bên ta** mà tên động tác không bắt đầu bằng `Wake`/`Talent` — hiện
+      **không có chỗ nào**, nên luật theo tên chưa từng sai trên dữ liệu đang có.
       **ĐẶT còn lại**: cách ghép (`dmg * (1 + fDamageBonusWake)`, hệ số chia
       `clamp(nSplitWake/n, fSplitFloorWake, 1)`) và việc đánh **khắp** địch —
       luật thật nằm trong ~80 lớp C++ `CDFSpriteFight*Wake`
+      **Cập nhật 2026-09-21 — HÌNH của thức tỉnh nay cũng đã làm.** Mục này mới
+      chỉ lo **số** (số đòn, hệ số, chia sát thương) và **tư thế** của chính
+      tướng; **24 trường chuỗi `s*`** của `WakeRef` — trỏ tới các armature hiệu
+      ứng riêng (vòng, khiên, vũ khí sáng) — thì **chưa ai đọc**, nên không có
+      gì được vẽ. Nay đã đọc, chia hai nhóm và dựng rig. Số đo, hai lỗi thật,
+      lỗ hổng dữ liệu `Player000M03W`, và chỗ còn treo (cổng `_xong` nuốt hiệu
+      ứng biến thân của cảnh kết): xem mục **"Hiệu ứng thức tỉnh — XONG
+      2026-09-21"** ở dưới.
 - [x] **Đường đi / hiệu ứng điện ảnh** — **xong**. Đối chiếu 56 file
       `sc/plot/drama_*.lua` với `lua/kich_ban.lua` thì thiếu **35/60** lệnh
       `g_DramaSystem`; nay đủ **60/60**. Làm thật (chữ ký đọc từ chính chỗ gọi):
@@ -2533,6 +3096,316 @@ tướng không bị cướp, cấp 5 thay cấp 3, cấp 1 xoá sạch); D **ch
       nút đó**: quân ta xanh / địch đỏ, tướng to hơn, cộng khung ngắm cho biết
       phần sân đang trên màn hình. **ĐẶT**: hình dạng chấm, màu, và việc có
       khung ngắm — luật thật nằm trong C++
+- [x] **Hai lỗi làm màn trận không chơi được** — **xong** (2026-09-18), khoá bằng
+      bộ kiểm mới `tools/verify_man_tran.tscn` (14 đạt / 0 hỏng, chạy trong
+      `check.py`). Cả hai đều **im lặng** và đều lộ ra khi người dùng mở một trận
+      thật — không bộ kiểm nào bắt được.
+      1. **Màn đen tuyệt đối.** `battle/battle.gd` dựng HUD thẳng từ bố cục gốc
+         `Game_UI_Control_Panel_960_640`, mà bố cục ấy có node
+         `g_BlackEffectLayer`: `CCLayerColorRoundRect` **2000×1000** ở (−200,−200),
+         màu `[0,0,0]`, `opacity 255`, và trong file ghi `visible: True`. Dựng
+         nguyên trạng thái của file thì ra một tấm đen **đục** phủ kín sàn, vẽ
+         trong `CanvasLayer(layer = 10)` nên đè lên cả lớp 0. **Đo trên khung
+         hình thật**: HUD hiện → **614.400/614.400 điểm ảnh cùng MỘT màu**
+         `(0,0,0)`; tắt HUD → **2540 màu**, có cả nền `(0,106; 0,118; 0,145)` lẫn
+         quân xanh/đỏ. Bản gốc tắt nó bằng cờ `bShowBattleBlackEffectLayer`, và
+         ải thường đặt cờ ấy `false` (`sc/user/Battle/ChapterNormalLevel.lua:8` —
+         **một lần gán duy nhất trong cả kho `sc/`**). Không file Lua nào *đọc*
+         cờ ấy: nó là trường bên C++ đọc, và tên node `g_BlackEffectLayer` nằm
+         trong pool chuỗi của `libgame.so` (bản vn `0x7c0dc7`, cạnh
+         `getEliteNameLabel` và `PauseLeaderShipTimer`) — tức **engine tìm node
+         theo TÊN** rồi tự bật/tắt. Đường **chiến dịch** đã tắt nó từ trước ở
+         phía Lua (`lua/san_tran.lua:481` `lop_den`, gọi lúc `_Lua_LoadMap`;
+         `SetLayerDark(b)` của `g_BattleField` bật/tắt theo kịch bản) — nhưng
+         `battle.tscn` là màn trận **đứng riêng** (đánh tập / xếp hạng), không đi
+         qua `san_tran.lua`, nên không được hưởng phép tắt đó. Cùng một node,
+         cùng một luật, hai đường khác nhau. Chú thích ở `san_tran.lua` ghi phép
+         tắt ấy là **SUY RA**; phép đo này là bằng chứng cho đúng luật ấy.
+         Sau khi vá: khung hình **1 màu → 16.672 màu**, console hết sạch lỗi.
+         Kiểm chứng ngược: đổi `den.visible` về `true` thì bộ kiểm **đỏ đúng hai
+         chỗ** và chỉ đích danh node kèm ô và màu.
+      2. **62/80 quân chủng trỏ vào armature không có thật.** `SpriteName` trong
+         bảng quân chủng là tên **LOẠI QUÂN**, không phải tên armature: bảng ghi
+         `Archer(new)`, `Hoplite(董军入侵)`, `Stakes`, `witch doctor`, còn thư mục
+         art tên `Archer`, `Hoplite`, `Spearmen`, `WitchDoctor`. Đối chiếu với
+         **kho atlas của chính bản gốc** thì **62/80** tên không có armature nào.
+         Đã cân nhắc dùng **luật tiền tố** có sẵn của kho (`_thu_muc_rig` /
+         `LuaRuntime._tao_rig`): luật ấy "cứu" được **32** tên (29 tên ra được với
+         đúng chữ hoa/thường của thư mục, 3 tên nữa chỉ ra được vì
+         `FileAccess.file_exists` trên Windows **không phân biệt** hoa/thường —
+         `witch doctor` ra thư mục `witch` trong khi thư mục thật tên `Witch`,
+         tức luật ấy đứt trên bản xuất cho nền tảng phân biệt hoa/thường). Nhưng
+         đó là **cái bẫy, không phải đường cứu**: quét biến thể trong chính các
+         file gốc thì **0/80** tên trong bảng là biến thể thật sự của armature
+         nào. `(new)` và `(董军入侵)` là **loại quân của bản mới**, art không có
+         trong APK này; gán chúng vào armature gốc là **hiện sai quân**
+         (`Archer(new)` mang hình `Archer` cũ). Nên `co_art()` chỉ nhận **đúng
+         thư mục trùng tên**, và bộ kiểm khoá luôn chiều ấy. `SngRig.build` trả
+         `null` **và** `push_error` khi
+         thiếu file `.json`, nên **mỗi** đơn vị ra trận sinh một dòng
+         `SngRig: khong thay res://assets_ref/...`. Bốn bộ kiểm không bắt được
+         vì bộ đo trận chạy `--sim`, mà đường ấy gọi `_spawn(false)` — **tắt hẳn
+         phần hình**. Đơn vị thiếu art **vẫn đánh**: mô phỏng không dính gì tới
+         hình, và bỏ nó khỏi trận mới là đổi thành phần quân của chương (đổi độ
+         khó, phải đo lại). Nên `battle.gd:co_art()` cho `visual = false` — **vô
+         hình, chứ không biến mất**. Khoá cả hai chiều: tên **có** armature thì
+         **phải** hiện, tên **không** có thì **phải** vô hình nhưng **vẫn** nằm
+         trên sàn. Và bật/tắt phần hình, cùng seed, phải ra **đúng một trận**:
+         **24 quân, 574 bước, cùng người thắng, tổng máu còn lại
+         `30023318.6448`** ở cả hai lượt. Kiểm chứng ngược: cho `co_art` luôn trả
+         `true` thì bộ kiểm **đỏ**, và **tái hiện đúng log lỗi của người dùng** —
+         cùng chuỗi `SngRig: khong thay res://assets_ref/Archer(new)/...` với
+         cùng vết gọi `build ← setup ← _add_unit`. Kiểm chứng ngược chiều thứ
+         ba: đổi `co_art` sang **luật tiền tố** thì bộ kiểm đỏ đúng hai chỗ
+         (`co_art` lệch **32** tên, `cuu nham 29`) và số quân hiện hình nhảy
+         **18 → 50** — tức 32 đơn vị mang hình của quân khác.
+- [x] **Sàn đấu hẹp — ĐÃ SỬA 2026-09-21.** Người dùng: *"bề rộng của sàn đấu có
+      giới hạn, t thấy rất hẹp, các tướng chỉ đứng trong giới hạn đó thôi"*.
+      Đúng, và là lỗi của ta: `_trai`/`_phai` của `battle/san_tran_ve.gd` lấy theo
+      **Control ngoài cùng** của nút sàn — tức bề ngang **KHUNG NHÌN** (1152 px) —
+      trong khi sàn THẬT là **bốn dải đất `gb1_0..3`** (mỗi dải 1024×40, hệ số
+      parallax **1**) trải **0…4096 px = 40,96 ô**. Con số cũ hẹp hơn sàn thật
+      **3,56 lần**. Nay `_tim_lop()` lấy mép từ chính các dải hệ số 1 — chỗ **duy
+      nhất** trong bản dựng biết sàn thật rộng bao nhiêu — và chỉ ghi đè khi thật
+      sự có dải rộng hơn 0, để bố cục không có mặt đất vẫn giữ đường dự phòng của
+      `_dat_khung`; `_cam_max` = mép sàn **trừ một khung nhìn** (hai số ấy chỉ bằng
+      nhau khi khung nhìn rộng bằng cả sàn).
+- [x] **Hai lỗi im lặng của bộ parallax — ĐÃ SỬA 2026-09-21.** Người dùng dán 5
+      dòng `ERROR: The object does not have any 'meta' values with the key
+      'parallax'` từ `_tim_lop`. Nguyên nhân: `get_meta(t, null)` **không** có
+      nghĩa "lấy, hoặc mặc định" — Godot 4.7.2 báo lỗi **y hệt** `get_meta(t)` khi
+      giá trị mặc định là `null` (đo được), nên **5/34** node gốc của
+      `BattleField_Battlefield_960_640` (không khai trường ấy: `g_BattleField` và
+      `gb1_0..3`) sinh một dòng lỗi **mỗi lần vào trận**. Bố cục **chỉ ghi khi khác
+      (1,1)** (`work/layout.py:68`), nên "vắng mặt = 1" mới là đúng, không phải
+      đoán. Nay gác bằng `has_meta` trước khi đọc.
+- [x] **Đường trận ĐÃ gọi đường gắn đồ (ngựa / cánh vào trận) — vá + ĐÃ KIỂM
+      2026-09-21.** Trước đây **không tệp nào trong `battle/`** gọi đường gắn đồ,
+      nên vào trận là mất ngựa. Nay `battle/san_tran_ve.gd:dua_dong_minh(ten_hinh,
+      doi, cs_json, do_json)` → `_gan_do(u, do_json)` → `u.rig.dat_do(ten)` cho
+      **từng** món; bảng đồ do `lua/kich_ban.lua:ghi_npc` gom **mọi giá trị chuỗi**
+      của bảng đội hình (`G_HeroLogic:GetCharacterArmatureData` =
+      `Weapon`/`Wing`/`Mounts`/`Coat`) **cộng đội thứ 11** của
+      `CreateNpcAndMoveTo`, sắp xếp rồi JSON-hoá.
+      Số gắn được **phải hiện ra nhật ký** (`tran:do_vua_gan()` → `"do N/M ok"`
+      hoặc `"truot: ..."`) vì gắn đồ hỏng thì trận **vẫn xanh** — đúng loại lỗi im
+      lặng. Đo trong `do_chien_dich --kichban`:
+      `TaoNpc ZhaoYun do equip_8_6 > JoinBattle ZhaoYun -> true | do 0/1, truot:
+      equip_8_6` — đường gắn đồ **có chạy** và **báo thật**. Hai NPC `DefenderN` /
+      `LingTong` không có hậu tố ` do ` nào vì bảng đội hình của chúng là chuỗi
+      trần, đúng dữ liệu.
+      Cú trượt `equip_8_6` là **đúng theo dữ liệu**, không phải lỗi port:
+      `map/gear_config.xml` (53.868 byte) có **56** tên `equip_<t>_<l>` mà
+      `EquipmentType` chỉ nhận **1..5**, và `equip_8_6` **không có** trong
+      `gear_ref.json["do"]` — nó là **tên SKIN vũ khí** sinh bởi
+      `string.format("equip_%d_%d", weapon.EquipmentType, weapon.EquipLevel)`
+      (`HeroSkinLogic.lua:383`), art nằm trong armature `EquipQiang` dưới dạng bộ
+      ba sprite `Lance_6 | Lance | orther_res-equip_8_6_client`. **Chưa đo**:
+      `setGear` bên C++ có nhánh dự phòng cho tên skin hay không. Còn **10 chỗ gọi
+      THẬT** của `setGear` trong `sc/` (11 dòng chứa chữ ấy, một dòng bị chú
+      thích — `CUIActivityScoreStroe.lua:26`), và `setGear` **là binding C++**,
+      không file Lua nào định nghĩa.
+- [x] **Bảng hiệu ứng trúng đòn — 8 khoá, đã mở + ĐÃ KIỂM 2026-09-21.**
+      `data_ref/trigger_ref.json["trung_don"]["hieu_ung"]` có **đúng 8 mục**, khoá
+      `<kit>_0_0` — hai số sau là **HẰNG SỐ**, không phải giáp/độ mạnh:
+      `1,2 → HitEffect_Sharp`, `3 → _Shoot`, `4 → _Music`, `5 → _Magic`,
+      `8 → _Ice`, `9 → _Fire`, `10 → _Electric`. Kit 6 và 7 **có tiếng mà không có
+      hiệu ứng**. Chạy qua `game/tieng_dong.gd:hieu_ung()` →
+      `san_tran_ve.gd:_phat_hieu_ung()` → `hieu_ung_tai_o(...)`.
+      Đo trên một ải thật (`--kiem`, dòng `tieng trung don`): **107 đòn, 77 hiệu
+      ứng vẽ được, 30 im** — và **cả 30 im cùng một lý do**:
+      `khong-co-danh:<armature>` (`Archer_VampirE` 27, `Player000M03W` 3). Đã kiểm
+      lại bảng: **không tên nào** trong hai tên ấy có mặt ở `trung_don["danh"]`
+      (**83** khoá), và **không khoá nào** chứa `Vampir`/`Archer`/`Player000M` —
+      nên 30 cú im ấy là **dữ liệu gốc thiếu**, không phải lỗi của ta. Đặc biệt:
+      **0 cú nào** im vì `thieu-art:` hay `khong-ve-hinh`, tức **mọi** biến thể
+      `HitEffect_*` mà bảng chỉ định **đều có art**.
+      Hai điều **CÒN TREO** trên đúng đường này: (a) hiệu ứng đặt **tại chỗ người
+      chịu đòn** chứ không bay — quỹ đạo bay nằm trong C++ và **không bảng nào mô
+      tả** (`cham_ref.json` chỉ có **một** mục `HitEffect_Shoot`: hộp chạm 138×4
+      px, động tác `PluginPlay`), nên đây là **ĐẶT có ghi rõ**, không phải lỗi
+      giấu; (b) phép tra hiệu ứng **dùng chung cổng tra với tiếng** (`trung_don`
+      trả `khong-co-danh` khi armature không có trong `danh`), nên một quân có
+      `kit` hợp lệ mà không có mục tiếng thì **mất luôn hiệu ứng hình** — **chưa
+      đo** được bản gốc có gộp hai cổng ấy hay không.
+- [x] **Hiệu ứng thức tỉnh — XONG 2026-09-21.** `data_ref/wake_ref.json` (247
+      khối `<fight>`) có **56** tên armature nằm trong các trường chuỗi `s*`.
+      Art **có sẵn** trong kho: **43/53** tên (trừ `sStatusNextWake` = `Coma` —
+      một tên TRẠNG THÁI, và các tên `pause_*` / `*_Txt`) là **biến thể ĐÚNG TÊN
+      của một rig ĐÃ XUẤT**; quét cả kho **172/172** biến thể chứa chuỗi `Wake`
+      đều vẽ được (**0** rỗng). Nên đây **không** phải việc xuất lại art — chỉ
+      là bản dựng **chưa bao giờ đọc 24 trường `s*`** ấy.
+      **Hai nhóm, đo từ hai đầu mút (ĐẶT chỗ tách, nhưng cả hai đầu đều đo).**
+      Chỗ nối thật nằm trong ~80 lớp C++ `CDFSpriteFight*Wake` (không đọc được),
+      nên tách theo **giá trị của trường**:
+      * **14 trường SINH HIÊN** — giá trị là một armature **RIÊNG** phải vẽ:
+        `sWakeEff`, `sWakeEffTxt`, `sWakeEffect`, `sWakeEffectUp`,
+        `sWakeEffect_1/_2`, `sWakeHit`, `sWakeCircle`, `sWakeCircleEffect`,
+        `sWakeBuff`, `sWakeWakeBuff`, `sPluginWake`, `sShakeWake`,
+        `sStatusNextWake`. **37 cặp (trường, giá trị) = 23 tên riêng**; **22/23**
+        tra ra thư mục, **18/23** dựng được rig, **16** chạy `PluginPlay`, **1**
+        chạy `Wake*` (`SunLuBan_WakeEffect`), **1** dựng được mà **không có động
+        tác hiệu ứng nào** (`SuperThunderDragon_Shield`), **1** không tra ra
+        (`Coma` — tên TRẠNG THÁI, không phải art).
+      * **10 trường TỰ THÂN** — giá trị là một **biến thể của rig CHÍNH người
+        niệm**, không phải vật thể riêng: `sWeaponWake`, `sWeaponWake1/2/3`,
+        `sWeaponWakeFight`, `sWeaponWakeFight2`, `sPauseWake_1..4`. **74 cặp =
+        40 tên riêng**; **35** tên chứa chuỗi `Weapon`, **4** là `pause_*`;
+        **không tên nào có `PluginPlay`** — động tác của chúng là `Walk`/`Fight`/
+        `Born`/`Standby`, tức động tác **thân**. Sinh `CaoCao_WeaponWake` ra là
+        vẽ **một CaoCao thứ hai** (`Layer000` mang `CaoCao_mc_Body323`).
+      **Một ngoại lệ có tên, khẳng định chứ không giấu:** `SiMaYi_WakeEffect`
+      nằm trong `sWeaponWake` nhưng **đúng là** một hiệu ứng (13 tầng, động tác
+      `Wake`/`WakeLoop`/`WakeEnd`) → **không** sinh. Nó được assert là sai lệch
+      đã biết trong `tools/verify_thuc_tinh.gd`.
+      **Bốn tên tra ra thư mục mà `SngRig.build(..., chinh_xac = true)` từ chối:**
+      `SuperThunderDragonHero_Shield`, `CaiWenJiWakeBuff`, `SiMaYi_WakeBuff`,
+      `ThunderDragon_ShakeWake` — đúng tập con của 6 tên mà `SngRig` ghi là
+      "không có art riêng" (đường cũ lùi về vẽ thân tướng; `chinh_xac` chặn).
+      **Hai lỗi THẬT lộ ra khi nối, cả hai đều im lặng:**
+      (a) `_richest_variant()` chọn **nhóm nhiều động tác nhất**, mà với tên là
+      **chính thư mục** (`CaiWenJiCircle`, biến thể `""`) nó chọn `Born/Death/
+      Standby` — **không `PluginPlay`**, nên vòng hiệu ứng đứng im. Nay có
+      `SngRig.bien_the_hieu_ung(dir)` chọn nhóm **đầu tiên** có `PluginPlay` hoặc
+      động tác `Wake*`, và **một** đường tra dùng chung (`san_tran_ve.gd:
+      _thu_muc_hieu_ung`).
+      (b) **Đường thức tỉnh bằng NÚT (đường người chơi dùng) chưa bao giờ sinh
+      hiệu ứng.** `thuc_tinh(id)` đặt `ep_no`, rồi cú đánh kế trong `_mot_buoc`
+      làm `_so_thuc_tinh += 1; p[0]._play_lai("Wake")` — chỗ ấy **không** gọi
+      hiệu ứng. Đây đúng là cái người dùng báo ("hoạt hóa vẫn không đúng"). Nay
+      `_mot_buoc` gọi `hieu_ung_thuc_tinh(String(e.get("hinh", "")), p[0])`.
+      **Một lỗ hổng DỮ LIỆU, không phải lỗi, và nay có TÊN:** trên ải
+      `L_N_01_01` nhân vật chính mang `Player000M03W`, mà bản VN 1.26 **không có
+      khối `fight_<X>Wake` nào** cho tên ấy (đối chiếu cả bốn `*config*.xml`;
+      `player_config.xml` chỉ có `fight_Player00003Wake`, `fight_Player000W03WWake`,
+      `fight_Player002W03WWake`, `fight_Player03Wake`) → `ve 0, im 1` với lý do
+      `khong-co-bang:Player000M03W`. Trước lượt này **không một dòng nào** nói ra.
+      Luật đếm: mọi hiệu ứng không vẽ được phải **đếm kèm lý do** —
+      `dem_thuc_tinh()` trả `{ve, im, im_vi_sao}` với bốn lý do
+      `khong-ve-hinh`, `khong-co-bang:<tên>`, `khong-tra-thu-muc:<tên>`,
+      `khong-dung-duoc:<tên>`.
+      **Đo:** `tools/verify_thuc_tinh.gd` **33 đạt / 0 hỏng**;
+      `do_chien_dich --kiem` **32 đạt / 0 hỏng** (trong đó phép kiểm mới đòi
+      `ve + im > 0` — đường CÓ chạy — và **mọi** lời từ chối phải là lý do DỮ
+      LIỆU `khong-co-bang:`, không được là `khong-tra-thu-muc:` /
+      `khong-dung-duoc:` của ta);
+      `do_chien_dich --kichban` **18 đạt / 0 hỏng**.
+      **CÒN TREO, ĐÃ ĐO — ghi rõ:** trên đường kịch bản, **cả hai** lệnh
+      `ChangeFight ... Wake f2` (`drama_L_N_01_01.lua`) tới san trận **sau** khi
+      trận xong (trận kết ở **giây 22**, lệnh tới ở **30,7** và cuối kịch bản),
+      mà `tuyet_chieu` gác phần hiệu ứng sau cổng `_xong` → `ve 0, im 0`. Vết
+      `vet_tuyet_chieu` ghi **trước** cổng nên phép kiểm khoá được điều đáng
+      khoá ("lệnh CÓ tới san trận"), và con số 0 ở đây là **hệ quả của cổng**,
+      không phải hiệu ứng bị nuốt. **Chưa đo** bản gốc có vẽ hiệu ứng biến thân
+      trong cảnh kết sau khi thắng hay không — sửa cổng là đổi hành vi nên
+      **không** sửa khi chưa đo.
+      **Việc khác, đừng lẫn — ĐÃ LÀM 2026-09-21:** **16** armature có ảnh trong
+      `sngSplitData` mà **chưa xuất** (`ZhaoYunWake`, `ZhaoYunExclusWake`,
+      `AttackButton`, `GuYongMulti`, `LuXunAwakenMulti`, `StartCartoon` + 10 tên
+      `UI*`/`XS*`). `trigger_ref.json` **không** gọi tên nào trong số ấy, và
+      nguyên nhân là `export.py:index()` đòi một `.pkm` cho **mỗi** armature
+      trong khi ảnh của chúng nằm rời trong `sngSplitData/<Arm>_res-<sprite>.pkm`
+      — **3.282** tệp. Nay `export.py` có **một luật hẹp** cho đúng nhóm ấy, và
+      đã **đo lại trên cả 21 armature / 636 khung**: **417** khung có ảnh rời;
+      **219** khung còn lại là các bản dịch `_en` / `_kr` / `_zh_Hant` **không
+      được đóng gói** (bản VN ship bản `_vi`), tức **không phải** lỗi tìm đường
+      dẫn. **Một cái bẫy đã đo:** tra theo **TIỀN TỐ tên armature** khớp **0/636**
+      — `PlayerMulti` dùng tên `Player000_Eff-*` và `UIJianZhuWuJieSuo` dùng
+      `XSJieSuoJianZhu_res-*`, nên đoán tiền tố là **sai hoàn toàn**; phải tra
+      **thẳng theo tên khung**. Cây `assets_ref` nay có **421** rig. Và **21**
+      cái còn lại trong 37 `map/*.xml` không có thư mục **không phải armature**
+      — chúng là bảng cấu hình (`global_config`, `gear_config`, `hero_config`,
+      `sprite_config`, `boss_config`…).
+- [x] **Số sát thương nổi — XONG 2026-09-21.** Người dùng: *"sát thương không
+      hiện"*. Trước lượt này bản dựng **không có dòng mã nào** vẽ số sát thương
+      (quét `battle/`, `ui/`, `game/`, `lua/`, `tools/` → **0** dòng
+      `draw_string` / `so_sat_thuong` / `damage_number`); bản gốc vẽ ở tầng
+      engine (`ElemDamageLabelZOrderAdjust`, `bRiseDamageLabel`, `DamageNum`,
+      `nHurt`, `nCrit`×5 … trong `libgame.so` vn), nên **không một dòng lỗi**:
+      trận vẫn chạy, sát thương vẫn TÍNH đúng (`battle/harm.gd`), chỉ là không ai
+      NHÌN thấy.
+      **Dữ liệu hai tầng, đo lại lượt này.**
+      (1) `map/global_config.xml` khối `<label>` — **sáu loại**, mỗi loại một hệ
+      số nổi và một trần số nhãn: `Foe 0.825/30`, `Troop 1.000/50`,
+      `Critical 1.000/40`, `Increase 0.710/100`, `Bonus 0.700/30`,
+      `Shield 0.700/50`. **Hai họ khoá có thứ tự KHÁC NHAU ngay trong file**
+      (`<fRiseLabel_*>`: Foe, Troop, Critical, …; `<nRiseLabelCountLimit_*>`:
+      Foe, **Critical, Troop**, …) — bằng chứng engine đọc riêng **từng khoá**
+      chứ không duyệt một mảng tên dùng chung.
+      (2) `assets/fonts/` — **11** tệp `.fnt`, không phải 7 như ghi trước:
+      **7 phông HỒ SỐ** (`ImpactWhite` 10 glyph `0-9`; `ImpactRed`/`ShieldWhite`
+      11; `CriticalFont` 12; `ImpactBlue`/`Green`/`Yellow` 13) + **3 phông HỒ
+      CHỮ** (cả bảng ASCII `0x20..0x7E`, 95 glyph: `ReduceBloodFont`,
+      `GreenBackgroudWriteBorder`, …) + `npc_name` (3 glyph: `' '`, U+7CBE,
+      U+82F1 = 精英). **Bộ glyph là thứ PHÂN BIỆT được hai họ mà không phải
+      đoán.** `work/fontart.py` xuất: **11 `.fnt` nhưng chỉ 10 trang PNG** — vì
+      `RedBackgroundWriteBorder.fnt` là **bản sao y nguyên** của
+      `ReduceBloodFont.fnt` (md5 `cee13dd7c268`) và cùng trỏ một trang; và **tên
+      trang KHÔNG được đoán theo tên phông** (`ReduceBloodFont` →
+      `ReduceBloodFont.png`, nhưng năm `Impact*` → `Impact*_0.png`), phải đọc
+      trường `page` của `.fnt`.
+      **Bộ phông nào ứng với loại nhãn nào là ĐẶT — và đó là một ngõ cụt đã
+      ĐO, không phải chỗ lười:** không một word 4 byte nào trong `libgame.so`
+      (vn) trỏ vào vùng chuỗi 12 khoá nhãn (`0x7b8000..0x7b81c0`) hay vùng tên
+      `.fnt` (`0x7c0e16..0x7c0e70`) — quét **cả file, cả hai chiều**, kể cả bảng
+      dịch chuyển REL; Lua thì **0 dòng** đọc `RiseLabel` (quét 1013 tệp
+      `sc/*.lua`); cùng lối với `PosX` ở `0x7bc0b7`. Bảng con trỏ ở **file
+      offset `0x8694d8`** (năm tên `fonts/Impact*_0.png` nằm liền nhau) từng bị
+      tưởng là bảng ghép loại→phông — **đã bác**: nó là một danh sách TÀI NGUYÊN
+      NẠP SẴN (ngay sau là `map/PonyBlue.png`, `map/Triones.png`,
+      `map/SuperHalo.png`…; trước là `png/ribbon/Shadow.png`,
+      `sngSplitData/SmallIcon/…`), thứ tự ấy không nói gì về loại. Bảng ĐẶT giữ
+      `Critical`→`CriticalFont` và `Shield`→`ShieldWhite` (hai căn cứ mạnh nhất:
+      **trùng tên khoá**), và **`ImpactBlue` bỏ trống** — ghi ra cho người đọc
+      biết, chứ không nhét nó vào một loại cho "đủ sáu".
+      **Mã:** `work/nhan_ref.py` → `data_ref/nhan_ref.json` → `ui/nhan_ref.gd`
+      (`NhanRef`) → `battle/nhan_sat_thuong.gd` (`NhanSatThuong`: sáu loại, trần
+      nhãn **theo từng loại**, chạm trần thì bỏ cái CŨ NHẤT của cùng loại) → nối
+      vào `battle/san_tran_ve.gd:_phat_trung_don`. Số hiện ra lấy bằng **hiệu
+      `hp` trước/sau**, không lấy `r.damage`, vì `hp` bị kẹp ở 0 nên `damage` có
+      thể lớn hơn phần máu thật sự mất.
+      **Một cái bẫy đã tránh:** bộ sinh nhãn dùng **dãy số RIÊNG**
+      (`Combat.Rng.new(hat + 1)`), **không** mượn `_rng` của trận — mượn thì mỗi
+      lần lệch ngang đẩy LCG đi một bước và **đổi kết quả đánh nhau**; một hiệu
+      ứng trang trí không được phép làm việc ấy.
+      **Chỗ còn treo, gọi tên:** `Bonus` / `Shield` có phông nhưng **không luật
+      nào sinh ra chúng** (`combat.gd` không có chỉ số chắn, và không có đường
+      sát thương cộng thêm nào tách khỏi đòn thường) — phép kiểm **khẳng định**
+      điều ấy, để ngày nào có luật thì nó báo.
+      Khoá bằng `tools/verify_nhan.gd` — **87 đạt / 0 hỏng**, bảy tầng, tầng G đi
+      qua **đường trận thật** (`_phat_trung_don` với đơn vị thật). **Một bẫy im
+      lặng mới của Godot, ghi lại:** nhãn là `Label` — một `Control`, **không
+      phải `Node2D`**; ép kiểu `as Node2D` ra `null`, và một lỗi lúc chạy trong
+      `SceneTree._init` làm **`quit()` không bao giờ được gọi**, nên tiến trình
+      **treo** chứ không thoát (bộ kiểm đầu tiên chết đúng kiểu ấy: ngõ ra rỗng,
+      chạy mãi không xong — trông y hệt một bộ kiểm đang chờ).
+      **Sửa một câu SAI cũ:** chữ trên màn Main sai màu/thiếu viền **không** phải
+      vì thiếu phông bitmap — **38/38** nhãn của `UI_Main_960_640` trỏ cùng một
+      khoá `#FONT_TTF`, mà phông xuất ở đây chỉ có chữ số (không vẽ nổi tên toà
+      nhà). Bốn đường đã bị loại, ghi ở `CLAUDE.md`; nguồn vẫn **chưa biết**.
+- [x] **Ngựa mặc định của tướng — XONG 2026-09-21.** Người dùng: *"tướng có ngựa
+      thì không có hiện hình"*. Hai nửa, cả hai nay đã vá. Nửa "đường trận không
+      gắn đồ" đã vá ở mục trên (`dua_dong_minh` → `_gan_do` → `rig.dat_do`).
+      Ngựa là **armature riêng tên `Pony*`**, gắn bằng gear kiểu `node_con`
+      (`loai` = `Mount`): đo trên `assets_ref` có **10 con**, và
+      `gear_ref.json["do"]` có **10 khoá** loại `Mount` — tám khoá `mount_169..176`
+      cộng **hai khoá tên THẲNG** `PonyChiTuGod` và `PonyBlue` (`nShowType 4`).
+      Nhánh gắn đã làm (`rig/sng_rig.gd:_dat_node_con`).
+      Nửa còn lại là luật mặc định của engine: `map/heroex_config.xml`
+      (71.766 byte) có **đúng MỘT** `<sDefaultMount>PonyChiTuGod</sDefaultMount>`,
+      nằm trên mục **`LvBuGod`** (`sFight fight_LvBuGod`, `lsAdapt
+      adapt_LvBuGodFight`/`adapt_LvBuGodWake`, `ptLayout {2,2}`). **Không một tệp
+      `.lua` nào trong `sc/` đọc `sDefaultMount`** — engine C++ đọc nó theo
+      **TÊN**, đúng lối `ptLayout` (`+0x460`), nên luật ấy **không** tự khỏi khi
+      đường gắn đồ đã thông: tên ngựa phải tới được từ đâu đó.
+      Nay: `work/mount_ref.py` → `data_ref/mount_ref.json` → `rig/mount_ref.gd`
+      (`MountRef`), và `battle/san_tran_ve.gd:_gan_do` gắn nốt ngựa mặc định
+      **chỉ khi đơn vị CHƯA có món ngựa nào**, hỏi bằng **BẢNG ĐỒ**
+      (`GearRef.la_mount`) chứ không đoán theo tên. Luật chỉ có **một mục** ở bản
+      VN, nên "không thấy gì" và "chưa bao giờ chạy" **trong y hệt nhau** — vì
+      thế nó **đếm**: `do_ngua_mac_dinh()` trả tên các tướng đã được gắn, và
+      `tools/do_chien_dich.gd` in ra. Khoá bằng tầng E của `tools/verify_dat_do.gd`.
+
 - [ ] Trận PvP, đấu trường, quốc chiến — **chặn bởi mục 4**, không phải mục
       này. Đo lại (2026-09-15) thì nhóm "Đấu trường / PvP / giải đấu" là **11 màn,
       trong đó 6 màn chỉ thiếu tham số của người gọi**; chỉ 3 màn thật sự cần dữ
@@ -2540,7 +3413,13 @@ tướng không bị cướp, cấp 5 thay cấp 3, cấp 1 xoá sạch); D **ch
       `KDBGameTournamentRobotConfig` (`ConfigManager:updateTournamentRobotConfig`)
       — tức đối thủ **máy** có số liệu thật trong cấu hình, nên đấu trường một
       người chơi là làm được mà không phải bịa đối thủ. Quốc chiến thì cần nhiều
-      người chơi thật
+      người chơi thật.
+      **Một phần đã xong (2026-09-19), ở phía máy chủ Nakama:** `bx.pvp` đánh vào
+      **đội hình thật của một tài khoản chỉ định** (cấp, chỗ đứng, thế trận, trang
+      bị của người đó), ghi sổ cả hai bên, người bị đánh thấy một dòng báo lại —
+      xem mục "Đối chiến đội hình của người chơi khác" trong `README.md`. Đó
+      **không phải** các màn đấu trường của bản gốc: chúng vẫn chờ mục 4, và vẫn
+      chưa có ghép trận / bảng xếp hạng
 
 ## 6. Âm thanh
 
@@ -3508,6 +4387,70 @@ trích của mình có đang mang trường ấy ra không.
     dải chuyển sắc lệch theo chỗ node đứng — lỗi **im lặng**, bắt được bằng phép
     đo điểm ảnh (`tools/do_chuyen_sac.gd`, 15 đạt / 0 hỏng), và mục "đừng tìm
     lại" của `README.md` nay ghi lại.
+13. ~~**Cửa vào: `godot --path .` phải mở màn `Main` THẬT**~~ — **xong.** Trước
+    lượt này `run/main_scene` là `res://ui/menu.tscn`, một màn scaffold chữ trắng
+    (chụp thật: **846 màu**, màu trội `(26,27,30)`), còn màn `Main` thật
+    (**66.657 màu**) chỉ vào được bằng `--script tools/vao_main.gd -- --xem`.
+    Nay cửa vào là `ui/vao_game.tscn`: dựng chuỗi Login → `Main` **trong một màn
+    thật** (có autoload, có theme, chạm được), và runtime Lua ở lại trong autoload
+    `Game` nên bấm Back từ battle/equip/formation/roster/tasks về `Main` đo được
+    **5 ms** so với ~5.000 ms nạp lại. Khoá bằng `tools/verify_vao_game.tscn`
+    (`dat 54, hong 0`, bộ thứ **42** của `check.py`).
+
+    **Ba số đo của lượt này, và một cái bác bỏ kế hoạch đã vạch:**
+
+    * **Chuỗi khởi động chỉ có 18 vòng `tick()`**, không phải ~314 khung như giả
+      định ban đầu — vì mỗi chặng đều có đúng một lần dựng cảnh thật. Nên ngân
+      sách chia bước `8` hay `16` ms đều cho ra **đúng một vòng một khung**, và
+      thời gian thực ≈ thời gian CPU (không có phạt gấp đôi). `NGAN_SACH_MS := 8`
+      giữ nguyên, kèm số đo trong chú thích.
+    * **`NAP` là một khối không chia được.** Ba lần chạy máy **rảnh**: `nap`
+      **1312 / 1482 / 1293 ms**, chuỗi 4 chặng **3630 / 3957 / 3499 ms** → cả
+      lần đầu chờ chỉ **~5 giây**. Kế hoạch dự định "vượt 4 s thì chia `boot_goc`
+      thành 4 nhóm" **không áp dụng được** vì `boot_goc` nằm *trong* `NAP` và
+      dưới 4 s — nhưng nay nó cũng **không cần**: xem mục dưới.
+    * **Khoảng cách LỚN NHẤT giữa hai `_process` đo được 2634 / 2740 / 3053 ms
+      — DƯỚI trần 4000 ms mà kế hoạch đặt.** Thủ phạm được **bộ kiểm trong repo**
+      gọi tên, không phải suy đoán: `vong tick dat nhat` in ra
+      **`bam 'vao game'` 2604 / 2682 / 2968 ms trong MỘT vòng `tick()`** (vòng
+      lớn thứ nhì 224–254 ms) — đó là `CSceneManager:OnLoadNextScene` → `InitUI`
+      dựng **cả** cảnh `Main` trong một vòng Lua. Cắt được nó thì phải chia
+      `InitUI`, mà `InitUI` nằm trong `sc/` — tức phải thêm một **luật hẹp** vào
+      `tools/import_lua.py` (CLAUDE.md cấm sửa thẳng `sc/`). **Chưa làm, và lượt
+      này cũng không cần làm**: 2,6–3,0 giây đứng hình đúng một lần mỗi phiên,
+      dưới ngưỡng đã chốt.
+    * **`get_tree().root.theme = t` KHÔNG lan tới `Control`** — đo được: gán nó
+      rồi chờ trọn một khung, màu chữ của một `Label` ngoài sân khấu **không
+      đổi**; trong khi `theme` của một `Control` **tổ tiên** thì lan ngay. Nghĩa
+      là `game/game.gd` đang cài một theme **không bao giờ áp** — hôm nay chưa lộ
+      chỉ vì `UiTheme.build()` trả `null` (`assets_ref/ui/` **chưa được xuất**
+      trong repo này, nên không có theme nào để áp). Đây là phép đo **không chấm
+      điểm** trong bộ kiểm: ghim "root.theme không lan" là ghim một lỗi, ngày nó
+      chạy được thì bộ kiểm oan. **Việc còn lại:** cài theme lên một `Control`
+      gốc thay vì `root`, hoặc kiểm lại khi art giao diện được xuất.
+
+    **Một con số cũ của chính mục này đã SAI, và cách nó sai đáng ghi hơn bản
+    thân nó.** Bản đầu của mục này ghi khoảng cách lớn nhất là **5408 ms — VƯỢT
+    trần**, kèm một vòng `tick()` **8842 ms**, và kết luận "phải chia `InitUI`".
+    Ba số ấy đều **đúng như đã đo**, nhưng đo trong lúc **máy ảo Android
+    (`qemu-system-x86_64`, GPU `swiftshader_indirect`) đang chạy nền** — đo được
+    **54.556 giây CPU** tích luỹ, cộng Docker Desktop và Chrome. Chỗ **tố cáo**
+    thủ phạm không phải chuỗi khởi động mà là **cái máy**: `nap` — đường **nạp
+    module, không vẽ một điểm ảnh nào** — cũng phình từ ~1,3 s lên **1738–4509
+    ms**, tức phình ~3 lần ở một chỗ không hề dính tới `InitUI`. Tắt máy ảo rồi
+    đo lại thì `nap` về 1,3 s và vòng đắt nhất về **2,6–3,0 s**. Nên: **mọi phép
+    đo thời gian trong repo này phải ghi rõ máy ảo Android có đang chạy hay
+    không**, và một phép đo "vượt ngưỡng" phải được **đo lại trên máy rảnh**
+    trước khi dùng nó để biện minh cho một thay đổi đụng vào `sc/`.
+
+    **Mất mát đã biết, ghi ra chứ không giấu:** `ui/menu.tscn` **vẫn còn trên
+    đĩa** nhưng **mất vai trò cửa ngõ** — nó là chỗ **duy nhất** trỏ tới
+    `roster` / `formation` / `equip` / `tasks` / `battle` (`ui/menu.gd:19-21,82,87,91`),
+    nên năm màn GDScript ấy nay chỉ vào được bằng đường dẫn tường minh
+    (`godot --path . ui/menu.tscn`). Đường của **chính bản gốc** thì vẫn còn:
+    `Main` thật có thanh công cụ 40 nút do Lua lo. **Việc tiếp theo:** nối nút
+    của `Main` thật sang năm màn ấy.
+
 
 Ba món của lượt này (việc 10, 11, 12) đều thuộc **cùng một loại**: API mà `sc/`
 gọi tới nhưng lớp giả lập **chưa từng viết**, nên tên rơi vào bảng `Node` và trả
@@ -3521,7 +4464,7 @@ hơn số lần bộ quét **chạy** bắt gặp vì phần lớn nằm ở mà
 | `setText` | 38 | **đã xong** — cả 38 chỗ đều là `CCEditBox`, xem mục "Ô nhập chữ" |
 | `_ShowShadow` | 20 | **đã xong** — cả 20 đều gọi trên node armature (`getSpriteFromSpriteCatch` → `SngRig`), chỗ làm là `rig/sng_rig.gd`. Kèm theo `_SetSyncShadowPosY` (3 chỗ) và `_UpdateShadowPosY` (0 chỗ) — xem mục "Bóng của armature" |
 | `_lua_CollisionSize` | 6 | **đã xong** — trả về MỘT CẶP số (rộng, cao); công thức và 590 biến thể ở mục "Hộp chạm của armature" |
-| `_Lua_addStarLevelEffect` | 4 | **đã xong** — khoá cấu hình `lsStarLevelEffect_<cấp>`, 11 biến thể, cấp 1 rỗng; xem mục "Hiệu ứng sao của tướng". Kèm theo: bộ lọc xương `Layer*` từng làm armature hiệu ứng ra **rỗng** — nay có `giu_layer` + bộ đếm `rig_rong` |
+| `_Lua_addStarLevelEffect` | 4 | **đã xong** — khoá cấu hình `lsStarLevelEffect_<cấp>`, 11 biến thể, cấp 1 rỗng; xem mục "Hiệu ứng sao của tướng". Kèm theo: bộ lọc xương `Layer*` từng làm armature hiệu ứng ra **rỗng** — nay đã bỏ khỏi đường Lua, và bộ đếm `rig_rong` giữ lại làm lưới bắt lỗi im lặng |
 | `setLuaCallbackObjAndFunc` | 3 | **đã xong** — nối ô nhập chữ với hàm Lua, cùng lượt với `setText` |
 | `setSoundStrArr` | 2 | |
 

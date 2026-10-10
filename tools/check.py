@@ -40,12 +40,117 @@ SUITES = [
     # lai, bien cuon, scrollTo theo ti le, mot cu bam ra dung chi so), roi mo
     # hai man THAT da chet o <bong LuaTableView_create()>.
     ('bang danh sach',      'script', 'tools/verify_bang.gd',    False, []),
+    # CUA VAO chien dich: cham THAT vao toa nha [战役] tren man Main. Bo do
+    # `do_chien_dich.gd` di TAT qua chinh cai nut (`Show(g_CUISelectLevel...)`),
+    # nen duong nguoi choi di chua tung duoc do. Kem hai phep KIEM CHUNG NGUOC
+    # (tat cong chuc nang di thi nut phai khoa lai, va cu cham phai khong mo gi).
+    #
+    # Bo nay bat mot cai bay do duoc: `CUIMain.lua:251` xep hoat canh TREO
+    # `S_CCSequence(DelayTime(0), CCCallFunc(postOnMainShowBeginEvent))` tren
+    # `g_MainUIScene`, ma `postOnMainShowBeginEvent` moi POST `OnDialogShowBegin`
+    # — su kien mo khoa nut chuc nang. Chuoi 4 chang DUNG ngay khi Main len san
+    # khau, NEN do trang thai ngay sau `chay()` la do mot khung hinh DONG BANG:
+    # nhan khoa con hien, `_getBuildingStatus` tra 1. Nha khung roi moi doc.
+    # (`C.tick` tu trong Lua KHONG dung duoc — `_G.C` la BONG.)
+    ('nut chien dich (Main)', 'script', 'tools/verify_nut_chien_dich.gd', False, []),
     # Main -> chon ai -> bo tri quan -> tran (g_BattleField gia) -> man ket
     # thuc, qua lop offline: ca chuoi chien dich cua ban goc.
     ('chien dich (Lua)',    'script', 'tools/do_chien_dich.gd',  False, ['--kiem']),
     # Cung duong do nhung BANG CU BAM THAT vao tung nut (touch_at, nhu chuot
     # cua --xem): lop phu nao con hien ma nuot cu bam la lo ngay.
     ('bam that Main -> tran', 'script', 'tools/bam_that.gd',     False, []),
+    # BON WIDGET cua man chon ai (Previous / Next / tab Normal / tab Hard) va
+    # mot cu cham vao o ai. Hai bo tren deu di qua man nay ma khong hoi duoc:
+    # `do_chien_dich.gd` vao bang `Show(...)` roi chon ai bang
+    # `L.nSubChapter = i; L:GoNextCallback()` — di tat qua ca bon widget; con
+    # `bam_that.gd` chi hoi "co qua duoc buoc khong", no thu lan luot cac o ai
+    # cho toi khi MOT o mo ra, nen khong hoi o KHOA co bi tu choi khong.
+    # Hai phep kiem chung nguoc: ep `nMainChapter = 2` roi bam Previous (khong ep
+    # thi "bam khong doi gi" o chuong 1 la ket qua DUNG, khong phan biet duoc
+    # handler song hay chet — `onToPrevious` tra `true` KE CA khi khong lam gi),
+    # va cham vao o ai DANG KHOA (bi chan o hai tang: `setEnableLuaTouch(false)`
+    # nen no khong con la ung vien nhan cham nao ca, roi cong `BattleStatus == 0`
+    # trong `onTouchEnd_OnSelectLevel`).
+    ('chon ai',              'script', 'tools/verify_chon_ai.gd', False, []),
+    # MAN DAN TRAN (`CUIBattleDeploy`) va con so `Lực` cua no.
+    #
+    # Ba bo tren deu di QUA man nay ma khong bo nao hoi con so: `do_chien_dich.gd`
+    # chi hoi "co qua duoc buoc khong", `bam_that.gd` chi hoi cu bam co toi noi
+    # khong, `chon ai` dung lai truoc do mot man. Nen mot loi o day — nhan `Lực`
+    # ra 0 du tuong da vao doi — khong bo nao bat duoc.
+    #
+    # LUAT do tu ma goc: nhan la con tag 1 cua `lBattleDeployImplement`
+    # (`CUIBattleDeploy.lua:1433`), ghi boi `calcuFightingCapacity` (`:2592`) =
+    # TONG cua tung tuong da xep (`:2587`); moi tuong doc bang
+    # `GetHeroAllFightCapacity` (`HeroCapacityLogic.lua:56`) — ham KHONG tinh, no
+    # doc truong `AllFightCapacity` da co, va chi lui ve `FightCapacity` khi
+    # truong ay NIL (`:65`) — nen mot so 0 (khac nil) chan luon duong lui.
+    #
+    # Bo kiem doi BA nguon khop nhau: nhan tren NODE THAT trong cay, so cua Lua,
+    # va so tinh lai tu chinh hai ham goc. Kem phep KIEM CHUNG NGUOC (xoa hai
+    # truong -> nhan PHAI ve 0) va phep do LUY THUA DANG (goi lai `bo_sung` ->
+    # so cu tro lai).
+    #
+    # Bo nay bat duoc mot loi THAT ngay lan chay dau: `offline/handlers/login.lua`
+    # goi dien luc chien NGAY sau `ctx:call`, ma `ctx:call` chi DAY vao hang doi
+    # (`net.lua:116`) roi khung hinh sau moi chay (`:235`) — nen luot dien ay chay
+    # TRUOC `G_DataManager:Init` va dien 0/0 tuong (do trong `offline.log`). Loi
+    # ay im lang: chi nhung ban luu co quay tuong moi hien dung so.
+    ('dan tran (Lua)',       'script', 'tools/verify_luc_chien.gd', False, []),
+    # Man CHIEN DICH (`BattleActivityMode`) nhin tu BEN TRONG. `chon ai` lo man
+    # chon ai; `verify_nut_chien_dich.gd` lo phan MO man nay tu nut tren Main;
+    # con cac the hoat dong va hai lop chon do kho thi khong bo nao hoi. The lay
+    # tu CONFIG nen "tren ban luu offline khong vao duoc loai nao" la ket qua co
+    # the dung — bo kiem nay ghi lai tip ma tung the tra ra, va nho do phan biet
+    # duoc CONG NAO chan: tip ve CAP DO nghia la cong cap do (`:1438`) chay truoc
+    # cong chua mo (`:1446`), chu khong phai mot handler chet.
+    ('the hoat dong',        'script', 'tools/verify_the_hoat_dong.gd', False, []),
+    # NUT CAN QUET (`ChapterSweepOnce` / `ChapterSweepTen`) — duong tieu the luc
+    # va luot thach dau trong ngay. Truoc luot nay lop offline KHONG co handler
+    # nao cho hai lenh ay: `offline.log` co 20.983 dong THIEU ma khong dong nao
+    # mang chu "Sweep". Bo kiem nay khoa bon dieu bang so DO:
+    #   (1) moi luot quet tru DUNG `ChapterUserFatigue` = 6 (do tren `L_N_01_01`),
+    #       va quet 10 lan tra ve danh sach DUNG 10 muc chu khong gop — client doc
+    #       no bang `ipairs` va `#tRetData >= 5` moi chen danh sach bao hiem;
+    #   (2) tran 10 va tran `PlayPerDay` deu do LOP NAY gac: ban goc chi tinh
+    #       `nMaxSweepCount` de HIEN THI roi goi `ChapterSweepTen(key)` tran
+    #       (`CUIChapterInfo.lua:2793-2795`, `:2796-2810`), nen khong co cho nao
+    #       khac gac. Khoi D nang `PlayPerDay` len 25 (co tra lai nguyen trang)
+    #       de chung minh 10 la tran that chu khong phai bang so luot con lai;
+    #   (3) tu choi thi van tra DU HINH client doc duoc (`ChapterKey` chuoi +
+    #       `DropList` bang) — thieu mot trong hai la `ProcessNotString` /
+    #       `ProcessNotTable` BAN mot dong loi ra nhat ky (do duoc voi phan hoi
+    #       `{ErrorCode=1}`);
+    #   (4) khong sinh vet `ProcessError!` gia: `ReduceSweepCount` (`:1342`) tu
+    #       choi khi so du bang 0 va chinh ban goc IN RA ngan xep moi lan no tra
+    #       false, nen lop nay phai HOI so du truoc khi tru.
+    # Khoi F2 CO Y roi vao nhanh loi cua ban goc (`share_ChapterLogic.lua:1803`)
+    # de chung minh cong so luot: hieu AM moi la duong tu choi that, con hieu
+    # BANG 0 thi ban goc van tra `true` kem tran 0 — lop nay moi la cho tu choi.
+    ('can quet',             'script', 'tools/verify_can_quet.gd', False, []),
+    # QUA MOC CHUONG (`CUILevelTarget`, 阶段目标) — moc "the luc da tieu", thanh
+    # tuu loai 3000. Truoc luot nay `ConsumFatigueValue` khong co NGUON GHI nao
+    # trong ca hai kho: 21 cho goi `SetStatisticsCommonData` trong `sc/` nhung
+    # khong cho nao dung chuoi ay, no chi duoc DOC (`AchieveCheckLogic.lua:1104`,
+    # `CUILevelTarget.lua:50`). Do duoc truoc khi sua: the luc roi THAT (120 ->
+    # 114 sau mot luot quet) ma thong ke van `nil`, tien do van 0, nen moc khong
+    # bao gio sang `Done` va qua cua no khong bao gio phat. Bo kiem nay khoa:
+    #   (1) KHOA GHI dung la khoa client dang nghe — ban ghi thanh tuu 3000 mang
+    #       `DataEventList = { "GameUserGlobalData.Sta_ConsumFatigueValue" }`,
+    #       dung chuoi ma `SetCommonData` phat ra (`strSaveKey = "Sta_" .. key`);
+    #   (2) hai duong doc doc lap phai khop: the luc roi bao nhieu thi thong ke
+    #       tang dung bay nhieu (nhom B, C — va C cho thay dem theo so lan quet
+    #       THAT chu khong theo so lan client xin);
+    #   (3) ghi NET chu khong ghi GOP — nhom D chan `chapterSweepHandle` de ep
+    #       ba duong hoan the luc chay that; ghi gop thi quet mai mot ai luon that
+    #       bai se day duoc moc ma khong mat gi;
+    #   (4) day chuyen moc da co san, khong phai viet them: nhom E ghi thang 850
+    #       va doi `State` nhay 1 (Doing) -> 2 (Done) — bo do KHONG goi
+    #       `ReachAchieve`, nen cu nhay ay chung minh client tu nghe su kien roi
+    #       goi `CallReachAchieve` xuong handler `offline/handlers/achieve.lua`.
+    # CHO GHI la cho DUY NHAT phai SUY trong bo kiem nay: nua ghi cua ban goc nam
+    # phia server va khong duoc ship — dung kieu voi nguoi goi `ReduceSweepCount`.
+    ('qua moc chuong',       'script', 'tools/verify_moc_chuong.gd', False, []),
     # Kich ban tran: nap sc/plot/drama_<ai>.lua, chay coroutine, do chuoi thoai.
     ('kich ban tran (Lua)',  'script', 'tools/do_chien_dich.gd', False, ['--kichban']),
     ('tang cau hinh (Lua)', 'script', 'tools/verify_lua_config.gd', False, []),
@@ -226,6 +331,139 @@ SUITES = [
     # khong tinh toa do (`0x45eda4` -> `0x466220`), con may ao thi chet trong
     # `RepaleceScene` khi bat `bDirectBattle` — xem `work/emu_dom.py`.
     ('cho dat toan linh',    'script', 'tools/verify_dat_linh.gd',      False, []),
+
+    # HAI LOI lam man tran khong choi duoc. (a) `g_BlackEffectLayer` cua bo cuc
+    # HUD goc la tam den DUC 2000x1000 mau [0,0,0] phu kin san — do tren khung
+    # hinh that: 614.400/614.400 diem anh cung MOT mau (0,0,0); ban goc tat no
+    # bang co `bShowBattleBlackEffectLayer` = false cho ai thuong
+    # (`ChapterNormalLevel.lua:8`), va ten node nam trong pool chuoi cua
+    # `libgame.so` (vn `0x7c0dc7`) nen chinh ENGINE tim node theo ten roi bat/tat.
+    # (b) `SpriteName` trong bang quan chung la ten LOAI QUAN chu khong phai ten
+    # armature (`Archer(new)`, `Stakes`, `witch doctor`) — 62/80 ten khong co
+    # armature nao, ke ca trong kho atlas cua ban goc, nen moi tran ra hang tram
+    # dong `SngRig: khong thay ...`. Bon bo kiem khong bat duoc vi bo do tran
+    # chay `--sim`, ma duong ay goi `_spawn(false)` — tat han phan hinh. Bo nay
+    # chay DUNG `_build_hud()` / `_add_unit()` cua man tran va khoa ca hai chieu:
+    # ten CO armature thi PHAI hien, ten KHONG co thi PHAI vo hinh nhung VAN nam
+    # tren san va VAN danh (bat/tat phan hinh khong doi mot con so mo phong nao).
+    # Khoa luon chieu chong "sua loi" nguoc: luat tien to cua kho (`_thu_muc_rig`)
+    # "cuu" duoc 32/62 ten nhung do la BAY — 0/80 ten trong bang la bien the that
+    # su, nen ap luat ay la gan `Archer(new)` vao hinh `Archer` cu.
+    ('man tran',             'scene',  'tools/verify_man_tran.tscn', False, []),
+    # Cua vao cua game: `godot --path .` phai mo thang man Main THAT cua ban goc,
+    # va bam Back tu nam man GDScript phai ve do TUC THI (runtime Lua nam trong
+    # autoload `Game`, do duoc 5 ms so voi ~5000 ms nap lai).
+    # Phai la `scene` chu khong `script`: can autoload, can theme tren root, va
+    # can chuoi khoi dong chay trong mot MAN THAT.
+    # Gia phai tra: nhom D chay THAT ca chuoi Login -> Main (~5 giay may ranh,
+    # 7-15 giay khi chay nang may ao Android), nen bo kiem nay lam `check.py`
+    # cham them chung ay.
+    ('cua vao',              'scene',  'tools/verify_vao_game.tscn',  False, []),
+
+    # `pb` — bo protobuf Lua thuan thay cho mo-dun C lua-protobuf.
+    #
+    # `pb` la mo-dun C, ma Lua o port nam trong addon Godot nen `require("pb")`
+    # KHONG BAO GIO giai ra ma C — dat tep o dau cung vay. Do duoc: ban goc goi
+    # dung BA ham (`pb.load` / `pb.encode` / `pb.decode`), o TAM cho, trong sau
+    # tep. Nen `lua/pb.lua` la ban viet lai bang Lua thuan.
+    #
+    # Va day khong phai viec "lam cho dep": `protoc.lua` KHONG chiu duoc su vang
+    # mat cua `pb`. Khoi `do...end` mo o :970 dong o :1109 dinh nghia
+    # `Parser.reload/compile/compilefile/load/loadfile` va goi `Parser.reload()`
+    # VO DIEU KIEN o :1107; khong co `pb` thi ca khoi bi bo qua va `Parser` tra ve
+    # KHONG co `load`, nen `system/LoadProto.lua:100` chet bang
+    # "attempt to call method 'load' (a nil value)" — dung nhu do truoc khi viet.
+    # Tuc mot `pb` gia tra `nil` con TE HON la khong co `pb`.
+    #
+    # Phep kiem chinh la oracle blob cua Google, va no co luc that: lay NGUYEN VAN
+    # doan `local descriptor_pb = ...` nhung trong `protoc.lua` (4604 byte, 92
+    # manh chuoi, 21 message / 4 enum / 97 truong), giai ra roi ma hoa lai, doi
+    # khop TUNG BYTE. Thieu mot truong trong schema `descriptor.proto` viet tay
+    # trong `lua/pb.lua` thi `pb.decode` bo qua no va `pb.encode` khong ghi lai,
+    # nen do dai lech ngay. Gioi han noi ro: ten truong dung SAI thi khong bat
+    # duoc (ten dung doi xung o hai chieu).
+    #
+    # Doc `res://sc/Framework/Network/pb/protoc.lua` + `res://sc/def/PBProto.lua`,
+    # tuc phai chay `python tools/import_lua.py` truoc (no bo sung lop mang 1.31
+    # tu cay CN, luat chi-them). Tang C con doc 7 tep `.proto` that o cay nguon
+    # VN — khong commit duoc, thieu thi bao BO QUA chu khong bao hong.
+    ('pb (protobuf)',        'script', 'tools/verify_pb.gd',           False, []),
+
+    # `setGear` / `setLevelGear` — bang DO (trang bi). Ban goc gan do bang hai
+    # ham TOAN CUC, va `__index` cua lop gia lap tra ham cho MOI ten: thieu hai
+    # ham ay thi **khong mot dong loi**, do chi don gian la khong bao gio doi.
+    # Do la lop loi im lang dung nghia nhat trong repo, nen no khong lo ra bang
+    # "chay khong co loi" — phai DEM va phai doi chieu voi BANG.
+    #
+    # Bon tang, tat ca deu chay tren rig THAT: (A) hinh dang bang — 201 muc
+    # `<Gear>` + 14 muc `<Parts>`, nam loai muc 115/70/7/3/6, dung MOT muc ra
+    # trong (`equip_3_999`), va cong thuc du phong phai TRUNG bang `<Parts>`
+    # (7/7 — hai cho doc lap trong cung mot file, cung mot dap so); (B) nhanh
+    # arm tren BIEN THE CUA NHAN VAT CHINH (`HeroID 25` -> `HeroSprite
+    # "Player000M03W"`, do tu `battle_data.json`), gom ca CHAN TREN 7..10 -> `_6`
+    # va o TRONG `equip_3_999`; (C) node con (canh) va lenh AN `_Hide`; (D) nang
+    # BUNDLE — duong `setLevelGear`, tuc hai man DOANH TRAI — va nang `<Parts>`,
+    # doi moi muc di theo dung `nPartsType` cua no va ghi dung MOT lan.
+    #
+    # Phep kiem da kiem chung NGUOC: lui nang `<Parts>` ve ban cu (co loi ghi
+    # hai lan) ra **45 dat / 1 hong** dung cho ghi hai lan; bo nhanh LIST ra
+    # **45 dat / 1 hong** dung cho ly do `kieu 0 (?)`.
+    #
+    # `data_ref/gear_ref.json` sinh tu file bang cua ban goc (xem `.gitignore`),
+    # thieu thi bao BO QUA chu khong bao hong.
+    ('do (trang bi)',        'script', 'tools/verify_dat_do.gd',       False, []),
+
+    # SO SAT THUONG NOI cua tran co hinh. Ban dung truoc day KHONG co duong
+    # nay, con du lieu thi du: khoi `<label>` cua `map/global_config.xml` cho
+    # sau loai nhan (he so phong + tran so nhan) va `assets/fonts` co 11 bo
+    # phong bitmap — bay bo chi gom chu so.
+    #
+    # VI SAO "chay khong loi" KHONG NOI LEN GI o day: mot nhan khong ve duoc thi
+    # **khong nem mot dong loi nao** — `load()` tra `null`, `Label` khong co
+    # phong van ton tai, van `queue_free()` binh thuong. Nen bo kiem phai DEM
+    # (`dem()` tra `ve` / `bo` / `im_vi_sao`), dung loi `dem_tieng()` cua
+    # `san_tran_ve.gd`.
+    #
+    # Bang ghep LOAI -> PHONG la **DAT**, va bo kiem khoa no lai chu khong khoe
+    # no: sau loai phai tro vao dung MOT trong bay phong HO SO (khong bao gio
+    # vao phong CHU), `Critical`/`Shield` phai trung TEN phong, va phai THUA
+    # dung MOT phong va goi ten no ra (`ImpactBlue`). Do la cho ghi ro cai
+    # chua biet — khong the khoi phuc bang xref (khong mot word 4 byte nao
+    # trong `libgame.so` ban vn tro vao vung chuoi 12 khoa nhan hay ten `.fnt`)
+    # va Lua cung **0 dong** doc `RiseLabel` tren 1013 tep `sc/*.lua`.
+    #
+    # Tang G di duong TRAN THAT (`_phat_trung_don` voi don vi that) va khang
+    # dinh bo sinh nhan dung day so RIENG: dung chung `_rng` cua tran thi moi
+    # lan lech ngang day LCG di mot buoc va DOI KET QUA DANH NHAU — mot hieu
+    # ung trang tri khong duoc phep lam viec ay.
+    #
+    # `data_ref/nhan_ref.json` sinh tu `../brave-cross/work/nhan_ref.py` (xem
+    # `.gitignore`), thieu thi bao BO QUA chu khong bao hong.
+    ('so sat thuong',        'script', 'tools/verify_nhan.gd',         False, []),
+    # HIEU UNG THUC TINH — 24 truong `s*` cua khoi `fight_<X>Wake`. Truoc day
+    # `tuyet_chieu` chi goi `_play_lai(action)`, tuc chi doi dong tac cua CHINH
+    # tuong; 14 truong con tro toi nhung armature RIENG (vong tron CaiWenJi, chu
+    # ZhaoYun, khien SuperThunderDragon, hieu ung trung SiMaYi) va KHONG duong
+    # nao cham toi chung.
+    #
+    # Cung loi "chay khong loi khong noi len gi": mot armature khong dung duoc
+    # thi khong nem mot dong loi nao, nen bo kiem phai DEM (`dem_thuc_tinh`).
+    #
+    # Va cung loi nhan: o day co HAI con so de tu khen nham, nen bo kiem tach
+    # han chung ra — **22/23 ten tra ra duoc thu muc**, nhung chi **18 dung duoc
+    # rig** (`chinh_xac = true` chan phep lui ve than cua tuong, xem
+    # `SngRig.build`). Bon ten khong dung duoc nam dung trong so sau ten ma
+    # `SngRig` da ghi la "khong co art rieng".
+    #
+    # Bang chia 24 truong thanh 14 SINH HIEN + 10 TU THAN la **DAT** (ban goc
+    # ghep trong ~80 lop C++ `CDFSpriteFight*Wake`), nhung hai dau mut deu do
+    # duoc, va bo kiem khoa no lai chu khong khoe no: khang dinh KHONG gia tri
+    # nao cua nhom TU THAN bi sinh, va goi TEN cho lech duy nhat ra
+    # (`SiMaYi_WakeEffect` nam trong `sWeaponWake` nhung la hieu ung that).
+    #
+    # `data_ref/wake_ref.json` sinh tu `../brave-cross/work/wake_ref.py` (xem
+    # `.gitignore`), thieu thi bao BO QUA chu khong bao hong.
+    ('hieu ung thuc tinh',   'script', 'tools/verify_thuc_tinh.gd',    False, []),
 ]
 
 SCORE = re.compile(r'dat (\d+), hong (\d+)')
@@ -420,12 +658,19 @@ def main():
         rows.append((name, text))
         failed += 1 if bad else 0
 
-    # Ba bo chay bang Python. Hai bo dau khong can gi; bo thu ba can may chu
+    # Nam bo chay bang Python. Bon bo dau khong can gi; bo cuoi can may chu
     # THAT — no do dung cai ma ban gia cua lupa khong do duoc: runtime cua
     # Nakama giu moi so duoi dang float64, con lupa thi co so nguyen 64 bit.
+    #
+    # `test_import_lua.py` khong kiem ma Lua nao ca: no kiem chinh LUAT CHI-THEM
+    # cua `import_lua.py` tren mot cay GIA trong thu muc tam. Vi sao phai co:
+    # `sc/` sinh lai tu cay VN moi lan chay import, nen mot lan de len la doi
+    # NEN du lieu VN ngay bay gio roi bi lan import sau xoa di — cai sai O LAI
+    # con dau vet thi mat. Doc code khong bat duoc loai do; phai ep no chay.
     py_steps = [('mo phong Python', os.path.join('sim', 'test_sim.py'), False),
                 ('trang bi', os.path.join('sim', 'test_equipment.py'), False),
                 ('luat may chu (Lua)', os.path.join('tools', 'test_server_lua.py'), False),
+                ('luat chi-them khi import', os.path.join('tools', 'test_import_lua.py'), False),
                 ('tran dan tran (may chu that)',
                  os.path.join('tools', 'verify_field_live.py'), True)]
     for name, rel, needs_server in py_steps:

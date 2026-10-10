@@ -84,8 +84,20 @@ var _max_t := 300.0
 var _accum := 0.0
 var _xong := false
 var _sat := {}
+## Mep TRAI / PHAI cua SAN THAT — cac lop nen he so 1 (`gb1_*`, cac dai mat dat).
+## Do 2026-09-21 tren bo cuc ai thuong: bon dai 1024x40 o x = 0/1024/2048/3072 nen
+## san trai **0..4096 px = 40,96 o**. Truoc do hai so nay lay theo Control NGOAI
+## CUNG — tuc be ngang KHUNG NHIN (do duoc 1152 px o cua so 16:9), nho hon san
+## that **3,56 lan**; hau qua thay duoc la quan TIEP VIEN cua dich vao tran o
+## x = 1152 - BIEN, tuc giua san, thay vi mep phai that (`_mep_vao`).
+## Hai gia tri mac dinh duoi day chi la du phong: `_dat_khung` dien chung theo
+## khung nhin, roi `_tim_lop` ghi de bang san that neu bo cuc co dai mat dat.
 var _trai := 0.0
 var _phai := 1429.0
+## Be ngang KHUNG NHIN (Control ngoai cung) trong he toa do cua nut nay. Camera va
+## minimap can be ngang DANG NHIN, khong phai be ngang san — hai thu khac han nhau
+## (1152 so voi 4096), nen truoc day chung dung nham `_phai - _trai`.
+var _man := 0.0
 var _o := 48.0
 var _mat_dat := -165.0
 var _thieu_rig := {}
@@ -99,12 +111,37 @@ var _so_tieng := 0
 var _so_im := 0
 ## {ly do: so don} — chia so im theo nguyen nhan. Xem `_phat_trung_don`.
 var _ly_do_im: Dictionary = {}
+## Hieu ung trung don: so lan chay duoc, so lan im, va {ly do: so lan}. Xem
+## `_phat_hieu_ung` va `dem_tieng`.
+var _so_hieu_ung := 0
+var _so_hieu_ung_im := 0
+var _ly_do_hu: Dictionary = {}
+## Hieu ung THUC TINH — 14 truong `s*` nhom SINH HIEN cua `WakeRef` (xem
+## `battle/wake_ref.gd` va `hieu_ung_thuc_tinh`). Cung loi `dem_tieng`: mot
+## armature khong dung duoc thi **khong nem mot dong loi nao**, nen phai DEM.
+var _so_tt_ve := 0
+var _so_tt_im := 0
+var _ly_do_tt: Dictionary = {}
+## So sat thuong NOI (battle/nhan_sat_thuong.gd). Node con cua chinh nut nay nen
+## dung cung he toa do voi `BattleUnit.sx/sy` — khong phai doi o nao.
+var _nhan: NhanSatThuong = null
 var _goc_x := 0.0              ## o 0 cua san (g_MapZero), toa do cua nut nay
 ## Moc dung cua toan quan ta tren san, tinh bang O (`Sprite.Troop.PosX` — mot cho
 ## dinh nghia duy nhat: `tran_goc.moc_toan`). Linh CO SAN trong du lieu tran dung
-## moc nay; toan linh DUA RA thi khong (ĐẶT o 0) — xem `dua_linh`.
+## moc nay; toan linh DUA RA cung dung moc nay (truoc 2026-09-20 la o 0) — xem
+## `dua_linh`.
 var _moc_toan := 0.0
 var _ra_cuoi := 0              ## so nguoi vua ra o lan `dua_linh` cuoi cung
+## Ket qua GAN DO cua lan `dua_dong_minh` gan nhat, dang chuoi cho nhat ky kich
+## ban: "do 1/1 ok" khi gan duoc, "do 0/1, truot: ..." khi hong. Tu 2026-09-21
+## luon co them phan NGUA MAC DINH khi don vi chua co ngua — "do 0/0 ok
+## +ngua-mac-dinh:PonyChiTuGod" cho Lu Bo (xem `_gan_do`).
+## Phai DEM chu khong im lang: gan do hong thi tran van xanh (khong phep kiem nao
+## bat), nen khong doc so thi khong biet duong ay co chay khong. Xem `_gan_do`.
+var _do_vua_gan := ""
+## Ten tuong da duoc gan ngua MAC DINH (khoa `<sDefaultMount>` cua `map/*.xml`)
+## — xem `_gan_do` va `do_ngua_mac_dinh`.
+var _ngua_md: Array[String] = []
 var _cam := 0.0                ## camera da troi bao nhieu px sang phai
 var _cam_max := 0.0
 var _cam_toc := 0.0            ## toc do hien tai, o/giay (tang dan luc bat dau)
@@ -153,8 +190,23 @@ func bat_dau(ta_json: String, dich_json: String, hat: int, mz) -> String:
 			_cho.append(e)
 		else:
 			_them(e, 1)
+	_tao_nhan(hat)
 	_tao_bang()
 	return ""
+
+
+## So sat thuong noi. Node con cua chinh nut nay nen `hien()` nhan thang toa do
+## cua `BattleUnit` (px, cung he) — khong doi o, khong doi goc.
+##
+## Bo sinh so RIENG, khong dung `_rng` cua tran: `_rng` la mot day LCG, moi lan
+## lay de lech ngang se day day so di mot buoc va LAM DOI KET QUA TRAN (chi so
+## trung / chi mang cua tung don deu lay tu chinh day ay). Do la mot loi im lang
+## nghiem trong: them mot hieu ung trang tri ma doi ket qua danh nhau.
+## `hat + 1` de hai day khac nhau, va van theo `hat` nen phep kiem lap lai duoc.
+func _tao_nhan(hat: int) -> void:
+	_nhan = NhanSatThuong.new()
+	add_child(_nhan)
+	_nhan.dat_rng(Combat.Rng.new(hat + 1))
 
 
 ## Bang trang thai tuong ta (khung + thanh mau/no) o goc duoi-trai. Dat trong
@@ -197,9 +249,13 @@ func _cap_nhat_bang() -> void:
 	_bang.queue_redraw()
 
 
-## Mep trai / phai cua san khau va duong mat dat, doi ve toa do cua nut nay.
-## Tinh qua LuaRuntime._bien_doi (khong can nam trong cay canh), va lay mep
-## theo chinh san khau nen khong phu thuoc ti le thu nho cua cua so.
+## Be ngang KHUNG NHIN va duong mat dat, doi ve toa do cua nut nay. Tinh qua
+## LuaRuntime._bien_doi (khong can nam trong cay canh), va lay mep theo chinh
+## san khau nen khong phu thuoc ti le thu nho cua cua so.
+##
+## San THAT (mep trai/phai) khong lay o day: no nam tren cac lop nen he so 1
+## (`gb1_*`), ma chi `_tim_lop` — chay NGAY SAU ham nay trong `bat_dau` — nhin
+## thay. Hai gia tri dien o day la du phong cho bo cuc khong co dai mat dat.
 func _dat_khung(mz) -> void:
 	var cha := get_parent()
 	if not (cha is Control):
@@ -210,7 +266,8 @@ func _dat_khung(mz) -> void:
 	var nguoc := LuaRuntime._bien_doi(cha).affine_inverse()
 	var bd_san := LuaRuntime._bien_doi(san)
 	_trai = (nguoc * (bd_san * Vector2(0, 0))).x
-	_phai = (nguoc * (bd_san * Vector2(san.size.x, 0))).x
+	_man = (nguoc * (bd_san * Vector2(san.size.x, 0))).x - _trai
+	_phai = _trai + _man
 	_goc_x = _trai
 	# g_MapZero la MOC bo cuc ban goc dung de dat quan (x = 0 cua san, y = duong
 	# dat). No la CanvasItem nhung KHONG phai Control (khong co size), nen truoc
@@ -281,6 +338,10 @@ func _them(e: Dictionary, doi: int) -> void:
 ## phai — hang so `BIEN` la le cua san danh cho quan tiep vien). MOT cho dinh
 ## nghia duy nhat cho duong quan TIEP VIEN cua kich ban (`dua_dong_minh`, ca hai
 ## doi). Toan linh bam nut binh chung CO Y khong di duong nay — xem `dua_linh`.
+##
+## Mep o day la mep SAN THAT (`_phai` = 4096 px o ai thuong), khong phai mep
+## khung nhin: dich tiep vien phai vao tu mep phai cua san, khong phai tu giua
+## san — do dung la hau qua cua viec lay `_phai` theo Control ngoai cung.
 func _mep_vao(doi: int) -> float:
 	return (_trai + BIEN) if doi == 0 else (_phai - BIEN)
 
@@ -289,8 +350,9 @@ func _mep_vao(doi: int) -> float:
 ## dispatch). Toan gom MaxUnit nguoi dung tu CHI SO THAT cua Sprite[<ten>]
 ## (vd Troop_1: DefenderN, HP 1000, MaxUnit 4). Tra so nguoi da dua ra.
 ##
-## CHO DAT: o 0 cua san (mep trai), con so 0 truyen vao `_muc`. DAY LA ĐẶT, va la
-## cho DUY NHAT con lai cua muc "cho dung quan" — ghi ro ca hai ve:
+## CHO DAT: MOC CUA TOAN — `_moc_toan` (`Sprite.Troop.PosX`, don vi O) truyen thang
+## vao `_muc`. Truoc 2026-09-20 cho nay la o 0; doi sang moc vi mot phep do moi,
+## xem "VI SAO DOI" duoi.
 ##
 ## MOC CUA TOAN thi la so DO: `Sprite.Troop.PosX` (`tran_goc.moc_toan`) la cho
 ## `CUIGame:FitBattleArmyPos` (CUIGame.lua:702) dat toan quan ta — 3,83 o (can
@@ -321,7 +383,23 @@ func _mep_vao(doi: int) -> float:
 ##         cho dat. Khac biet DUY NHAT do duoc: tran xong som hon theo gio tran
 ##         (`song 0 giay 18` so voi `giay 57`) — nay vo hai vi `hen:buoc` van buoc
 ##         kich ban cho tới khi kich ban dien xong.
-##     VI SAO van giu o 0: hai cho dat nay **bo do khong phan biet duoc** (cung
+##     VI SAO DOI (2026-09-20): phep do cu chi hoi "bo do co phan biet duoc
+##     khong" — va no khong phan biet duoc that. Nhung hinh thi phan biet duoc, va
+##     luot nay do ra ve con thieu: dong `khung san` cua `do_chien_dich --kiem`
+##     in the dung THE DUNG BAN DAU cua ca hai ben —
+##       `trai 0 phai 1152 o 100.0 | T25@(700,-199) | T1@(0) T1@(-46) ... T1@(-422)`
+##       `| D1@(1200) D1@(1310) D1@(1420) | D1@(1800,1910,2020) | D2015@(2400) ...`
+##       * toan DICH theo dung `PosX`: 1200/1800/2400 px = 12/18/24 o, khop tung
+##         chu voi `GROUPS DICH` cua chinh chuoi JSON, va luoi TIEN (+110) tu do;
+##       * tuong ta `T25` dung dung **700** (= moc 7 o), con 12 linh DUA RA nam o
+##         **0 .. -422** — tuc bang va NGOAI mep trai san (`trai 0`), cach moc cua
+##         chinh toan minh **700 px**. Chung phai di bo vao san nen vao tran roi van
+##         con don cuc o mep trai: dung cai nguoi dung thay trong anh loi.
+##     Neu noi "quan dua ra dung cho cua toan" la SUY RA thi ket qua cua phep suy
+##     do bay gio da ro: toan minh cung theo moc, giong het ben dich. Doi neo khong
+##     doi luoi (luoi da khop `fArmySpace`/`SKEW_X`), chi doi goc.
+##     Giu lai doan cu de biet vi sao lan 2026-09-17 lui lai: hai cho dat nay
+##     **bo do khong phan biet duoc** (cung
 ##     11/0, cung nhat ky, cung so khung), nen doi cho dat la doi hanh vi ma khong
 ##     co bang chung nao doi theo. `dispatch()` cua engine khong tinh toa do nao,
 ##     nen ca hai deu la SUY RA. Giu nguyen o 0 cho tới khi co bang chung THAT.
@@ -341,7 +419,8 @@ func _mep_vao(doi: int) -> float:
 ##     "chua ro" THAT, khong phai "da bac bo". Duong (b) con mot buoc nua moi
 ##     trung thanh that: cho bo do TUAN THEO co ay — khi do `bam_cam` khac 0 moi
 ##     la loi cua bo do, con bay gio no la so do.
-## Vi vay: giu nguyen cho dat CU (o 0) cho toi khi co bang chung, va ghi lai ĐẶT.
+## Vi vay tu 2026-09-20: cho dat la MOC CUA TOAN, va phep kiem `_kiem_moc` cua
+## `do_chien_dich` do luoi lui tu CHINH moc ay (truoc do no do tu `_goc_x`).
 func dua_linh(ten: String) -> int:
 	if _xong:
 		return 0
@@ -351,8 +430,12 @@ func dua_linh(ten: String) -> int:
 	var bi = cs.get("BaseInfo", {})
 	var n := maxi(1, int(bi.get("MaxUnit", 1))) if bi is Dictionary else 1
 	for k in n:
+		# Neo = MOC CUA TOAN (`Sprite.Troop.PosX`, o), khong phai o 0 — xem khoi
+		# chu thich "CHO DAT" ngay tren ham nay. Truyen moc lam `_them` dung
+		# CUNG mot khoa `_dem` voi linh co san cua toan (`"0/<moc>"`), nen linh
+		# dua ra noi tiep luoi cua toan thay vi de len nguoi dau.
 		var e: Dictionary = TRAN_GOC._muc(cs, _rules, int(cs.get("ArmyTypeID", 0)), false,
-				0.0, 0.0, _so_linh)
+				_moc_toan, 0.0, _so_linh)
 		_so_linh += 1
 		_them(e, 0)
 	_ra_cuoi = n
@@ -365,7 +448,16 @@ func dua_linh(ten: String) -> int:
 ## armature de ve (Hero_Lingtong...). `doi` 0 = ben ta, 1 = ben dich.
 ## Nho vay ai co kich ban thang duoc DUNG cach ban goc: dong minh danh cung,
 ## khong phai chinh so lieu.
-func dua_dong_minh(ten_hinh: String, doi: int, cs_json: String) -> bool:
+##
+## `do_json` la danh sach TEN DO cua don vi (JSON mang chuoi), den tu hai nguon
+## THAT cua kich ban: bang doi hinh (`G_HeroLogic:GetCharacterArmatureData` ->
+## `.Weapon`...) va doi thu 11 cua `CreateNpcAndMoveTo` (`"equip_8_6"`). Gan
+## bang dung duong `setGear` cua ban goc (`SngRig.dat_do`, xem `rig/sng_rig.gd`).
+## Ban goc gan do bang `ClientPaperDoll:ChangePaperDollHelper`
+## (`sc/user/Logical/ClientPaperDoll.lua:300-302`): duyet MOI gia tri cua bang
+## doi hinh roi goi `setGear(pRole, value)` — khong loc theo loai.
+func dua_dong_minh(ten_hinh: String, doi: int, cs_json: String,
+		do_json: String = "") -> bool:
 	if _xong:
 		return false
 	var cs = JSON.parse_string(cs_json) if cs_json != "" else null
@@ -385,7 +477,63 @@ func dua_dong_minh(ten_hinh: String, doi: int, cs_json: String) -> bool:
 	var u: BattleUnit = _doi[d].back()
 	u.sx = _mep_vao(d)
 	u.position = Vector2(u.sx, u.sy)
+	_do_vua_gan = _gan_do(u, do_json)
 	return true
+
+
+## Ket qua GAN DO cua lan `dua_dong_minh` gan nhat (xem `_do_vua_gan`).
+func do_vua_gan() -> String:
+	return _do_vua_gan
+
+
+## Ten cac tuong da duoc gan NGUA MAC DINH trong tran nay (xem `_gan_do`), de
+## `do_chien_dich` bao lai. Dem chu khong im lang: luat `<sDefaultMount>` chi co
+## MOT muc o ban VN, nen "khong thay gi" va "chua bao gio chay" trong y het nhau.
+func do_ngua_mac_dinh() -> String:
+	return ", ".join(PackedStringArray(_ngua_md))
+
+
+## Gan tung mon do len rig cua don vi, dung duong cua ban goc: `setGear(pRole,
+## ten)` -> `SngRig.dat_do`. Tra chuoi mo ta ket qua (xem `_do_vua_gan`).
+##
+## Sau khi gan xong do cua kich ban, con mot luat nua: NGUA MAC DINH cua tuong
+## (`rig/mount_ref.gd`, khoa `<sDefaultMount>` cua `map/*.xml`). Do 2026-09-21
+## tren cay VN 1.26 luat ay co DUNG mot muc — `LvBuGod` -> `PonyChiTuGod` — va
+## Lua 0 dong doc no; engine C++ doc theo ten. Chi gan khi don vi CHUA co mon
+## ngua nao, va hoi bang BANG DO (`GearRef.la_mount`), khong doan theo ten.
+func _gan_do(u: BattleUnit, do_json: String) -> String:
+	if do_json == "":
+		do_json = "[]"
+	var ls = JSON.parse_string(do_json)
+	if not (ls is Array):
+		return "do: json hong"
+	if u.rig == null:
+		# Khong co rig thi khong co gi de gan — noi thang, dung nuot.
+		return "do %d mon: khong co rig" % ls.size()
+	var dat := 0
+	var hong: Array = []
+	for g in ls:
+		var ten := String(g)
+		if ten == "":
+			continue
+		if u.rig.dat_do(ten):
+			dat += 1
+		else:
+			hong.append(ten)
+	var them := ""
+	var hinh := String(_muc[u].get("hinh", ""))
+	var ngua := MountRef.ngua_can_gan(ls, hinh)
+	if ngua != "":
+		if u.rig.dat_do(ngua):
+			dat += 1
+			them = " +ngua-mac-dinh:" + ngua
+			_ngua_md.append(hinh)
+		else:
+			hong.append(ngua + "(mac dinh)")
+	if hong.is_empty():
+		return "do %d/%d ok%s" % [dat, ls.size(), them]
+	return "do %d/%d, truot: %s%s" % [dat, ls.size(),
+			", ".join(PackedStringArray(hong)), them]
 
 
 ## Rut don vi khoi tran theo TEN ARMATURE (kich ban goi MakeUnitToPlotSprite /
@@ -424,6 +572,24 @@ func _khop_hinh(e: Dictionary, ten: String, chinh_xac: bool) -> bool:
 	return a.contains(k) or b.contains(k) or (a != "" and k.contains(a))
 
 
+## Vet cac lan `tuyet_chieu` da NHAN tham so, moi lan mot muc ngan cach `' > '`:
+##
+##     <hinh>|<dong tac>|<form>|<ky_nang|tu_the>|<so_don>
+##
+## Co ly do rieng chu khong phai tien tay: duong Lua -> GDScript di qua `goi_tran`
+## cua `lua/kich_ban.lua`, ma ham ay boc loi goi trong `pcall` — lech SO THAM SO
+## thi bi nuot IM LANG, khong mot dong loi nao. Muon biet tham so thu 5 (`form`)
+## co toi noi that khong thi phai GHI LAI dung thu ham nhan duoc, chu "khong thay
+## loi" khong noi duoc gi. `do_chien_dich --kichban` doc lai roi doi chieu voi
+## nhat ky kich ban.
+var _vet_tc: Array[String] = []
+
+
+## Vet duoi dang chuoi de bo do doc qua cau Lua.
+func vet_tuyet_chieu() -> String:
+	return " > ".join(_vet_tc)
+
+
 ## Tuyet chieu theo KICH BAN (SetRoleChangeFight ... "Wake"/"Talent"). Tim don
 ## vi khop ten armature ben `doi`, phat dong tac `action`. Neu la tuyet chieu
 ## BEN TA (doi 0) thi danh AoE len moi dich con song — Trieu Van "that tien
@@ -437,25 +603,77 @@ func _khop_hinh(e: Dictionary, ten: String, chinh_xac: bool) -> bool:
 ## ghep nam trong C++ (`CDFSpriteFight*Wake`).
 ## Van DAT: danh KHAP dich. SAT THUONG moi don dung cong thuc va chi so THAT
 ## (Combat.Fighter.strike voi ep_no, qua Harm), khong bia con so.
-func tuyet_chieu(ten_hinh: String, doi: int, action: String, so_don: int) -> int:
-	if _xong or ten_hinh == "":
+func tuyet_chieu(ten_hinh: String, doi: int, action: String, so_don: int,
+		form: int = 0) -> int:
+	if ten_hinh == "":
 		return 0
-	var full := float(_rules.get("angerFull", 100.0))
-	# CHI dong tac KY NANG moi gay sat thuong. `SetRoleChangeFight` con dung de
-	# DOI TU THE ("Fight", "Fight20", "Standby"...) — truoc day ta danh AoE cho
-	# moi lan goi, nen o ai 1 hai Trieu Van x ba lan goi = 6 lan AoE khong co
-	# that. Danh sach lay tu chinh cac cho goi trong sc/plot/drama_*.lua.
+	# THAM SO `form` MOI LA THAM QUYEN, khong phai ten dong tac. Do ca 17 cho
+	# goi trong sc/plot/drama_*.lua thi form khop TUYET DOI voi ho dong tac:
+	#
+	#     form 1 -> "Fight", "Fight3", "Fight20"    (5 cho) doi TU THE
+	#     form 2 -> "Wake", "Super", "Super4"      (10 cho) BIEN THAN / tuyet chieu
+	#     form 4 -> "Talent"                        (1 cho) kich THIEN PHU
+	#
+	# Nghia cua form doc tu chinh chu thich ban goc: `--吕布变身` (Lv Bo BIEN
+	# THAN) di voi form 2 + "Wake"; `--赵云触发龙胆` (Trieu Van kich thien phu)
+	# di voi form 4 + "Talent".
+	#
+	# Truoc day thu phan loai nay theo TEN dong tac (`begins_with("Wake")`). DO
+	# LAI thi tren DUNG 17 cho goi hien co hai luat cho ra CUNG ket qua, nen luot
+	# nay KHONG doi ket qua tran nao: ba cho "Super"/"Super4" (drama_L_XSGK.lua)
+	# deu la `doi = 1`, ma nhanh AoE duoi day von da bo qua moi loi goi cua ben
+	# dich, con nam cho "Fight*" cua ben ta thi ten va form noi cung mot y.
+	#
+	# Doi sang `form` vi ten dong tac la mot QUY UOC con `form` la con so engine
+	# gui — mot ai sau nay goi ky nang ben TA bang ten khac ("Super" chang han)
+	# se bi luat ten bien thanh TU THE va khong gay sat thuong, khong mot dong
+	# loi nao (xem `vet_tuyet_chieu`).
+	#
+	# `form` = 0 (khong truyen) thi LUI VE phep thu theo ten: duong CU, de cho
+	# goi nao thieu tham so khong am tham doi hanh vi.
 	var la_ky_nang := action.begins_with("Wake") or action.begins_with("Talent")
-	if la_ky_nang and action.begins_with("Wake"):
+	if form > 0:
+		la_ky_nang = form == 2 or form == 4
+	# "Thuc tinh" (bien than) la form 2; form 4 ("Talent") khong phai, va ten
+	# dong tac `Fight*` cua form 1 la doi TU THE. Mot cho dinh nghia, dung cho
+	# ca so don lan hieu ung ben duoi.
+	var la_thuc_tinh := form == 2 or (form == 0 and action.begins_with("Wake"))
+	# So don cua ban goc chi co o dong tac THUC TINH (form 2); "Talent" (form 4)
+	# tra WakeRef ra 0 nen giu nguyen so don truyen vao.
+	if la_thuc_tinh:
 		var that := WakeRef.so_don(ten_hinh)
 		if that > 0:
 			so_don = that
+	# GHI VET truoc khi gac `_xong`. Vet la KENH DO chu khong phai HIEU UNG: no
+	# phai ghi MOI loi goi da toi day, ke ca loi goi sau khi tran xong, vi
+	# `do_chien_dich --kichban` doc chinh no de biet tham so `form` co di noi
+	# khong (xem `vet_tuyet_chieu`). Do 2026-09-20: tran ket thuc o GIAY 22 con
+	# kich ban chay 1379 khung, nen lenh `ChangeFight ZhaoYun Wake f2` cuoi cung
+	# cua kich ban VA CA BON phep do `form` deu toi sau `_xong` — de phep ghi
+	# duoi cong thi 5 loi goi bi nuot IM LANG va `--kichban` tut tu 16 dat /
+	# 0 hong xuong 11 dat / 5 hong, khong mot dong loi nao. HIEU UNG (sat
+	# thuong, doi dong tac) thi VAN gac, o cong ngay duoi day.
+	_vet_tc.append("%s|%s|%d|%s|%d" % [ten_hinh, action, form,
+			"ky_nang" if la_ky_nang else "tu_the", so_don])
+	if _vet_tc.size() > 64:
+		_vet_tc.remove_at(0)
+	if _xong:
+		return 0
+	var full := float(_rules.get("angerFull", 100.0))
 	var n := 0
 	for u in _doi[clampi(doi, 0, 1)]:
 		if not u.alive() or not _khop_hinh(_muc[u], ten_hinh, false):
 			continue
 		n += 1
 		u._play_lai(action if action != "" else "Wake")
+		# HIEU UNG THUC TINH: `_play_lai` chi doi dong tac cua CHINH tuong; 14
+		# truong `s*` con tro toi nhung armature RIENG va khong duong nao khac
+		# cham toi chung (xem `hieu_ung_thuc_tinh`). Chi voi don BIEN THAN —
+		# form 1 (`Fight*`) la doi TU THE, khong co hieu ung thuc tinh nao.
+		# Sinh cho CA HAI ben: day la trang tri, va mot don thuc tinh cua dich
+		# cung phai thay hieu ung cua no.
+		if la_thuc_tinh:
+			hieu_ung_thuc_tinh(ten_hinh, u)
 		if doi != 0 or not la_ky_nang:
 			continue        # tuyet chieu dich / doi tu the: chi dien, khong AoE
 		var song := 0
@@ -469,12 +687,20 @@ func tuyet_chieu(ten_hinh: String, doi: int, action: String, so_don: int) -> int
 					break
 				u.fighter.anger = full
 				u.fighter.ep_no = true
+				# Mau cua CA HAI ben truoc don: ben chiu de biet sat thuong that,
+				# ben danh de biet `strike()` co hut mau hay khong (xem `_phat_trung_don`).
+				var mau_u: float = u.fighter.hp
+				var mau_v: float = v.fighter.hp
 				var r: Dictionary = u.fighter.strike(v.fighter, _rng, _rules)
-				_phat_trung_don(u, v, 2)
 				# strike() da tru mau theo don thuong; buoc them / bot cho dung
 				# he so thuc tinh cua ban goc.
 				var bu := float(r.get("damage", 0.0)) * (he_so - 1.0)
 				v.fighter.hp = maxf(0.0, v.fighter.hp - bu)
+				_phat_trung_don(u, v, 2, {
+					"sat": maxf(0.0, mau_v - v.fighter.hp),
+					"crit": bool(r.get("crit", false)),
+					"hoi": maxf(0.0, u.fighter.hp - mau_u),
+				})
 			if not v.alive():
 				v.die()
 	return n
@@ -543,6 +769,8 @@ func buoc(dt: float) -> String:
 	_buoc_thu_phong(dt)
 	_buoc_di_dien(dt)
 	_buoc_hieu_ung(dt)
+	if _nhan != null:
+		_nhan.buoc(dt)
 	_buoc_phu(dt)
 	_buoc_rung(dt)
 	_cap_nhat_bang()
@@ -572,20 +800,37 @@ func _mot_buoc(delta: float) -> int:
 	_tach()
 	for p in danh:
 		var truoc: float = p[1].fighter.hp
+		var mau_danh: float = p[0].fighter.hp
 		var r: Dictionary = p[0].resolve(p[1])
 		var e: Dictionary = _muc[p[0]]
+		# Sat thuong THAT da tru = mau truoc tru mau sau (khong dung `r.damage`:
+		# `hp` bi chan duoi o 0, nen mot don ket lieu ghi 5000 vao mot nguoi con
+		# 12 mau thi con so nguoi choi thay phai la 12). Dung lai chinh so nay cho
+		# bang `_sat` ben duoi — mot phep tinh, mot cho.
+		var mat := maxf(0.0, truoc - p[1].fighter.hp)
 		# Tieng TRUNG DON: ban goc phat o tang C++ khi don trung, ghep tu loai vu
 		# khi cua ben danh + loai giap cua ben chiu + do manh. Don ky nang dem
 		# "nang" (2), don thuong "nhe" (1) — do manh la DAT, xem `_phat_trung_don`.
 		if not r.is_empty():
-			_phat_trung_don(p[0], p[1], 2 if r.get("skill", false) else 1)
+			_phat_trung_don(p[0], p[1], 2 if r.get("skill", false) else 1, {
+				"sat": mat,
+				"crit": bool(r.get("crit", false)),
+				"hoi": maxf(0.0, p[0].fighter.hp - mau_danh),
+			})
 		# Don thuc tinh cua tuong ta: dem, va phat dong tac Wake cua armature.
 		if r.get("skill", false) and e["tuong"] and p[0].team == 0:
 			_so_thuc_tinh += 1
 			p[0]._play_lai("Wake")
+			# HIEU UNG THUC TINH. Day moi la duong NGUOI CHOI di: bam nut thuc
+			# tinh (`thuc_tinh(id)` dat `ep_no`), roi don ke tiep thanh don ky
+			# nang — khac han duong KICH BAN (`tuyet_chieu`), va ca hai deu phai
+			# sinh hieu ung. Do 2026-09-21 tren `do_chien_dich --kiem`: tran that
+			# di dung duong nay (`thuc tinh 25` trong nhat ky), va truoc khi noi
+			# day thi `dem_thuc_tinh` ra `ve 0, im 0` — tuc KHONG mot dau vet.
+			hieu_ung_thuc_tinh(String(e.get("hinh", "")), p[0])
 		if e["tuong"] and p[0].team == 0:
 			var key := str(e["id"])
-			_sat[key] = float(_sat.get(key, 0.0)) + maxf(0.0, truoc - p[1].fighter.hp)
+			_sat[key] = float(_sat.get(key, 0.0)) + mat
 	for d in 2:
 		for u in _doi[d]:
 			if not u.alive():
@@ -668,7 +913,11 @@ func dung() -> void:
 ## Cac lop cua nut parallax cha — g_BattleFieldLayer, CCParallaxNode trong
 ## Game_UI_960_640 — ma ban goc nap ca file san vao: nen gb<tang>_<o>, troi,
 ## va chinh g_BattleField. Ghi x goc va he so (meta 'parallax'; khong co la 1).
-## Be dai san = mep phai xa nhat cua cac lop he so 1 (mat dat gb1_*).
+##
+## Ham nay cung la cho DUY NHAT biet SAN THAT rong bao nhieu: cac lop he so 1
+## (`gb1_0..3`, bon dai 1024x40 lien nhau) trai 0..4096 px = 40,96 o. Truoc
+## 2026-09-21 `_trai`/`_phai` lay theo Control ngoai cung (be ngang KHUNG NHIN,
+## 1152 px) — hep hon san that 3,56 lan.
 func _tim_lop() -> void:
 	_lop.clear()
 	var san_node := get_parent()
@@ -677,18 +926,35 @@ func _tim_lop() -> void:
 		return
 	var lech_san := (san_node as Control).position.x if san_node is Control else 0.0
 	var mep := 0.0
+	var mep_trai := INF
 	for c in cha.get_children():
 		if not (c is Control):
 			continue
 		var k: Control = c
 		var r := 1.0
-		var p = k.get_meta("parallax", null)
-		if p is Array and not (p as Array).is_empty():
-			r = float(p[0])
+		# KHONG dung `get_meta("parallax", null)`: Godot coi `null` la "khong
+		# truyen mac dinh" (do 2026-09-21 tren 4.7.2: `get_meta(t, null)` bao loi
+		# y het `get_meta(t)`), nen moi lop KHONG khai he so sinh mot dong loi —
+		# dung 5 dong moi lan vao tran (5/34 node goc cua
+		# BattleField_Battlefield_960_640 khong co truong nay: g_BattleField va
+		# gb1_0..3). Bo cuc chi ghi khi khac (1,1) (work/layout.py:68) nen
+		# "vang mat = 1" moi la dung, khong phai doan.
+		if k.has_meta("parallax"):
+			var p = k.get_meta("parallax")
+			if p is Array and not (p as Array).is_empty():
+				r = float(p[0])
 		_lop.append([k, k.position.x, r])
 		if k != san_node and absf(r - 1.0) < 0.001:
 			mep = maxf(mep, k.position.x + k.size.x * k.scale.x - lech_san)
-	_cam_max = maxf(0.0, mep - _phai)
+			mep_trai = minf(mep_trai, k.position.x - lech_san)
+	# San THAT: mep cua cac dai mat dat. Chi ghi de khi THUC SU co dai nao rong
+	# hon 0 — bo cuc khong co mat dat thi giu du phong cua `_dat_khung`.
+	if mep > 0.0 and mep_trai < INF:
+		_trai = mep_trai
+		_phai = mep
+	# Camera troi duoc bao xa: het san tru di mot KHUNG NHIN (khong phai tru
+	# `_phai` — hai so do bang nhau chi khi khung nhin rong bang ca san).
+	_cam_max = maxf(0.0, mep - _man)
 
 
 ## Camera bam quan ta. SO la cua ban goc (muc <camera> cua
@@ -711,7 +977,7 @@ func _buoc_camera(dt: float) -> void:
 
 
 func _bam_toi(dau: float, dt: float) -> void:
-	var dich := clampf(dau - _trai - CAM_NGUONG * (_phai - _trai), 0.0, _cam_max)
+	var dich := clampf(dau - _trai - CAM_NGUONG * _man, 0.0, _cam_max)
 	var lech := dich - _cam
 	var kc := absf(lech) / O_PX
 	if kc < 0.005:
@@ -746,7 +1012,7 @@ func dung_camera() -> void:
 ## khong dung toi mo phong. DAT: bien do (nua be ngang man) la ta dat.
 func lia_camera(huong: float) -> void:
 	_cam_dung = true
-	_cam = clampf(_cam + signf(huong) * (_phai - _trai) * 0.5, 0.0, _cam_max)
+	_cam = clampf(_cam + signf(huong) * _man * 0.5, 0.0, _cam_max)
 	_ap_camera()
 
 
@@ -839,9 +1105,12 @@ func do_thu_phong() -> String:
 
 ## So do CHO DAT cua toan linh vua bam nut: MOC CUA TOAN doc tu `Sprite.Troop.PosX`
 ## cua du lieu tran (o, roi ra px) — tuc cho dung CUA TOAN theo du lieu goc, va x
-## cua tung nguoi vua ra (px so voi o 0 cua san, o day la cho dat ĐẶT cua port) —
-## cong goc san. Hai so nay CO Y khac nhau: moc la so DO, cho dat la ĐẶT (xem
-## `dua_linh`), nen bo do doc ca hai de phan biet "doc dung du lieu" voi "dat o dau".
+## cua tung nguoi vua ra (px so voi o 0 cua san) — cong goc san.
+## Hai so nay CO Y khac nhau, va ca hai deu la SO DO: `moc` la neo ma `dua_linh`
+## dung (tu 2026-09-20 — truoc la o 0), con x tung nguoi luon NHO HON moc vi luoi
+## cua ta lui dan ve sau (fArmySpace 110 px, SKEW_X 46 px). Do 2026-09-20 tren
+## `L_N_01_01`: `moc 7.00 o = 700 px | goc 0` va bon nguoi vua ra o 498/480/434/388
+## — dung 700 tru 202/220/266/312.
 ## Ham cua CONG CU DO, khong phai ham cua ban goc.
 func do_cho_dat() -> String:
 	var ds := PackedStringArray()
@@ -997,21 +1266,70 @@ func lat_hinh(ten: String, doi: int) -> int:
 ## PlayEffectInMap(ten, o_x, o_y [, action] [, lap]) — chay mot armature hieu
 ## ung tai o (o_x, o_y). `ten` la BIEN THE (vd "DramaDialog_SmokeWhite" thuoc
 ## armature "DramaDialog"); `_thu_muc_rig` tu lan ra armature goc.
+##
+## `giay <= 0` = "de dong tac tu quyet": lay thoi luong cua chinh dong tac vua
+## chay (`SngRig.thoi_luong`). Hieu ung thuc tinh dai ngan khac nhau (vong tron
+## CaiWenJi 3 dong tac, chu ZhaoYun 19 khung), nen mot con so cung cho tat ca
+## hoac la cat ngang hoac la de mot xac rig nam tren san. Ba cho goi cu deu
+## truyen so duong nen khong doi hanh vi nao.
 func hieu_ung_tai_o(ten: String, o_x: float, o_y: float, action: String = "PluginPlay",
 		giay: float = 3.0) -> bool:
 	var r := _thu_muc_rig(ten)
 	if r[0] == "":
 		return false
-	var rig := SngRig.build(r[0], r[1], true)
+	# Ten khong phai la mot BIEN THE ma la chinh THU MUC (vd `CaiWenJiCircle`):
+	# `_bien_the_cho` se tra ve `_richest_variant()`, ma "nhieu dong tac nhat"
+	# khong phai "nhom hieu ung" — do 2026-09-21: no chon nhom
+	# `Born/Death/Standby`, tuc mot con vong tron KHONG chay gi. Chi doi khi
+	# nguoi goi KHONG chi dinh dong tac: co chi dinh roi thi ten bien the la y
+	# cua nguoi goi.
+	if action == "":
+		r = _thu_muc_hieu_ung(ten)
+	# `chinh_xac = true`: HIEU UNG khong duoc phep lui ve nhom nhieu dong tac nhat.
+	# Do 2026-09-21 tren 56 ten thuc tinh cua `wake_ref.json`: 6 ten khong co art
+	# rieng bi phep lui ay ve ra THAN cua chinh tuong do — mot bong tuong thu hai
+	# moc len giua san, va phep dem van ghi la "ve duoc". Tra null -> nguoi goi
+	# dem vao `thieu-art:<ten>` (xem `_phat_hieu_ung`).
+	var rig := SngRig.build(r[0], r[1], true, true)
 	if rig == null:
 		return false
 	rig.position = Vector2(_goc_x + o_x * _o,
 			_mat_dat - DOAN_LEN - LAN_LECH - o_y * LAN_CACH)
 	add_child(rig)
-	if action != "":
-		rig.play(action)
-	_hieu_ung.append([rig, maxf(0.2, giay), ""])
+	var dong := action
+	if dong == "":
+		dong = _dong_tac_cua(rig)
+		if dong == "":
+			# Dung lai mot rig KHONG chay dong tac nao thi no nam im giua san —
+			# dung cai bay ma `_phat_hieu_ung` da phai chan. Tra false de nguoi
+			# goi dem vao `khong-dung-duoc:<ten>`.
+			# Do NGAY (`remove_child` + `free`) chu khong `queue_free`: xoa hoan
+			# lai thi con mot khung nua no van la con cua nut tran, va phep dem
+			# "co de lai rig nao khong" doc ra sai.
+			remove_child(rig)
+			rig.free()
+			return false
+	if dong != "":
+		rig.play(dong)
+	var cho := giay
+	if cho <= 0.0:
+		cho = rig.thoi_luong(dong)
+	_hieu_ung.append([rig, maxf(0.2, cho), ""])
 	return true
+
+
+## Dong tac cua mot armature HIEN TUONG khi nguoi goi khong chi dinh ten dong
+## tac (`action = ""`). `PluginPlay` truoc — do 2026-09-21 tren 22 ten thuc tinh
+## tra ra duoc: 20 chay `PluginPlay` — roi moi den bo `Wake*` (2 ten cua
+## `sWakeEffect`: `SunLuBan_WakeEffect`, `SiMaYi_WakeEffect`).
+static func _dong_tac_cua(rig: SngRig) -> String:
+	var ds := rig.animations()
+	if ds.has("PluginPlay"):
+		return "PluginPlay"
+	for a in ds:
+		if String(a).begins_with("Wake"):
+			return String(a)
+	return ""
 
 
 ## PlayEffectThenDisappear(hieu_ung, sprite, side, ?, giay) — chay hieu ung len
@@ -1025,6 +1343,60 @@ func hieu_ung_roi_rut(ten_hieu_ung: String, ten: String, doi: int, giay: float) 
 	return ds.size()
 
 
+## Sinh hieu ung cua don THUC TINH — cac armature ma 14 truong `s*` nhom SINH
+## HIEN cua khoi `fight_<X>Wake` tro toi (xem `battle/wake_ref.gd`). Tra so
+## armature dung duoc.
+##
+## VI SAO PHAI CO HAM NAY: `tuyet_chieu` chi goi `u._play_lai(action)` — tuc la
+## chi doi dong tac cua CHINH tuong. Do tren 23 ten rieng cua nhom do: 22 tra ra
+## duoc armature THAT (vong tron CaiWenJi, chu ZhaoYun, khien SuperThunderDragon,
+## hieu ung trung SiMaYi...) va **khong duong nao khac cham toi chung**. Thieu
+## ham nay thi mot lan tuyet chieu chi la mot lan doi tu the.
+##
+## Do dai: `giay = 0` = de chinh dong tac quyet (xem `hieu_ung_tai_o`) — cac
+## hieu ung nay dai ngan rat khac nhau (vong tron CaiWenJi 3 dong tac, chu
+## ZhaoYun 19 khung), mot con so cung cho tat ca thi hoac cat ngang hoac de mot
+## xac rig nam tren san.
+func hieu_ung_thuc_tinh(ten_hinh: String, u: BattleUnit) -> int:
+	if u == null or not u.visual:
+		# Che do khong dung anh (`--sim`): cung loi `_phat_hieu_ung` — VAN dem
+		# vao so im, de `ve` + `im` luon bang so lan chieu that.
+		_so_tt_im += 1
+		_ly_do_tt["khong-ve-hinh"] = int(_ly_do_tt.get("khong-ve-hinh", 0)) + 1
+		return 0
+	var ds := WakeRef.hieu_ung(ten_hinh)
+	if ds.is_empty():
+		# KHONG co dong nao trong bang cho tuong nay — ban goc khong co khoi
+		# `fight_<X>Wake` nao trong `map/*_config.xml`. VAN phai dem va GOI TEN
+		# ra: mot tuong thuc tinh ma khong co hieu ung nao se di qua hoan toan
+		# im lang, dung loai loi ma `CLAUDE.md` goi la loi im. Do 2026-09-21:
+		# nhan vat chinh (`Player000M03W`) la mot ten nhu vay — ban VN 1.26 chi
+		# co `fight_Player000W03WWake` / `fight_Player002W03WWake` /
+		# `fight_Player00003Wake` / `fight_Player03Wake`, khong co `M03W`.
+		_so_tt_im += 1
+		var lt := "khong-co-bang:" + ten_hinh
+		_ly_do_tt[lt] = int(_ly_do_tt.get(lt, 0)) + 1
+		return 0
+	var o_x := (u.sx - _goc_x) / _o
+	var n := 0
+	for cap in ds:
+		var ten := String(cap[1])
+		if hieu_ung_tai_o(ten, o_x, 0.0, "", 0.0):
+			n += 1
+			_so_tt_ve += 1
+		else:
+			# Hai nguyen nhan roi han nhau, va CA HAI deu la su that do duoc:
+			# `SngRig.tim_thu_muc` khong tra ra thu muc nao, hay co thu muc ma
+			# khong dung duoc rig (khong bien the nao co dong tac, hoac khong
+			# co dong tac hieu ung nao). Ten armature la thu can sua nen ghi kem.
+			_so_tt_im += 1
+			var ld := ("khong-tra-thu-muc:" if WakeRef.tra_thu_muc(ten) == ""
+					else "khong-dung-duoc:")
+			ld += ten
+			_ly_do_tt[ld] = int(_ly_do_tt.get(ld, 0)) + 1
+	return n
+
+
 ## AddPhiz(sprite, side, mat, giay) — bong bong bieu cam tren dau. `mat` la bien
 ## the cua armature `Face` (vd "Face_ShengQi"), dong tac "PluginPlay" — doc tu
 ## chinh assets_ref/Face/Face.json.
@@ -1034,7 +1406,10 @@ func bong_bong(ten: String, doi: int, mat: String, giay: float = 0.0) -> int:
 		return 0
 	var n := 0
 	for u in ds:
-		var rig := SngRig.build("res://assets_ref/Face", mat, true)
+		# `chinh_xac = true`: `mat` la mot mat bieu cam, khong phai mot nhan vat —
+		# khong co mat do thi dung ve mat khac. Ca 13 nhom cua `Face.json` deu la
+		# `Face_*`, va moi cho goi `AddPhiz` trong `sc/plot/` deu goi ten nhom that.
+		var rig := SngRig.build("res://assets_ref/Face", mat, true, true)
 		if rig == null:
 			continue
 		rig.position = Vector2(0, BONG_BONG_Y)
@@ -1152,9 +1527,12 @@ func dat_minimap(nut) -> void:
 	_minimap = nut as Control
 
 
-## Be ngang THAT cua man do: tu mep trai san toi het phan camera con di duoc.
+## Be ngang THAT cua man do: ca be ngang SAN (khong phai be ngang khung nhin).
+## Truoc 2026-09-21 cho nay viet `(_phai + _cam_max) - _trai`, va no ra dung 4096
+## chi vi `_phai` khi ay la be ngang khung nhin con `_cam_max` bu lai — mot dang
+## thuc dung nho hai loi bu nhau. Nay moi so noi y that cua no.
 func _mm_rong_the_gioi() -> float:
-	return maxf(1.0, (_phai + _cam_max) - _trai)
+	return maxf(1.0, _phai - _trai)
 
 
 func _ve_minimap() -> void:
@@ -1199,7 +1577,7 @@ func _mm_ve_khung(w: float, h: float, span: float) -> void:
 		_mm_khung.color = Color(1, 1, 1, 0.18)
 		_mm_khung.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_minimap.add_child(_mm_khung)
-	var be := (_phai - _trai) / span * w
+	var be := _man / span * w
 	_mm_khung.size = Vector2(maxf(4.0, be), h)
 	_mm_khung.position = Vector2(clampf(_cam / span, 0.0, 1.0) * (w - _mm_khung.size.x), 0.0)
 
@@ -1234,8 +1612,8 @@ func khung() -> String:
 	var ds := PackedStringArray()
 	for u in _dau:
 		ds.append("%s@(%.0f,%.0f)" % [u[0], u[1], u[2]])
-	return "trai %.0f phai %.0f o %.1f mat_dat %.0f | %s" % [_trai, _phai, _o, _mat_dat,
-			" ".join(ds)]
+	return "trai %.0f phai %.0f man %.0f cam_max %.0f o %.1f mat_dat %.0f | %s" % [_trai,
+			_phai, _man, _cam_max, _o, _mat_dat, " ".join(ds)]
 
 
 ## Moi quan: ten armature, bien the that su dung, vi tri tren man (toa do cua
@@ -1297,7 +1675,38 @@ func thieu_rig() -> String:
 ## ma engine C++ chua lo ra — khong lam, theo nguyen tac 1. `Player000W03W` cung
 ## vay: co trong `sound_config` (nen NO CO tieng hoat dong) nhung khong co trong
 ## `danh` (nen don danh khong co tieng vu khi).
-func _phat_trung_don(u_danh: BattleUnit, u_chiu: BattleUnit, do_manh: int) -> void:
+func _phat_trung_don(u_danh: BattleUnit, u_chiu: BattleUnit, do_manh: int,
+		nhan: Dictionary = {}) -> void:
+	# SO SAT THUONG NOI — dat TRUOC moi cong ben duoi, vi khong co cong nao
+	# dung toi no: tieng phu thuoc bank, hinh phu thuoc art, con so chi phu thuoc
+	# bang nhan. `nhan` rong (goi cu) thi khong ve gi — khong nem loi.
+	#
+	# `sat` la sat thuong THAT da tru, `hoi` la mau ben DANH hut duoc. Hai con so
+	# nay ra hai nhan KHAC NHAU va o hai CHO khac nhau (nguoi chiu / nguoi danh),
+	# dung nhu hai loai nhan cua ban goc (`Foe`/`Troop`/`Critical` so voi
+	# `Increase`).
+	if _nhan != null and not nhan.is_empty():
+		var sat := float(nhan.get("sat", 0.0))
+		if sat > 0.0:
+			_nhan.hien(NhanSatThuong.loai_theo_duoi(u_chiu.team,
+					bool(nhan.get("crit", false))), sat, u_chiu.sx, u_chiu.sy)
+		var hoi := float(nhan.get("hoi", 0.0))
+		if hoi > 0.0:
+			_nhan.hien(NhanSatThuong.INCREASE, hoi, u_danh.sx, u_danh.sy)
+	# HIEU UNG TRUNG DON — cung bang, cung cu danh, cung `kit` voi tieng: khoa
+	# `<kit>_0_0` cua khoi `hieu_ung` (`hit_config.xml`), xem `TiengDong.hieu_ung`.
+	# Ban goc chay no o tang C++; `hieu_ung_tai_o` chinh la duong `PlayEffectInMap`
+	# ma kich ban dung, nen day khong phai duong moi.
+	#
+	# Dat TRUOC cong `TiengDong.am` ben duoi: cong do la cua TIENG (khong co
+	# bank thi khong phat duoc), con hinh thi khong phu thuoc vao bank nao.
+	#
+	# NOI RO: hieu ung duoc dat TAI CHO NGUOI CHIU don, khong bay tu nguoi danh
+	# sang. Duong BAY that (vien dan di giua hai nguoi) nam trong C++ va KHONG co
+	# bang du lieu nao mo ta no — `cham_ref.json` chi co mot muc `HitEffect_Shoot`
+	# (hop 138x4 px, dong tac PluginPlay) chu khong co quy dao/thoi gian bay. Nen
+	# o day chay dung bien the ma bang chi dinh, dung cho ma no dung.
+	_phat_hieu_ung(u_danh, u_chiu)
 	if TiengDong.am == null:
 		return
 	_so_don += 1
@@ -1322,21 +1731,81 @@ func _phat_trung_don(u_danh: BattleUnit, u_chiu: BattleUnit, do_manh: int) -> vo
 ## phan lon don danh IM (xem `_phat_trung_don`), nen con so nay la phep do muc
 ## phu that cua duong nay. `im_vi_sao` chia so im theo NGUYEN NHAN, de biet cho
 ## nao la loi cua ta con cho nao la du lieu ban goc thieu.
+##
+## `hieu_ung` / `hieu_ung_im` la cung phep do ay cho duong HIEU UNG trung don
+## (xem `_phat_hieu_ung`): dem rieng vi hai duong co the im vi hai ly do khac
+## nhau — tieng tra `<kit>_<giap>_<do manh>`, hieu ung tra `<kit>_0_0`.
 func dem_tieng() -> String:
 	return JSON.stringify({"don": _so_don, "phat": _so_tieng, "im": _so_im,
-			"im_vi_sao": _ly_do_im})
+			"im_vi_sao": _ly_do_im, "hieu_ung": _so_hieu_ung,
+			"hieu_ung_im": _so_hieu_ung_im, "hieu_ung_vi_sao": _ly_do_hu})
 
 
-## Thu muc armature cho mot ten — cung luat voi LuaRuntime._tao_rig: trung ten
-## thi dung, khong thi thu tien to ngan dan va xin ten day du lam BIEN THE
-## ("Player000M03W" -> thu muc Player000, bien the Player000M03W).
-static func _thu_muc_rig(ten: String) -> Array:
+## Dem so sat thuong noi — cung loi `dem_tieng()`: `ve` bao nhieu nhan ve duoc,
+## `bo` bao nhieu bi TRAN cua ban goc day ra, `im_vi_sao` chia so KHONG ve duoc
+## theo nguyen nhan. Mot nhan khong ve duoc KHONG nem loi nao (xem
+## `battle/nhan_sat_thuong.gd`), nen thieu kenh do nay thi khong ai biet.
+func dem_nhan() -> String:
+	if _nhan == null:
+		return "{}"
+	return _nhan.dem()
+
+
+## Dem hieu ung THUC TINH — cung loi `dem_tieng()` va `dem_nhan()`: `ve` bao
+## nhieu armature dung duoc, `im_vi_sao` chia so KHONG dung duoc theo nguyen
+## nhan. Mot armature khong dung duoc khong nem mot dong loi nao, nen thieu
+## kenh do nay thi khong ai biet tuyet chieu dang thieu gi.
+func dem_thuc_tinh() -> String:
+	return JSON.stringify({"ve": _so_tt_ve, "im": _so_tt_im,
+			"im_vi_sao": _ly_do_tt})
+
+
+## Chay hieu ung trung don cua mot cu danh (xem `_phat_trung_don`). Dem ca hai
+## chieu: chay duoc bao nhieu, im bao nhieu va vi sao.
+func _phat_hieu_ung(u_danh: BattleUnit, u_chiu: BattleUnit) -> void:
+	if not u_chiu.visual:
+		# Che do khong dung anh (`--sim`, vai phep kiem): don vi khong dung rig
+		# nao thi hieu ung cung khong. VAN dem vao so im, de `hieu_ung` +
+		# `hieu_ung_im` luon bang so don danh — thieu mot chieu thi con so khong
+		# con la phep do.
+		_so_hieu_ung_im += 1
+		_ly_do_hu["khong-ve-hinh"] = int(_ly_do_hu.get("khong-ve-hinh", 0)) + 1
+		return
+	var ten := TiengDong.moi().hieu_ung(
+			String(_muc[u_danh].get("hinh", "")), u_danh.dong_tac_dang(), 0)
 	if ten == "":
-		return ["", ""]
-	if FileAccess.file_exists("res://assets_ref/%s/%s.json" % [ten, ten]):
-		return ["res://assets_ref/" + ten, ""]
-	for i in range(ten.length() - 1, 3, -1):
-		var goc := ten.substr(0, i).trim_suffix("_")
-		if FileAccess.file_exists("res://assets_ref/%s/%s.json" % [goc, goc]):
-			return ["res://assets_ref/" + goc, ten]
-	return ["", ""]
+		_so_hieu_ung_im += 1
+		var ld := TiengDong.moi().ly_do
+		if ld == "":
+			ld = "khong-ro"
+		# Ten armature la thu can sua, nen ghi kem — nhu ben tieng.
+		if ld == "khong-co-danh":
+			ld += ":" + String(_muc[u_danh].get("hinh", ""))
+		_ly_do_hu[ld] = int(_ly_do_hu.get(ld, 0)) + 1
+		return
+	# Cung cho dat voi `hieu_ung_roi_rut` (o_x theo nguoi chiu, o_y = 0 = duong
+	# dat). Bien the `HitEffect_*` deu chi co MOT dong tac `PluginPlay`.
+	if hieu_ung_tai_o(ten, (u_chiu.sx - _goc_x) / _o, 0.0, "PluginPlay", 0.8):
+		_so_hieu_ung += 1
+	else:
+		_so_hieu_ung_im += 1
+		_ly_do_hu["thieu-art:" + ten] = int(_ly_do_hu.get("thieu-art:" + ten, 0)) + 1
+
+
+## Thu muc armature cho mot ten — luat nay nay o MOT cho (`SngRig.tim_thu_muc`),
+## dung chung voi `LuaRuntime._tao_rig` va `SngRig.theo_ten`. Ba noi tung chep tay
+## cung mot vong lap, va do la cach chung lech nhau.
+static func _thu_muc_rig(ten: String) -> Array:
+	return SngRig.tim_thu_muc(ten)
+
+
+## Thu muc + bien the de dung mot ten HIEU UNG. `_thu_muc_rig` roi, va khi ten
+## khong phai la mot BIEN THE (tra ve rong) thi hoi nhom CO dong tac hieu ung —
+## xem `SngRig.bien_the_hieu_ung`. Mot cho dinh nghia: `hieu_ung_tai_o` va
+## `tools/verify_thuc_tinh.gd` di cung duong nay, nen con so bo kiem do ra la con
+## so cua duong that.
+static func _thu_muc_hieu_ung(ten: String) -> Array:
+	var r := SngRig.tim_thu_muc(ten)
+	if r[0] != "" and r[1] == "":
+		r[1] = SngRig.bien_the_hieu_ung(r[0])
+	return r

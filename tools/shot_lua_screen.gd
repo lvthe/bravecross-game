@@ -54,7 +54,7 @@ func _ready() -> void:
 
 	if not boot:
 		return
-	if not FileAccess.file_exists("res://sc/share/class.lua"):
+	if LuaRuntime.thieu_ma_goc():
 		_note("thieu ma goc — python tools/import_lua.py")
 		return
 

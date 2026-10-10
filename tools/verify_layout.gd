@@ -29,6 +29,26 @@ func _count(nd: Dictionary) -> int:
 	return n
 
 
+## Dem so LOP CUON trong mot nhanh cua ban ghi `.xgg`.
+##
+## `la_lop_cuon` chu khong phai mot danh sach viet lai: do la cung mot luat ma
+## `_boc_lop_chua` dung de quyet dinh co boc hay khong, nen hai ben khong the
+## lech nhau.
+func _dem_lop_cuon(nd: Dictionary) -> int:
+	var n := 1 if XggLayout.la_lop_cuon(String(nd.get("typeName", ""))) else 0
+	for c in nd.get("children", []):
+		n += _dem_lop_cuon(c)
+	return n
+
+
+## Dem lop NOI DUNG sinh luc chay (meta `lop_chua`) trong cay da dung.
+func _dem_noi_dung(n: Node) -> int:
+	var c := 1 if n.has_meta("lop_chua") else 0
+	for k in n.get_children():
+		c += _dem_noi_dung(k)
+	return c
+
+
 func _init() -> void:
 	var dir := DirAccess.open(ROOT)
 	if dir == null:
@@ -89,6 +109,7 @@ func _init() -> void:
 	var checked := 0
 	var short := []
 	var empty := []
+	var thua_lop := 0
 	for f in files:
 		if not f.ends_with(".json"):
 			continue
@@ -96,22 +117,39 @@ func _init() -> void:
 		if not doc is Dictionary or not doc.has("roots"):
 			continue
 		var want := 0
+		var lop := 0
 		for r in doc["roots"]:
 			want += _count(r)
+			lop += _dem_lop_cuon(r)
 		var built := XggLayout.build(ROOT + f)
 		if built == null:
 			empty.append(f)
 			continue
 		var got := 0
+		var chua := 0
 		for c in built.get_children():
 			got += _count_nodes(c)
-		if got != want:
-			short.append("%s(%d/%d)" % [f.get_basename(), got, want])
+			chua += _dem_noi_dung(c)
+		# Ky vong la so node cua FILE cong so LOP CUON, khong phai so node cua
+		# file: `.xgg` khong co lop noi dung — engine sinh no luc chay, va port
+		# nay cung vay (`XggLayout._boc_lop_chua`, dung mot lop cho MOI lop cuon,
+		# ke ca lop khong co mat nao trong file). Do tren ca 296 bo cuc: 148 bo
+		# cuc co lop cuon / 315 lop, va 148/148 bo cuc lech dung bang so lop cuon
+		# cua chinh no, 0 bo cuc lech kieu khac.
+		if got != want + lop:
+			short.append("%s(%d/%d+%d)" % [f.get_basename(), got, want, lop])
+		if chua != lop:
+			thua_lop += 1
 		built.free()
 		checked += 1
 	_check(checked > 0, "co man hinh de kiem (%d file)" % checked)
 	_check(empty.is_empty(), "man hinh nao cung dung duoc", ", ".join(empty))
 	_check(short.is_empty(), "du node tren moi man hinh", ", ".join(short))
+	# Phep dem tren chi doi tong cho khop; dong nay doi LOP NOI DUNG phai dung
+	# cho: moi lop cuon mot lop, va khong node nao khac mang meta `lop_chua` —
+	# `lua/cocos.lua` va `lua/cuon.lua` nhan ra no bang chinh meta ay.
+	_check(thua_lop == 0,
+			"moi lop cuon co dung mot lop noi dung", "%d man lech" % thua_lop)
 
 	# --- 3. cay dung hinh dang: con nam trong cha
 	print("\n=== 3. quan he cha-con ===")
@@ -190,6 +228,65 @@ func _init() -> void:
 	print("  (%d ten anh yeu cau ma khong co file)" % missing.size())
 	if missing.size() > 0:
 		print("  (%s)" % ", ".join(missing.slice(0, 6)))
+
+	# --- 6b. NHAN co ANH NEN (CCLabelTTF mang CA `img` LAN `text`)
+	#
+	# 202 nhan trong 11 bo cuc lam the. HUD man tran khong co cai nao (do: 159
+	# nhan, 0 tam nen), nen phai do tren man khac — lay man Main, noi do duoc
+	# nhieu nhat va noi con nguoi nhin thay ngay: 14/38 nhan mang tam nen, TAT CA
+	# deu la `buildingname_16.png` (144x34). Kho co 16 tam `buildingname_*`, nhung
+	# 15 tam kia la 34x133 (bang DOC treo tren toa nha) — chi `_16` la 144x34, nen
+	# phep khop kich thuoc cua `imgFrom: size` chon dung, khong mo ho.
+	#
+	# Truoc day cho nay HONG IM LANG: `ui_frames.gd:set_frame` tra ve `false` cho
+	# moi node khong phai TienDo/UiONhap/NinePatchRect/TextureRect, tuc la `Label`
+	# bi bo — node van co meta `img` nhung khong co `img_applied`, nen nhin cay
+	# khong thay gi. Phai dem theo `img_applied` moi bat duoc. Day chinh la tam
+	# VANG nhin thay trong man goc.
+	#
+	# VI SAO CHI DO TREN MAIN: khong phai man nao co tam nen cung gan duoc, va
+	# phan con lai la LO HONG KHO ANH chu khong phai loi ma. Do duoc:
+	# `UI_ActivityMode_Finish` co 8 nhan mang tam nen ma chi 2 gan duoc — 6 cai
+	# kia dung `ui_words357.png`, ten CO trong bo cuc nhung KHONG co trong
+	# `ui_ref/index.json` va khong co tep, vi ban goc ship ban THEO NGON NGU
+	# (`sngSplitData/v6/ui_words357_vi.pkm`). Doi phep kiem sang man do thi no do
+	# dung vi ly do sai. Man Main sach: 14/14.
+	print("\n=== 6b. nhan co anh nen ===")
+	# Do TREN MOI bo cuc trong MOT luot chay. Goi tung bo cuc mot tien trinh rieng
+	# thi ~200 tien trinh Godot, khong chay noi — ma `verify_layout` da dung het
+	# moi file roi.
+	var d := {"co": 0, "gan": 0, "thieu": [], "khong_anh": 0, "lech": 0}
+	var n_bo := 0
+	for f in DirAccess.get_files_at(ROOT):
+		if not f.ends_with(".json"):
+			continue
+		n_bo += 1
+		var man := XggLayout.build(ROOT + f)
+		if man == null:
+			continue
+		_dem_nhan(man, d)
+	if int(d["co"]) > 0:
+		# "Khong gan duoc" co HAI nguyen nhan khac han nhau, va chi cai thu hai
+		# moi la loi cua ta: (a) kho KHONG co tep anh do — do la lo hong du lieu,
+		# vd `ui_words357.png` chi co ban theo ngon ngu `ui_words357_vi.pkm`;
+		# (b) co tep nhung no KEO VAO O thi hong vien (canh ngan lech). Dem rieng.
+		#
+		# Phep kiem CO LUC la cai thu ba: nhan CO tep VA canh ngan KHOP ma van
+		# khong gan duoc thi do la loi that, khong duoc lan vao hai cai kia.
+		_check(int(d["gan"]) + int(d["khong_anh"]) + (d["thieu"] as Array).size()
+				== int(d["co"]),
+				"nhan co anh nen: %d/%d gan duoc (%d ten khong co tep anh)"
+				% [int(d["gan"]), int(d["co"]), int(d["khong_anh"])],
+				", ".join((d["thieu"] as Array).slice(0, 6)))
+		_check(int(d["lech"]) == 0,
+				"canh ngan KHOP thi buoc phai gan duoc: %d nhan khong" % int(d["lech"]))
+		if (d["thieu"] as Array).size() > 0:
+			# Noi ro ra, dung de no trông nhu mot con so binh thuong: nhung nhan
+			# nay CO tep, chi la keo vao o thi bop vien.
+			print("  (%d nhan co tep nhung canh ngan lech nen KHONG keo: %s)"
+					% [(d["thieu"] as Array).size(),
+					", ".join((d["thieu"] as Array).slice(0, 8))])
+	print("  (%d nhan co anh nen tren %d bo cuc)" % [int(d["co"]), n_bo])
 
 	# Kiem duoc vi CUIManager.lua dat zOrder cho tung lop che bang hang so viet
 	# ro trong ma, ma ten lop che thi biet san. Neu doc sai truong nay thi
@@ -317,6 +414,41 @@ func _count_nodes(n: Node) -> int:
 	for k in n.get_children():
 		c += _count_nodes(k)
 	return c
+
+## Dem nhan (CCLabelTTF) mang ANH NEN, va bao nhieu cai gan duoc vao node.
+## Xem khoi 6b: `set_frame` bo im lang moi `Label`, nen phai dem theo
+## `img_applied` chu khong theo `img`.
+func _dem_nhan(n: Node, d: Dictionary) -> void:
+	if n.has_meta("type_name") and String(n.get_meta("type_name")) == "CCLabelTTF":
+		if n.has_meta("img") and String(n.get_meta("img")) != "":
+			var img := String(n.get_meta("img"))
+			d["co"] = int(d["co"]) + 1
+			if n.get_meta("img_applied", false):
+				d["gan"] = int(d["gan"]) + 1
+			elif not UiFrames.has_frame(img):
+				d["khong_anh"] = int(d["khong_anh"]) + 1
+			else:
+				# Co tep ma khong gan duoc: keo vao o thi hong vien (canh ngan
+				# lech), hoac ten tran trung nen giai ra ban khac co.
+				#
+				# Tach hai truong hop nay ra, vi mot cai la LUA CHON cua ta con
+				# cai kia la LOI THAT. `ui_words357` la vi du that, do duoc sau
+				# khi `key_of` biet hau to ngon ngu: ten giai ra
+				# `sngSplitData/v6/ui_words357_vi.png` (176x64) con o cua nhan la
+				# 152x68 — canh ngan 64 vs 68, keo doc 6% thi vien vang cua dai
+				# bi bop. Truoc day 6 nhan nay duoc dem vao `khong_anh` ("thieu
+				# du lieu"), tuc la mot LUA CHON bi ghi nham thanh mot LO HONG.
+				var o := (n as Control).size
+				var tex := UiFrames.get_frame(img)
+				if tex != null and is_equal_approx(
+						minf(tex.get_width(), tex.get_height()), minf(o.x, o.y)):
+					d["lech"] = int(d["lech"]) + 1
+				else:
+					(d["thieu"] as Array).append("%s vao o %dx%d" % [img,
+							int(o.x), int(o.y)])
+	for c in n.get_children():
+		_dem_nhan(c, d)
+
 
 ## [so node da gan anh, so node ghi 'verified' ma khong nap duoc anh]
 func _tally(n: Node, no_tex: Array) -> Array:

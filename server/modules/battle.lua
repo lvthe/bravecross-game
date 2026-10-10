@@ -9,10 +9,16 @@
 --     chon thi no chon toan doi de.
 --   * ket qua do may chu mo phong.
 --
--- Hai RPC:
+-- 25 RPC (dang ky o cuoi tep):
 --   bx.chapters     {}                 danh sach chuong + tien do
 --   bx.set_roster   {roster = {...}}   doi doi hinh, co kiem ten
+--   bx.set_placement {placement = {}}  doi cho dung bon tuong (1..3)
+--   bx.set_formation {formation = ten} chon the tran dang dung
+--   bx.formations   {}                 the tran dang co + cap da nang
+--   bx.upgrade_formation {formation}   nang mot cap the tran, ton vang
 --   bx.fight        {chapter = n}      danh mot chuong, tra ve ket qua
+--   bx.pvp          {name = "<ten>"}   danh vao doi hinh cua nguoi choi khac
+--   bx.reports      {}                 ai vua danh minh (doc la da nhan)
 --   bx.equipment    {}                 trang bi dang co, luc chien, gia cuong hoa
 --   bx.intensify    {hero, part}       cuong hoa mot mon len mot cap
 --   bx.refine       {hero, part}       tinh luyen mot cap, ton tinh hoa
@@ -20,6 +26,7 @@
 --   bx.forge_exclusive {hero, part}    ren thanh do chuyen thuoc (can tay bac 5)
 --   bx.recast       {hero, part}       tay luyen: boc lai thuoc tinh phu
 --   bx.promote_quality {hero, part}    nang pham chat mot bac, ton vang
+--   bx.level_up     {hero = ten}       tieu kinh nghiem len cap cho mot tuong
 --   bx.items        {}                 tui do dang co
 --   bx.sell_item    {item, count}      ban vat pham lay vang
 --   bx.dismantle_item {item, count}    phan giai vat pham thanh tinh hoa
@@ -27,8 +34,10 @@
 --   bx.claim_task   {type}             nhan thuong mot buoc (may chu kiem lai)
 --   bx.claim_liveness {}               mo ruong nang dong trong ngay
 --
--- Mo hinh chien dau la ban Lua cua sim/battle.py. Doi chieu bang RPC thu ba:
+-- Mo hinh chien dau la ban Lua cua sim/battle.py. Hai RPC de KIEM, khong phai
+-- de choi — chung khong ghi ban luu:
 --   bx.selftest     {}                 danh lai cac cap tham chieu roi so
+--   bx.fieldtest    {}                 so Lua <-> Python tung truong
 
 local nk = require("nakama")
 local data = require("hero_data")
@@ -37,7 +46,10 @@ local equip = require("equipment")
 local COLLECTION = "player"
 local KEY = "save"
 local TEAM_SIZE = 4
-local SAVE_VERSION = 11
+local SAVE_VERSION = 12
+--- So ban ghi PvP giu lai trong `reports` cua nguoi bi danh. Cat bot de mot
+--- nguoi bi danh nhieu lan khong lam ban luu phinh ra vo han.
+local REPORT_KEEP = 20
 --- Vang thuong khi qua MOT CHUONG MOI.
 local GOLD_PER_CHAPTER = 60
 --- Thang mot chuong DA QUA thi duoc it hon. Van phai co: neu chi thuong chuong
@@ -605,25 +617,49 @@ end
 
 --- Dung ca hai doi roi xu tran. Thay cho team_fight().
 ---
---- `levels` la bang ten tuong -> cap cua NGUOI CHOI. Doi dich luon cap 1; do
---- manh cua chung the hien qua `power` theo chuong.
+--- `levels` la bang ten tuong -> cap cua NGUOI CHOI. Doi dich LUON cap 1 khi
+--- khong co `foe`; do manh cua chung the hien qua `power` theo chuong.
 --- Cho dung mac dinh cua doi dich. Doi cua nguoi choi dung cho dung trong ban
 --- luu; doi dich khong co ban luu nen dung bang nay.
 ---
 --- Truoc day ca hai ben deu dung cho dung CUA NGUOI CHOI, nghia la keo tuong
 --- cua minh lui ve sau thi tuong doi dich cung lui theo — mot canh chon dang le
 --- co y nghia lai thanh vo nghia.
+---
+--- `foe` (tham so CUOI, mac dinh nil) noi "doi dich la nguoi that": no mang
+--- `power`, `levels`, `placement`, `formation`, `formation_level`, `equips` cua
+--- ho. Khong truyen `foe` thi giu nguyen luat cu tung don vi mot.
 local FOE_PLACEMENT = { 1, 1, 2, 3 }
 
 --- `equips` la bang ten tuong -> bang buff do trang bi cong vao. Cong CHUNG
 --- mot bang voi buff the tran roi ap MOT LAN: nho vay thu tu ap dung khong
 --- con quan trong, va ban Python (sim/field.py) chac chan ra dung cung so.
 local function army_battle(mine, theirs, rng, power, levels, chapter, seed_value,
-		placement, formation, formation_level, equips)
+		placement, formation, formation_level, equips, foe)
 	levels = levels or {}
 	equips = equips or {}
 	chapter = chapter or 0
 	placement = placement or FOE_PLACEMENT
+	-- Doi thu la NGUOI THAT (bx.pvp) thi `foe` mang cap / cho dung / the tran /
+	-- trang bi cua ho — doi dich khong con la "quan cua chuong" nua.
+	--
+	-- Ten truong o day la ten DI TREN DAY JSON (`formationLevel`, `buffs`),
+	-- dung y nhu `foe` trong reply cua bx.pvp: mot hinh dang duy nhat cho moi
+	-- noi, de client va cac bo test khong phai doi qua lai.
+	--
+	-- Khong co `foe` thi moi thu duoi day dung dung gia tri cu: cap 1, cho dung
+	-- FOE_PLACEMENT, khong buff, do manh the hien qua he so `power`. Nho vay
+	-- bx.selftest, bx.fieldtest va --replaycheck ra dung tung don vi nhu truoc.
+	local foe_power, foe_place = power, FOE_PLACEMENT
+	local foe_levels, foe_formation, foe_equips = nil, nil, nil
+	local foe_formation_level = 0
+	if foe ~= nil then
+		foe_power = foe.power or power
+		foe_place = foe.placement or FOE_PLACEMENT
+		foe_levels, foe_formation = foe.levels, foe.formation
+		foe_formation_level = foe.formationLevel or 0
+		foe_equips = foe.buffs
+	end
 	local army_lv = ARMY_BASE_LEVEL + math.max(0, chapter)
 	local teams = { [0] = {}, [1] = {} }
 	local roster = { [0] = mine, [1] = theirs }
@@ -639,11 +675,14 @@ local function army_battle(mine, theirs, rng, power, levels, chapter, seed_value
 		end
 		local names = roster[t]
 		for i, name in ipairs(names) do
-			local f = fighter(name, t == 0 and 1.0 or power, t == 0 and (levels[name] or 1) or 1)
+			local lv = (t == 0 and (levels[name] or 1))
+					or (foe_levels and (foe_levels[name] or 1) or 1)
+			local f = fighter(name, t == 0 and 1.0 or foe_power, lv)
 			if f ~= nil then
 				-- Cho dung quyet ca hai thu: dung o dau tren san, va an buff
-				-- nao cua the tran. Chi doi cua NGUOI CHOI co the tran.
-				local place = (t == 0 and placement[i] or FOE_PLACEMENT[i]) or 1
+				-- nao cua the tran. Doi cua NGUOI CHOI dung cho dung trong ban
+				-- luu; doi dich khong co ban luu nen dung bang mac dinh.
+				local place = (t == 0 and placement[i] or foe_place[i]) or 1
 				if t == 0 then
 					local bf = {}
 					if formation ~= nil and formation ~= "" then
@@ -651,6 +690,16 @@ local function army_battle(mine, theirs, rng, power, levels, chapter, seed_value
 					end
 					-- Trang bi CHI cua nguoi choi: doi dich khong deo do.
 					apply_buffs(f, equip.merge_buffs(bf, equips[name]))
+				elseif foe_formation ~= nil then
+					-- Doi thu la nguoi that: ho cung co the tran va cung deo do.
+					-- Gop CHUNG mot bang roi ap MOT LAN, y nhu nhanh tren, de
+					-- thu tu ap dung khong the lam lech ban Python.
+					local bf = {}
+					if foe_formation ~= "" then
+						bf = formation_buffs(foe_formation, foe_formation_level, place)
+					end
+					apply_buffs(f, equip.merge_buffs(bf,
+							foe_equips and foe_equips[name]))
 				end
 				f.reach = 0.0
 				f.min_reach = 0.0
@@ -1200,21 +1249,41 @@ local function blank_save()
 		daily = blank_daily(0),
 		-- Thong ke giu MUC CAO NHAT TUNG DAT, khong tinh lai tu do dang co.
 		stats = { maxEquipQuality = 0 },
+		-- Bao lai sau khi bi nguoi khac danh (bx.pvp). Moi nhat DUNG DAU.
+		-- `result` giu nguyen `out` cua field_fight, tuc theo diem nhin cua BEN 0
+		-- = nguoi di danh. Nguoi so huu ban luu nay la BEN 1, nen:
+		--   result == 0 -> nguoi so huu bi danh bai
+		--   result == 1 -> nguoi so huu thang
+		--   result == 2 -> hoa
+		-- Ghi thang `out` chu khong anh xa lai, de khong lam mat nghia.
+		reports = {},
 		lastResult = "",
 		updatedAt = 0,
 	}
 end
 
-local function read_save(user_id)
+--- Doc ban luu cua MOT nguoi bat ky, kem `version` de ghi co chot.
+---
+--- `version` la thu Nakama dung cho ghi co dieu kien: no la MD5 cua chinh gia
+--- tri va doi moi khi gia tri doi. Doc ra roi ghi lai kem so do thi lan ghi se
+--- bi TU CHOI neu ai do da ghi xen vao — dung thu can khi hai nguoi cung danh
+--- mot nguoi bi danh. Khong doc duoc gi (chua co ban luu) thi version = nil, va
+--- khi do write_save ghi de nhu cu.
+---
+--- Duong doc nay KHONG bi permission_read = 1 chan: runtime Lua cua Nakama goi
+--- bang system caller (uuid.Nil), ma khi caller la nil thi truy van khong co
+--- menh de quyen nao. Doi quyen sang 2 moi la sai — no mo ban luu cho CLIENT
+--- doc, khong phai cho may chu.
+local function read_save_versioned(user_id)
 	local ok, objects = pcall(nk.storage_read, {
 		{ collection = COLLECTION, key = KEY, user_id = user_id },
 	})
 	if not ok or objects == nil or #objects == 0 then
-		return blank_save()
+		return blank_save(), nil
 	end
 	local v = objects[1].value
 	if type(v) ~= "table" then
-		return blank_save()
+		return blank_save(), nil
 	end
 	local s = blank_save()
 	for _, k in ipairs({ "wins", "losses", "draws", "battles", "cleared",
@@ -1295,21 +1364,60 @@ local function read_save(user_id)
 		end
 		s.placement = out
 	end
+	-- Bao lai PvP: chi giu dang ban ghi that, cat bot va lam sach. Ten dai hay
+	-- `result` ngoai 0..2 deu la du lieu ben ngoai, khong duoc tin.
+	if type(v.reports) == "table" then
+		s.reports = {}
+		local n = math.min(#v.reports, REPORT_KEEP)
+		for i = 1, n do
+			local r = v.reports[i]
+			if type(r) == "table" then
+				local out = math.floor(tonumber(r.result) or 2)
+				s.reports[#s.reports + 1] = {
+					name = string.sub(tostring(r.name or ""), 1, 32),
+					result = (out >= 0 and out <= 2) and out or 2,
+					at = math.floor(tonumber(r.at) or 0),
+					seen = r.seen == true,
+				}
+			end
+		end
+	end
 	sanitize_tasks(v, s)
+	return s, objects[1].version
+end
+
+--- Ban luu da lam sach, khong kem `version`. Dung cho moi RPC chi doc.
+local function read_save(user_id)
+	local s = read_save_versioned(user_id)
 	return s
 end
 
-local function write_save(user_id, s)
+--- Ghi ban luu. `cas` la `version` cua CHINH BAN GHI NAKAMA (MD5 cua gia tri),
+--- khong phai `s.version` — truong do la so hieu LUOC DO ban luu va da co tu
+--- truoc. Dat ten khac de khong ai doc nham hai thu khac nhau.
+---
+--- `cas == nil` thi ghi de vo dieu kien, y nhu truoc gio: moi loi goi cu giu
+--- nguyen hanh vi. `cas` khac nil thi Nakama tu choi neu ai do da ghi xen vao,
+--- va luc do ham nay tra `nil, loi` thay vi nem ra ngoai. Loi goi cu bo qua gia
+--- tri tra ve nen khong bi anh huong.
+local function write_save(user_id, s, cas)
 	s.version = SAVE_VERSION
 	s.updatedAt = os.time()
-	nk.storage_write({{
+	local w = {
 		collection = COLLECTION,
 		key = KEY,
 		user_id = user_id,
 		value = s,
 		permission_read = 1,     -- chu so huu doc duoc
 		permission_write = 0,    -- CHI MAY CHU ghi duoc
-	}})
+	}
+	if cas ~= nil then
+		w.version = cas
+	end
+	local ok, err = pcall(nk.storage_write, { w })
+	if not ok then
+		return nil, tostring(err)
+	end
 	return s
 end
 
@@ -1529,6 +1637,208 @@ local function rpc_fight(context, payload)
 	})
 end
 
+--- Danh vao doi hinh cua MOT nguoi choi khac, chi dinh bang username.
+---
+--- Khac bx.fight o bon cho, va bon cho nay deu co ly do:
+---   * doi dich lay tu BAN LUU THAT cua nguoi kia, khong boc tu bang tuong;
+---   * `chapter = 0` va `seed_value = 0`: quan linh hai ben la linh nen, va
+---     dien bien tran khong phu thuoc chuong nao;
+---   * `power = 1.0` cho CA HAI ben: he so `power` sinh ra de thay cho CAP, ma
+---     nguoi that da co cap that trong ban luu — cong them la cong hai lan;
+---   * KHONG cap vang, KHONG roi do, KHONG dung `cleared`. PvP khong phai chuong,
+---     de nguyen nhu chuong thi thanh cho farm.
+---
+--- Doi khong danh duoc thi TU CHOI, khong thay bang doi boc ngau nhien. Trong
+--- 1259 ban luu that dang co, co ban `roster` la `{}`; thay the thi tran dau
+--- van chay nhung loi noi "day la doi cua nguoi ta" la sai.
+local function rpc_pvp(context, payload)
+	if context.user_id == nil then
+		error("phai dang nhap")
+	end
+	local ok, body = pcall(nk.json_decode, payload or "{}")
+	if not ok or type(body) ~= "table" then
+		body = {}
+	end
+	local name = body.name
+	if type(name) ~= "string" then
+		error("thieu ten doi thu")
+	end
+	name = string.gsub(name, "^%s*(.-)%s*$", "%1")
+	if name == "" then
+		error("thieu ten doi thu")
+	end
+
+	-- Ten phai DUNG (khong phai tien to). `users_get_username` khong co trong
+	-- ban Nakama cu, nen goi trong pcall de bao loi ro rang chu khong vo ra
+	-- ngoai thanh loi 500.
+	local found_ok, found = pcall(nk.users_get_username, { name })
+	if not found_ok or type(found) ~= "table" or #found == 0 then
+		error("khong co nguoi choi ten " .. name)
+	end
+	local uid = found[1].user_id
+	if uid == nil or tostring(uid) == "" then
+		error("khong co nguoi choi ten " .. name)
+	end
+	if tostring(uid) == tostring(context.user_id) then
+		error("khong the danh chinh minh")
+	end
+
+	local s = read_save(context.user_id)
+	if #s.roster ~= TEAM_SIZE then
+		error("doi hinh cua ban chua san sang")
+	end
+
+	-- Doc ban luu nguoi bi danh. Duong nay di bang system caller nen
+	-- permission_read = 1 khong chan (xem read_save_versioned).
+	local foe_save, foe_cas = read_save_versioned(uid)
+	if #foe_save.roster ~= TEAM_SIZE then
+		error("doi hinh cua nguoi do chua san sang")
+	end
+	for _, n in ipairs(foe_save.roster) do
+		if data.heroes[n] == nil then
+			error("doi hinh cua nguoi do chua san sang")
+		end
+	end
+
+	-- Seed do MAY CHU dat, y nhu rpc_fight. Client khong mom duoc seed.
+	local seed = math.floor(os.time() * 1000) + (s.battles * 7919)
+	local rng = Rng.new(seed)
+
+	-- Doi cua minh: cung phep kiem nhu rpc_fight, nhung them mot buoc — ten
+	-- khong co trong bang cung tinh la doi hong. rpc_fight de `fighter()` tra
+	-- nil roi bo qua, nghia la doi thieu nguoi ma tran van chay; o day tran
+	-- phai PHAI lai duoc ben client nen khong the de lech.
+	local mine_ok = (#s.roster == TEAM_SIZE)
+	if mine_ok then
+		for _, n in ipairs(s.roster) do
+			if data.heroes[n] == nil then
+				mine_ok = false
+			end
+		end
+	end
+	if not mine_ok then
+		s.roster = default_roster(rng)
+	end
+
+	local out, secs, alive_a, alive_b =
+			army_battle(s.roster, foe_save.roster, rng, 1.0, s.levels, 0, 0,
+					s.placement, s.formation, s.formationLevel, equip_buffs(s),
+					{ power = 1.0, levels = foe_save.levels,
+					  placement = foe_save.placement,
+					  formation = foe_save.formation,
+					  formationLevel = foe_save.formationLevel,
+					  buffs = equip_buffs(foe_save) })
+
+	s.battles = s.battles + 1
+	if out == 0 then
+		s.wins = s.wins + 1
+		s.lastResult = "thang"
+	elseif out == 1 then
+		s.losses = s.losses + 1
+		s.lastResult = "thua"
+	else
+		s.draws = s.draws + 1
+		s.lastResult = "hoa"
+	end
+	write_save(context.user_id, s)
+
+	-- So ben bi danh. `out` giu nguyen diem nhin cua BEN 0 (nguoi di danh), nen
+	-- doi chieu nguoc lai khi ghi `lastResult` cua ho: out == 0 nghia la CHU so
+	-- huu ban luu nay thua.
+	local ledger_ok = false
+	local cas = foe_cas
+	local base = foe_save
+	for attempt = 1, 2 do
+		local f = base
+		f.battles = f.battles + 1
+		if out == 0 then
+			f.losses = f.losses + 1
+			f.lastResult = "thua"
+		elseif out == 1 then
+			f.wins = f.wins + 1
+			f.lastResult = "thang"
+		else
+			f.draws = f.draws + 1
+			f.lastResult = "hoa"
+		end
+		-- Moi nhat DUNG DAU, roi cat duoi.
+		table.insert(f.reports, 1, {
+			name = tostring(context.username or ""),
+			result = out,
+			at = os.time(),
+			seen = false,
+		})
+		while #f.reports > REPORT_KEEP do
+			table.remove(f.reports)
+		end
+		local wrote = write_save(uid, f, cas)
+		if wrote ~= nil then
+			ledger_ok = true
+			break
+		end
+		-- Bi tu choi: ai do vua ghi xen vao. Doc lai ban moi roi lam lai DUNG
+		-- MOT lan, tinh tu ban moi chu khong tu ban da cong don (khong thi
+		-- cong hai lan).
+		if attempt == 1 then
+			base, cas = read_save_versioned(uid)
+		end
+	end
+
+	return nk.json_encode({
+		ok = true,
+		seed = seed,
+		result = out,
+		seconds = secs,
+		survivors = { mine = alive_a, theirs = alive_b },
+		-- false nghia la so ben kia KHONG ghi duoc (dua ghi nhau hai lan).
+		-- Noi ra chu khong im, de nguoi danh biet tran thua do da mat.
+		foeLedger = ledger_ok,
+		save = s,
+		-- Khoa la `foe` chu KHONG phai `opponent`: bx.fight tra `opponent` la
+		-- mot MANG TEN, con cai nay la mot bang. Dung chung mot khoa cho hai
+		-- kieu la gieo bay sai kieu ben client.
+		--
+		-- `buffs` la bang buff chu khong phai danh sach mon do: client phai
+		-- PHA LAI duoc tran nen can dung thu mo phong dung. Mat mat da biet:
+		-- nguoi danh suy ra duoc phan nao suc manh trang bi cua doi thu.
+		foe = {
+			name = name,
+			roster = foe_save.roster,
+			levels = foe_save.levels,
+			placement = foe_save.placement,
+			formation = foe_save.formation,
+			formationLevel = foe_save.formationLevel,
+			buffs = equip_buffs(foe_save),
+			power = 1.0,
+		},
+	})
+end
+
+--- Doc bao lai: ai vua danh minh. Doc LA da nhan — goi xong thi danh dau
+--- `seen`, nen lan sau khong hien lai. Khong co tham so `seen` de ma doan nham.
+local function rpc_reports(context, payload)
+	if context.user_id == nil then
+		error("phai dang nhap")
+	end
+	local s = read_save(context.user_id)
+	local out = {}
+	for _, r in ipairs(s.reports) do
+		if r.seen ~= true then
+			-- Tra ban SAO voi `seen = false`: tra ve roi moi danh dau, nen ban
+			-- tra ve phai la trang thai luc doc chu khong phai luc goi xong.
+			out[#out + 1] = { name = r.name, result = r.result, at = r.at,
+					seen = false }
+		end
+	end
+	if #out > 0 then
+		for _, r in ipairs(s.reports) do
+			r.seen = true
+		end
+		write_save(context.user_id, s)
+	end
+	return nk.json_encode({ ok = true, reports = out, save = s })
+end
+
 --- Doi chieu ban Lua voi ban Python. Cac cap va ti le mong doi nam san trong
 --- hero_data.lua, do sim/export_stats.py tinh.
 local function rpc_selftest(context, payload)
@@ -1649,8 +1959,58 @@ local function rpc_fieldtest(context, payload)
 		out2[#out2 + 1] = { seed = seed, result = res, seconds = secs,
 				aliveA = a2, aliveB = b2 }
 	end
+	-- Nam tran NUA, lan nay doi dich la NGUOI THAT: co cap rieng, cho dung
+	-- rieng, the tran rieng va trang bi rieng. Day la muc DUY NHAT do duoc
+	-- nhanh bat doi xung ma bx.pvp dung — khong co no thi mot loi o nhanh do
+	-- di qua ma khong phep kiem nao thay.
+	--
+	-- `chapter = 0` va `seed_value = 0`: DUNG y bx.pvp, chu khong phai nhu nam
+	-- tran dau. Nho vay luot nay con la mot lan tong duyet that cho chinh
+	-- duong PvP — quan linh hai ben la linh nen, va man tran phai dat
+	-- `chapter = 0` giong the moi phat lai dung.
+	-- Con so o day la DO, khong phai tuy thich: doi thu CAP 1 lam tran thanh
+	-- TAT DINH — do ca nam seed ra dung mot dong `1 / 0-9 / 17.556`, vi don ket
+	-- lieu do quan linh hai ben (cung cap, cung loai) va tuong cap 1 chet ngay
+	-- don dau, nen so ngau nhien khong doi duoc gi. Tran tat dinh thi luot kiem
+	-- nay khong co luc: mot loi o nhanh doi xung di qua ma khong phep kiem nao
+	-- thay. Cap ~26 thi nam seed ra BA dong khac nhau (do: 17.358 / 17.193 /
+	-- 17.556), tuc chuoi ngau nhien chay that qua nhanh do.
+	--
+	-- The tran cung la DO: `jichu` chi cho HP (cap 2: +400, va chut dp/taken
+	-- cho tuong o cho dung 1), ma o cap 26 doi thu song sot bang nao cung song —
+	-- do: doi cap the tran 2 -> 20 (them 3.600 HP moi tuong) KHONG doi mot dong
+	-- nao. `tiangang` cho AP (cap 2: +100 AP va reflect 0,006), va AP moi la thu
+	-- doi duoc tran (no quyet dinh toc do ben kia bi giet). Do lai voi `tiangang`
+	-- cap 2: ca sau phep thu deu co luc — bo han doi thu 5/5, doi cho dung 5/5,
+	-- ep cap ve 1 5/5, doi TEN the tran 1/5, doi CAP the tran 1/5, bo trang bi
+	-- 1/5 — va van ra BA dong khac nhau.
+	local foe_lv = { CaoCao = 29, DengAi = 28, JiaXu = 27, HuaXiong = 26 }
+	local foe_place = { 3, 2, 1, 1 }
+	local foe_eq = {}
+	local rng1 = Rng.new(20260919)
+	for _, name in ipairs(theirs) do
+		local items = {}
+		for part = 1, 3 do
+			items[#items + 1] = roll_equipment(rng1, 3, part, name)
+		end
+		foe_eq[name] = equip.to_buffs(items)
+	end
+	-- Cung hinh dang `foe` nhu reply cua bx.pvp (kem ca `name`), de man tran
+	-- phai lai duoc bang DUNG mot duong doc.
+	local foe_desc = { name = "fieldtest", power = 1.0, levels = foe_lv,
+			placement = foe_place, formation = "tiangang", formationLevel = 2,
+			buffs = foe_eq }
+	local out3 = {}
+	for seed = 1, 5 do
+		local rng = Rng.new(seed)
+		local res, secs, a3, b3 = army_battle(mine, theirs, rng, 1.0, {}, 0, 0,
+				nil, nil, 0, nil, foe_desc)
+		out3[#out3 + 1] = { seed = seed, result = res, seconds = secs,
+				aliveA = a3, aliveB = b3 }
+	end
 	return nk.json_encode({ ok = true, mine = mine, theirs = theirs,
-			battles = out, equipBattles = out2, equipBuffs = eq })
+			battles = out, equipBattles = out2, equipBuffs = eq,
+			foeBattles = out3, foeDesc = foe_desc })
 end
 
 --- Danh sach the tran: cai nao da mo, cap may, nang tiep het bao nhieu.
@@ -2621,6 +2981,8 @@ nk.register_rpc(rpc_level_up, "bx.level_up")
 nk.register_rpc(rpc_set_roster, "bx.set_roster")
 nk.register_rpc(rpc_chapters, "bx.chapters")
 nk.register_rpc(rpc_fight, "bx.fight")
+nk.register_rpc(rpc_pvp, "bx.pvp")
+nk.register_rpc(rpc_reports, "bx.reports")
 nk.register_rpc(rpc_selftest, "bx.selftest")
 nk.register_rpc(rpc_fieldtest, "bx.fieldtest")
 nk.register_rpc(rpc_formations, "bx.formations")

@@ -23,6 +23,19 @@ func _check(ok: bool, desc: String, detail: String = "") -> void:
 		print("  HONG  ", desc, "" if detail == "" else "  -> " + detail)
 
 
+## Cho dung doc tu JSON la so FLOAT (`3.0`) chu khong phai int, vi Lua chi co
+## mot kieu so. So theo chuoi thi phep kiem do ra hong trong khi may chu lam
+## dung — dung mot lan roi: `[3, 2, 1, 1]` so voi `[3.0, 2.0, 1.0, 1.0]`.
+func _la_cho_dung(got: Variant, mong: Array) -> bool:
+	var a: Array = got if got is Array else []
+	if a.size() != mong.size():
+		return false
+	for i in a.size():
+		if int(a[i]) != int(mong[i]):
+			return false
+	return true
+
+
 func _cli() -> Dictionary:
 	var out := {}
 	for a in OS.get_cmdline_user_args():
@@ -239,6 +252,142 @@ func _init() -> void:
 				"nhan nhiem vu ngay thi cong 1 diem nang dong")
 		var again := await ses.client.call_rpc("bx.claim_task", {"type": 113})
 		_check(not again.ok, "nhan lan hai trong ngay bi tu choi")
+
+	print("\n=== 3f. danh vao doi hinh nguoi choi khac (PvP) ===")
+	# Hai tai khoan THAT, khac nhau. Co y KHONG dung lai `ses`: bi danh thi ban
+	# luu cua no doi (so tran +1) trong khi `ses.data` thi khong, nen muc 6 doc
+	# lai theo `ses.data` se bao hong oan.
+	#
+	# Cho dung la thu A doi duoc ma KHONG ton gi — len cap thi ton vang, ma tai
+	# khoan moi chua co vang. No la dau vet doc duoc o reply cua B, nen no chung
+	# minh may chu doc BAN LUU THAT cua A chu khong tra ve mot doi hinh mac dinh.
+	var stamp := "%d-%d" % [Time.get_unix_time_from_system(), randi() % 100000]
+	var a_ses := PlayerSession.new()
+	root.add_child(a_ses)
+	a_ses._ensure_client()
+	a_ses.client.url = url
+	var ra := await a_ses.start("", "pvp-a-" + stamp)
+	_check(bool(ra.get("online", false)), "tai khoan A dang nhap duoc", a_ses.last_error)
+	var b_ses := PlayerSession.new()
+	root.add_child(b_ses)
+	b_ses._ensure_client()
+	b_ses.client.url = url
+	var rb := await b_ses.start("", "pvp-b-" + stamp)
+	_check(bool(rb.get("online", false)), "tai khoan B dang nhap duoc", b_ses.last_error)
+	_check(a_ses.client.user_id != "" and b_ses.client.user_id != ""
+					and a_ses.client.user_id != b_ses.client.user_id,
+			"hai tai khoan that su khac nhau",
+			"%s vs %s" % [a_ses.client.user_id, b_ses.client.user_id])
+
+	var ar := await a_ses.set_roster(["MaChao", "LiuBei", "GanNing", "GuYong"])
+	_check(ar.ok, "A dat duoc doi hinh", str(ar.get("error", "")))
+	var apl := await a_ses.set_placement([3, 2, 1, 1])
+	_check(apl.ok, "A doi duoc cho dung", str(apl.get("error", "")))
+	var brr := await b_ses.set_roster(["ZhangFei", "ZhaoYun", "HuangZhong", "CaoCao"])
+	_check(brr.ok, "B dat duoc doi hinh", str(brr.get("error", "")))
+
+	var a_name := String(a_ses.client.username)
+	_check(a_name.length() == 10, "ten doi thu la 10 ky tu", a_name)
+	var atk := await b_ses.pvp(a_name)
+	_check(atk.ok, "B danh duoc vao doi hinh cua A", str(atk.get("error", "")))
+
+	if atk.ok:
+		var foe: Dictionary = atk.get("foe", {})
+		_check(String(foe.get("name", "")) == a_name,
+				"reply tra dung ten doi thu", str(foe.get("name")))
+		_check(str(foe.get("roster", [])) == str(a_ses.data.get("roster", [])),
+				"doi dich la doi hinh THAT cua A",
+				"%s vs %s" % [foe.get("roster"), a_ses.data.get("roster")])
+		_check(_la_cho_dung(foe.get("placement", []), [3, 2, 1, 1]),
+				"doi dich dung DUNG cho dung cua A", str(foe.get("placement")))
+		_check(str(foe.get("levels", {})) == str(a_ses.data.get("levels", {})),
+				"doi dich dung DUNG cap cua A", str(foe.get("levels")))
+		_check(foe.has("buffs"), "reply co bang buff trang bi cua doi thu")
+		# Seed do MAY CHU dat. Mom duoc seed nghia la client dien lai duoc mot
+		# tran khac roi van khai la da danh.
+		_check(int(atk.get("seed", 0)) != 0, "may chu dat seed, khong phai client",
+				str(atk.get("seed")))
+
+		_check(int(b_ses.data.get("battles", 0)) == 1, "so tran cua B +1",
+				str(b_ses.data.get("battles")))
+		_check(bool(atk.get("foeLedger", false)), "so ben bi danh ghi duoc")
+		# PvP khong phai chuong: khong cap vang, khong roi do, khong mo chuong.
+		# Thieu phan nay thi day la cho farm.
+		_check(int(b_ses.data.get("gold", -1)) == 0, "PvP khong cap vang",
+				str(b_ses.data.get("gold")))
+		_check((b_ses.data.get("items", {}) as Dictionary).is_empty(),
+				"PvP khong roi do", str(b_ses.data.get("items", {})))
+		_check(int(b_ses.data.get("cleared", -1)) == 0, "PvP khong mo chuong",
+				str(b_ses.data.get("cleared")))
+
+		# Nua con lai cua so: nguoi BI danh cung phai duoc ghi, va khong bi dung
+		# tới doi hinh / cho dung / trang bi cua ho.
+		var a_now := await a_ses.client.load_save()
+		var ad: Dictionary = a_now.get("data", {}) if a_now.ok else {}
+		_check(int(ad.get("battles", 0)) == 1,
+				"so ben bi danh cung ghi: so tran cua A +1", str(ad.get("battles")))
+		_check(str(ad.get("roster", [])) == str(a_ses.data.get("roster", [])),
+				"bi danh khong dung toi doi hinh cua A")
+		_check(_la_cho_dung(ad.get("placement", []), [3, 2, 1, 1])
+				and _la_cho_dung(ad.get("placement", []),
+						a_ses.data.get("placement", [])),
+				"bi danh khong dung toi cho dung cua A",
+				str(ad.get("placement")))
+		var reps: Array = ad.get("reports", [])
+		_check(reps.size() == 1, "A co dung MOT dong bao lai", str(reps.size()))
+		if reps.size() > 0:
+			var rec: Dictionary = reps[0]
+			_check(String(rec.get("name", "")) == String(b_ses.client.username),
+					"dong bao lai ghi dung ten nguoi danh", str(rec.get("name")))
+			_check(int(rec.get("result", -1)) == int(atk.get("result", -2)),
+					"dong bao lai giu nguyen ket qua theo diem nhin ben 0",
+					"%s vs %s" % [rec.get("result"), atk.get("result")])
+			_check(rec.get("seen", true) == false, "dong bao lai moi thi chua doc")
+		var seen := await a_ses.reports()
+		_check(seen.size() == 1, "A doc duoc dong bao lai", str(seen.size()))
+		# Dung khuon phep kiem `cleared` o muc 3c: truong cua may chu khong duoc
+		# roi mat khi client doc ban luu. Thieu no thi dong bao lai khong bao gio
+		# hien ra, va khong co gi do de bao cho biet.
+		_check(a_ses.data.has("reports"),
+				"ban luu ben client con giu truong reports", str(a_ses.data.keys()))
+		var seen2 := await a_ses.reports()
+		_check(seen2.is_empty(), "doc la da nhan: goi lan hai khong hien lai")
+
+		# Phan quyen, ve DOC (muc 4 kiem ve GHI). Day la cho `fake_nakama.py`
+		# KHONG kiem duoc: no khong co phan quyen. Duong Lua cua may chu doc duoc
+		# ban luu nguoi khac (no goi voi uuid.Nil nen khong co menh de quyen nao)
+		# — chinh viec B danh duoc A o tren la bang chung. Nhung duong CLIENT thi
+		# phai bi chan.
+		var peek_body := {"object_ids": [{"collection": a_ses.client.collection,
+			"key": a_ses.client.key, "user_id": b_ses.client.user_id}]}
+		var peek := await a_ses.client._send(HTTPClient.METHOD_POST, "/v2/storage",
+				peek_body, a_ses.client._bearer())
+		var peek_objs: Array = peek.body.get("objects", []) if peek.ok else []
+		var peek_why := "doc duoc %d muc" % peek_objs.size()
+		if not peek.ok:
+			peek_why = "may chu tu choi, ma %s" % str(peek.get("status", 0))
+		_check(not peek.ok or peek_objs.is_empty(),
+				"A khong doc duoc ban luu cua B", peek_why)
+		var peek2_body := {"object_ids": [{"collection": b_ses.client.collection,
+			"key": b_ses.client.key, "user_id": a_ses.client.user_id}]}
+		var peek2 := await b_ses.client._send(HTTPClient.METHOD_POST, "/v2/storage",
+				peek2_body, b_ses.client._bearer())
+		var peek2_objs: Array = peek2.body.get("objects", []) if peek2.ok else []
+		var peek2_why := "doc duoc %d muc" % peek2_objs.size()
+		if not peek2.ok:
+			peek2_why = "may chu tu choi, ma %s" % str(peek2.get("status", 0))
+		_check(not peek2.ok or peek2_objs.is_empty(),
+				"B khong doc duoc ban luu cua A", peek2_why)
+
+	# Tu choi phai den tu MAY CHU va kem dung ly do, khong phai chi an nut o client.
+	var self_hit := await b_ses.pvp(String(b_ses.client.username))
+	_check(not self_hit.ok, "tu choi danh chinh minh")
+	_check(String(self_hit.get("error", "")).contains("chinh minh"),
+			"bao dung ly do", String(self_hit.get("error", "")))
+	var ghost := await b_ses.pvp("KhongCoAi")
+	_check(not ghost.ok, "tu choi ten khong co")
+	_check(String(ghost.get("error", "")).contains("khong co nguoi choi"),
+			"bao dung ly do", String(ghost.get("error", "")))
 
 	print("\n=== 4. CLIENT KHONG DUOC GHI BAN LUU ===")
 	# Day moi la phan cuong che. Khong co no thi moi thu tren chi la hinh thuc.

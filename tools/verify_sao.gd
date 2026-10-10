@@ -288,15 +288,19 @@ func _init() -> void:
 				% ten)
 		_ghi_chu(rig.bones.size() == SO_XUONG[ten],
 				"  %d xuong (bang so lieu: %d)" % [rig.bones.size(), SO_XUONG[ten]])
-		# Chinh cai bay vua mac: `_tao_rig` dung `SngRig.build(..., true)` de loc
-		# xuong `Layer*` cua nhan vat — nhung o armature hieu ung thi MOI xuong
-		# tang ngoai cung deu ten `Layer*`, nen loc la ra rig 0 xuong. Rig 0
-		# xuong VAN `play()` duoc (tra true) va VAN co ten dong tac, nen neu chi
-		# kiem "play tra true" thi khong thay gi. Giu phep kiem nay lai de sau
-		# nay ai bo `giu_layer` di thi do ngay.
+		# Chinh cai bay vua mac: o armature hieu ung thi MOI xuong tang ngoai cung
+		# deu ten `Layer*`, nen loc la ra rig 0 xuong. Rig 0 xuong VAN `play()`
+		# duoc (tra true) va VAN co ten dong tac, nen neu chi kiem "play tra true"
+		# thi khong thay gi.
+		#
+		# Phep kiem nay goi THANG `SngRig.build` chu khong qua `_tao_rig`, nen no
+		# khong phai cai cong gac cho `_tao_rig`. Cong gac that nam o
+		# `verify_o_hien.gd` (do so xuong qua duong Lua voi bang so lieu cua file).
+		# Giu phep kiem nay vi no chung minh bo loc VAN con hai: no van dung cho
+		# man tran, nen khong duoc xoa no khoi `SngRig`.
 		var loc := SngRig.build(THU_MUC, ten, true)
 		_ghi_chu(loc != null and loc.bones.is_empty(),
-				"  bat bo loc `Layer*` thi rig rong (%d xuong) — do la ly do duong hieu ung phai dung `giu_layer = true`"
+				"  bat bo loc `Layer*` thi rig rong (%d xuong) — do la ly do bo loc chi duoc dung cho rig NHAN VAT o man tran"
 				% (0 if loc == null else loc.bones.size()))
 		if loc != null:
 			loc.free()

@@ -29,9 +29,12 @@ const RIG_TEN := "UIWoYaoShenJiang"
 const BIEN_THE := "UIWoYaoShenJiang_Dice"
 ## 25 bo phan trong khoi `parts` cua bien the ay (do tu file).
 const SO_XUONG := 25
-## Qua `getSpriteFromSpriteCatch` thi `_tao_rig` loc xuong `Layer*` (nhan vat),
-## nen `LayerName000` bi bo: 25 - 1.
-const SO_XUONG_LUA := 24
+## Qua `getSpriteFromSpriteCatch` thi `_tao_rig` KHONG loc xuong `Layer*`, nen so
+## xuong phai BANG dung duong truc tiep o tren. Truoc day hang so nay la 24 va
+## phep kiem ghi lai "`LayerName000` bi bo" — do la LO HONG da ghi o CLAUDE.md
+## ("armature hieu ung goi qua getSpriteFromSpriteCatch van di duong loc"), khong
+## phai hanh vi dung. Bo loc da bo khoi duong Lua ngay 2026-09-18, nen hai duong
+## nay khop va khong con hang so rieng: do la MOT su that, khong phai hai.
 const DONG_TAC := ["Standby", "Play", "Play2", "Stop"]
 
 const CANH_MAN := "res://assets_ref/EquipWing"
@@ -468,8 +471,8 @@ func _duong_lua() -> bool:
 		return false
 	_ghi_chu(rig.variant == BIEN_THE, "getSpriteFromSpriteCatch('%s') ra bien the %s"
 			% [RIG_TEN, rig.variant])
-	_ghi_chu(rig.bones.size() == SO_XUONG_LUA,
-			"qua duong Lua: %d xuong — `Layer*` bi loc (bang so lieu %d, tru `LayerName000`)"
+	_ghi_chu(rig.bones.size() == SO_XUONG,
+			"qua duong Lua: %d xuong — BANG duong truc tiep (bang so lieu %d), khong loc `Layer*`"
 			% [rig.bones.size(), SO_XUONG])
 
 	# Sau mat: `Dice<i>` -> anh Num<diem>, 93x93.
@@ -543,24 +546,31 @@ func _duong_lua() -> bool:
 				% [rig_bua.variant, ten_xuong])
 
 	# DO RONG: ten THU MUC (`UIZhuangBeiWuHun`) khong phai mot bien the, nen
-	# `_bien_the_cho` lui ve nhom nhieu dong tac nhat — `_WuHun` (Born/Move/Death)
-	# — ma xuong cua nhom ay ten `LayerName*` het, tuc bo loc `Layer*` an sach:
-	# rig 0 xuong. Day KHONG phai hanh vi dung can khoa lai, ma la LO HONG da ghi
-	# trong CLAUDE.md ("Chua sua cho rong hon: armature hieu ung goi qua
-	# getSpriteFromSpriteCatch van di duong loc"). Cho goi THAT khong bao gio
-	# truyen ten thu muc (ca 5 cho deu truyen `_CuiZhi` / `_JinDan` / `_YanWu` /
-	# `_WuHun`), nen no khong dinh. Ghi lai de khi nao bo loc duoc sua thi phep
-	# kiem nay doi va nguoi doc gap chu thich nay.
+	# `_bien_the_cho` lui ve nhom nhieu dong tac nhat — `UIZhuangBeiWuHun_WuHun`
+	# (Born/Move/Death) — ma xuong cua nhom ay ten `LayerName*` het.
+	#
+	# Truoc 2026-09-18 phep kiem nay doi rig ra **0 xuong** va `rig_rong` dem duoc
+	# 1: do la LO HONG da ghi o CLAUDE.md ("armature hieu ung goi qua
+	# getSpriteFromSpriteCatch van di duong loc") — bo loc `Layer*` an sach mot
+	# armature hieu ung THAT. Nay bo loc da bo khoi duong Lua, nen cho nay doi
+	# thanh: rig phai CO xuong, va `rig_rong` KHONG duoc dem mot rig rong khong co
+	# that. Hai ve deu la su that do duoc tu file: `UIZhuangBeiWuHun_WuHun` co
+	# dung hai xuong `LayerName000` / `LayerName001` (khong phai anh — chung hien
+	# cac bien the long nhau `Base_WuHun` / `Base_Star`).
 	var rong = _chay("""
 		local sp = getSpriteFromSpriteCatch('UIZhuangBeiWuHun')
 		_SAN:addChild(sp)
 		return 'xong'
 	""", "ten thu muc")
 	var rig_rong := _rig_trong(_san.get_child(_san.get_child_count() - 1)) if rong != null else null
-	_ghi_chu(rig_rong != null and rig_rong.bones.is_empty()
-			and _so(_lua.rig_rong.get("UIZhuangBeiWuHun", 0)) == 1,
-			"ten THU MUC (khong phai bien the) -> nhom `_WuHun` -> 0 xuong, bo dem `rig_rong` ghi lai%s"
-			% ("" if rig_rong == null else ": %d xuong" % rig_rong.bones.size()))
+	var xuong_rong: Array = []
+	if rig_rong != null:
+		for k in rig_rong.bones:
+			xuong_rong.append(String(k))
+	_ghi_chu(rig_rong != null and xuong_rong == ["LayerName001", "LayerName000"]
+			and not _lua.rig_rong.has("UIZhuangBeiWuHun"),
+			"ten THU MUC (khong phai bien the) -> nhom `_WuHun` -> 2 xuong `LayerName*` (do duoc %s), va `rig_rong` KHONG dem (co ten trong bo dem: %s)"
+			% [str(xuong_rong), str(_lua.rig_rong.has("UIZhuangBeiWuHun"))])
 
 	# Ten khong co trong bang: thay bang null (AN o do), khong nem loi. Ghi lai
 	# dung hanh vi dang co — y nghia cua no o ban goc KHONG do duoc.
@@ -721,8 +731,19 @@ func _cham_va_tieng() -> void:
 	# Bo dem bat dau tu 0, dat tu day: mac dinh tag cua Cocos la -1
 	# (`kCCNodeTagInvalid`), de mac dinh thi "chay mot lan" ra 0 va phep kiem doc
 	# ra kho hon. Dat truoc khi cham thi `setTag` cua ban goc cong len dung 1.
+	#
+	# Bo dem pha END di qua `setStringTag`/`getStringTag` (chinh dong Lua o
+	# `onTouchEnd_T`), nen cho DAT va cho DOC cung phai goi hai ham do — doc
+	# thang meta la doc mot o khac: truoc day `setStringTag` ghi vao meta 'cls'
+	# nen `nut.set_meta('cls', '0')` tinh co dung; nay `setStringTag` co o rieng
+	# (xem lua/cocos.lua: getStringTag() tra ve 'res' cua ban ghi), va phep kiem
+	# se bao 0 du ham da chay dung.
 	nut.set_meta("tag", 0)
-	nut.set_meta("cls", "0")
+	_chay("""
+		local c = require('cocos')
+		c.wrap(_G['_NUT']):setStringTag('0')
+		return 'xong'
+	""", "dat bo dem stringTag")
 	var truoc: int = _so(_lua.am.so_phat)
 	var begin := _lua.touch_at("Begin", Vector2(550, 550))
 	_ghi_chu(begin, "cham Begin vao node co ten cham: nuot cu cham")
@@ -742,9 +763,12 @@ func _cham_va_tieng() -> void:
 	_lua.touch_at("End", Vector2(550, 550))
 	_ghi_chu(_so(_lua.am.so_phat) == giua,
 			"pha END khong phat lai tieng (%d -> %d)" % [giua, _so(_lua.am.so_phat)])
-	_ghi_chu(String(nut.get_meta("cls", "0")).to_int() == 1,
-			"ham `onTouchEnd_T` cua ban goc chay dung MOT lan (cls=%s)"
-			% nut.get_meta("cls", "-"))
+	var dem = _chay("""
+		local c = require('cocos')
+		return c.wrap(_G['_NUT']):getStringTag()
+	""", "doc bo dem")
+	_ghi_chu(String(dem) == "1",
+			"ham `onTouchEnd_T` cua ban goc chay dung MOT lan (stringTag=%s)" % dem)
 	var loi = _chay("""
 		local c = require('cocos')
 		return string.format('%d', #c.loi_cham)
@@ -759,9 +783,11 @@ func _cham_va_tieng() -> void:
 			% [truoc_im, _so(_lua.am.so_phat)])
 
 	# --- Canh: `_Lua_changeWingAnimation` -----------------------------------------
-	# Trong ban dung KHONG co duong nao gan canh (`setGear` chua lam), nen ham
-	# nay chi co the chay khi co mot armature canh nam trong cay con cua node
-	# nhan vat. Kiem dung hai dieu: no voi tới CANH, va no KHONG dung tới nhan vat.
+	# Duong GAN canh that la `setGear` -> `SngRig.dat_do` (kieu `node_con`), chay
+	# khi mot man cua `sc/` gan canh (`CUIActivityScoreStroe.lua:25`,
+	# `CUIWing.lua:1403`, `CUIWingShow.lua:248`). O day tu gan mot armature canh
+	# vao cay con de phep kiem khong phu thuoc man nao. Kiem dung hai dieu: no voi
+	# tới CANH, va no KHONG dung tới nhan vat.
 	var canh = _chay("""
 		local sp = _G['_SP']
 		local canh = getSpriteFromSpriteCatch('EquipWing_11')

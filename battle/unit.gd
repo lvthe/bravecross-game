@@ -366,10 +366,18 @@ func die() -> void:
 	_anim = ""
 	_play("Death")
 	if rig != null:
-		# KHONG dung z_index o day. Cac bo phan trong rig dat z 0..23 theo kieu
-		# TUONG DOI voi rig, nen ha rig xuong -1 lam moi manh thanh -1..22:
-		# manh sau cung tut xuong duoi ca nen (bien mat), so con lai nhay len
-		# tren ca nguoi con song. Ket qua la vu khi bay lo lung giua man hinh.
+		# KHONG dung z_index o day — va ly do ghi truoc kia ("cac bo phan trong rig dat
+		# z theo kieu TUONG DOI voi rig") la SAI: `z_index` cua Godot la so HIEU DUNG
+		# TRONG CA CANVAS (cong don tu moi to tien), khong phai so tuong doi trong rig
+		# nhu zOrder cua Cocos. Do duoc tren man Main: 1378 node mang z hieu dung khac
+		# 0, TAT CA la xuong armature — va chung ve DE LEN ca thanh cong cu (o icon
+		# `tag=2` bi che 5329/5340 diem anh).
+		#
+		# Nay `SngRig` khong dat `z_index` cho xuong nua (thu tu ve lay tu thu tu con,
+		# xem `_build_bones`), nen ha rig xuong -1 se lam CA RIG tut duoi moi node z=0
+		# cua san tran — ke ca nen — chu khong phai "manh sau cung" nhu chu thich cu.
+		# Ket qua van la vu khi/xac mat hinh, nen van khong dung.
+		#
 		# Lam mo la du de phan biet xac voi nguoi song; advance() mo tiep ve 0
 		# roi an han (xem DEATH_FADE) de xac khong chong dong thanh vet den.
 		rig.modulate = Color(0.7, 0.7, 0.76, 0.85)

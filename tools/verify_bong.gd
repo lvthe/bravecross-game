@@ -314,8 +314,13 @@ func _init() -> void:
 	if b == null:
 		_ghi_chu(false, "hien_bong(true) khong tao ra bong")
 	else:
-		_ghi_chu(b.z_index == SngRig.Z_BONG and SngRig.Z_BONG < 0,
-				"z = %d (ban goc sap bong ve -10 truoc khi hien)" % b.z_index)
+		# `zOrder -10` cua ban goc la so TUONG DOI trong node cha, nghia "ve truoc moi
+		# xuong". Ban dung dien ta bang VI TRI CON (0), khong bang `z_index` — vi
+		# `z_index` cua Godot la so hieu dung trong CA canvas, dat so am cho bong cua
+		# mot rig nam trong lop thanh pho se keo ca rig xuong duoi moi node UI z=0.
+		_ghi_chu(b.z_index == 0 and b.get_index() == 0,
+				"z_index = %d, vi tri con = %d (zOrder -10 cua ban goc = ve truoc moi xuong)"
+				% [b.z_index, b.get_index()])
 		_ghi_chu(b.centered, "neo giua (ban goc: setAnchorPoint(0.5, 0.5))")
 		_ghi_chu(b.position == Vector2.ZERO, "bong nam tai goc rig, y = %s" % b.position.y)
 		_ghi_chu(b.visible, "hien ra")
@@ -430,7 +435,9 @@ func _init() -> void:
 			_ghi_chu(is_equal_approx(rig_lua.bong.scale.x, TI_LE_GA),
 					"ti le cua bong doc tu Lua = %s (Hoplite: %s)"
 					% [rig_lua.bong.scale.x, TI_LE_GA])
-			_ghi_chu(rig_lua.bong.z_index == SngRig.Z_BONG, "z = %d" % rig_lua.bong.z_index)
+			_ghi_chu(rig_lua.bong.z_index == 0 and rig_lua.bong.get_index() == 0,
+					"z_index = %d, vi tri con = %d (ve truoc moi xuong)"
+					% [rig_lua.bong.z_index, rig_lua.bong.get_index()])
 			_ghi_chu(rig_lua.bong.visible, "bong hien ra qua duong Lua")
 		_ghi_chu(rig_lua._bong_dong_bo_y, "_SetSyncShadowPosY(true) dat co dong bo Y")
 		var id_lua := rig_lua.bong.get_instance_id() if rig_lua.bong != null else 0

@@ -147,9 +147,16 @@ return function(C)
 
 	-- LuaTableViewCell_create(stringTag). O la CCNode that trong ban goc nen
 	-- ngoai setView/getView/getIdx no con phai co day du phuong thuc Node.
+	--
+	-- `stringTag` di vao DUNG cho ma moi node khac dung — setStringTag, chu
+	-- khong phai mot truong rieng: ban goc doi chieu no bang `getReuseIdentifier`
+	-- (lua/bang.lua:376) va khong co cho nao khac ghi vao o. Truoc day cho nay
+	-- ghi thang meta 'cls' chi vi getStringTag() doc 'cls'; nay getStringTag()
+	-- tra ve 'res' (do tu may ao, xem lua/cocos.lua) nen hai dau phai gap nhau
+	-- o setStringTag/getStringTag.
 	local function tao_o(string_tag)
 		local gd = node_moi('CCTableViewCell', nil)
-		if string_tag ~= nil then gd:set_meta('cls', tostring(string_tag)) end
+		if string_tag ~= nil then C.Node.setStringTag(C.wrap(gd), tostring(string_tag)) end
 		return C.wrap(gd)
 	end
 
@@ -387,8 +394,11 @@ return function(C)
 		for i = 1, #t.kho do
 			local o = t.kho[i].o
 			local og = C.raw(o)
+			-- Doc bang getStringTag() chu khong doc thang meta: o nao cung
+			-- duoc `LuaTableViewCell_create` dan nhan qua setStringTag, nen
+			-- hai dau phai di qua cung mot API (xem `tao_o`).
 			local cua = ''
-			if og ~= nil and og:has_meta('cls') then cua = tostring(og:get_meta('cls')) end
+			if og ~= nil then cua = tostring(C.Node.getStringTag(C.wrap(og))) end
 			if ten == '' or cua == ten then
 				table.remove(t.kho, i)
 				return o
